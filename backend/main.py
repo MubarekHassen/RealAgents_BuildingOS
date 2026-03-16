@@ -17,8 +17,8 @@ import datetime
 load_dotenv()
 
 # Initialize Supabase client
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_ANON_KEY", ""))
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://lxlrwiltjwfbvjkhsgis.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4bHJ3aWx0andmYnZqa2hzZ2lzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjA2ODM3MywiZXhwIjoyMDgxNjQ0MzczfQ.tC2262S-NUjLfmosyoihN--PIt-3qB_DiJ2MHmRBSBU"))
 supabase: Client = None
 
 # Supabase Vectors configuration (for RAG embeddings)
