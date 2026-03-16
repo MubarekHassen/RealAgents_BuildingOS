@@ -1,32 +1,14 @@
-# Virtual environments
 .venv/
-venv/
-env/
-
-# Python
 __pycache__/
 *.pyc
-*.pyo
-
-# Environment & Secrets
 .env
-.env.*
-*.env
-backend/.env
-
-# Firebase/Google credentials
-firebase-service-account.json
-*-service-account.json
-*.json.bak
-
-# Node
+.env.local
 node_modules/
 dist/
-
-# IDE & OS
 .DS_Store
 .vscode/
-.idea/
-
-# Deployment
 .vercel
+firebase-service-account.json
+firebase-service-account.json.bak
+backend/.env
+frontend/.env
