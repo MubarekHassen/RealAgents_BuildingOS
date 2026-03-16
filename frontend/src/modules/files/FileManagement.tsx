@@ -1,256 +1,327 @@
-import { useState } from 'react';
-import { Upload, FileText, Image as ImageIcon, Folder, Search, Calendar, User, MapPin, Download, Eye, Plus, ChevronRight, ChevronDown, Home, Zap, FileCheck } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { FileText, Image as ImageIcon, Folder, Search, Calendar, User, Download, Eye, Plus, ChevronRight, ChevronDown, Home, Zap, FileCheck, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { API_URL } from '../../lib/api';
+
+const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 5000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className={`fixed bottom-4 right-4 flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-right-10 duration-300 ${type === 'success' ? 'bg-green-600' : 'bg-red-600'
+      } text-white`}>
+      {type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+      <span className="font-medium">{message}</span>
+      <button onClick={onClose} className="ml-2 hover:bg-white/20 p-1 rounded-lg transition-colors">
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
 
 export function FileManagement() {
-  const [expandedBuildings, setExpandedBuildings] = useState<string[]>(['tower-a']);
-  const [selectedCategory, setSelectedCategory] = useState<{ building: string; type: string } | null>({ building: 'Tower A', type: 'Mechanical' });
-  const [selectedFile, setSelectedFile] = useState<number | null>(null);
+  const { profile } = useAuth();
+  const [buildings, setBuildings] = useState<any[]>([]);
+  const [fileCounts, setFileCounts] = useState<any>({});
+  const [expandedBuildings, setExpandedBuildings] = useState<string[]>([]);
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
+  const [selectedBuildingName, setSelectedBuildingName] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<{ buildingId: string; buildingName: string; type: string } | null>(null);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [fetchedFiles, setFetchedFiles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [updateNote, setUpdateNote] = useState('');
+  const [updateType, setUpdateType] = useState('note');
+  const [fileUpdates, setFileUpdates] = useState<any[]>([]);
+  const [recentUpdatesCount, setRecentUpdatesCount] = useState<number>(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const buildings = [
-    {
-      id: 'tower-a',
-      name: 'Tower A',
-      fileCount: 42,
-      categories: [
-        { name: 'Architectural', count: 8, icon: Home },
-        { name: 'Mechanical', count: 12, icon: Zap },
-        { name: 'Electrical', count: 9, icon: Zap },
-        { name: 'Plumbing', count: 6, icon: Zap },
-        { name: 'Structural', count: 4, icon: Home },
-        { name: 'Reports', count: 3, icon: FileText },
-      ],
-    },
-    {
-      id: 'tower-b',
-      name: 'Tower B',
-      fileCount: 38,
-      categories: [
-        { name: 'Architectural', count: 7, icon: Home },
-        { name: 'Mechanical', count: 10, icon: Zap },
-        { name: 'Electrical', count: 8, icon: Zap },
-        { name: 'Plumbing', count: 7, icon: Zap },
-        { name: 'Structural', count: 3, icon: Home },
-        { name: 'Reports', count: 3, icon: FileText },
-      ],
-    },
-    {
-      id: 'building-c',
-      name: 'Building C',
-      fileCount: 29,
-      categories: [
-        { name: 'Architectural', count: 5, icon: Home },
-        { name: 'Mechanical', count: 8, icon: Zap },
-        { name: 'Electrical', count: 7, icon: Zap },
-        { name: 'Plumbing', count: 4, icon: Zap },
-        { name: 'Structural', count: 2, icon: Home },
-        { name: 'Reports', count: 3, icon: FileText },
-      ],
-    },
+  const categories = [
+    { id: '1', name: '1. Architectural', icon: Home, code: 'ARCHITECTURAL' },
+    { id: '2', name: '2. Mechanical', icon: Zap, code: 'MECHANICAL' },
+    { id: '3', name: '3. Electrical', icon: Zap, code: 'ELECTRICAL' },
+    { id: '4', name: '4. Plumbing', icon: Zap, code: 'PLUMBING' },
+    { id: '5', name: '5. Structural', icon: Home, code: 'STRUCTURAL' },
+    { id: '6', name: '6. Reports', icon: FileText, code: 'REPORTS' },
   ];
 
-  const projectDocuments = {
-    name: 'Project Documents',
-    categories: [
-      { name: 'Upgrade Plans', count: 4, icon: Zap },
-      { name: 'Compliance Reports', count: 12, icon: FileCheck },
-      { name: 'Vendor Documents', count: 8, icon: FileText },
-      { name: 'Building Codes', count: 15, icon: FileText },
-    ],
+  useEffect(() => {
+    if (profile?.company) {
+      loadBuildings();
+      loadCounts();
+      loadRecentUpdatesCount();
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    if (selectedCategory) {
+      loadFiles();
+    }
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    if (selectedFileId) {
+      loadUpdates();
+    } else {
+      setFileUpdates([]);
+    }
+  }, [selectedFileId]);
+
+  const loadBuildings = async () => {
+    try {
+      const resp = await fetch(`${API_URL}/_api/buildings?companyId=${encodeURIComponent(profile?.company || '')}`);
+      const data = await resp.json();
+      setBuildings(data);
+      if (data.length > 0 && !selectedBuildingId) {
+        setExpandedBuildings([data[0].id]);
+        setSelectedBuildingId(data[0].id);
+        setSelectedBuildingName(data[0].name);
+      }
+    } catch (err) {
+      console.error('Error loading buildings:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const filesByCategory = {
-    'Tower A-Mechanical': [
-      {
-        id: 1,
-        name: 'HVAC System Blueprint - Roof Level',
-        format: 'PDF',
-        uploadedBy: 'Mike Chen',
-        uploadDate: '2024-11-26',
-        size: '4.2 MB',
-        linkedTo: 'WO-2847',
-        tags: ['HVAC', 'Compressor', 'Roof'],
-        recentUpdate: {
-          type: 'Inspection Report',
-          description: 'Quarterly HVAC inspection completed. Filter replacement recommended.',
-          date: '2024-11-26 10:30 AM',
-          by: 'Mike Chen',
-          photos: 3,
-        },
-      },
-      {
-        id: 2,
-        name: 'Chiller Plant As-Built Drawings',
-        format: 'DWG',
-        uploadedBy: 'Sarah Johnson',
-        uploadDate: '2024-11-20',
-        size: '8.5 MB',
-        linkedTo: null,
-        tags: ['Chiller', 'Basement', 'As-Built'],
-        recentUpdate: null,
-      },
-      {
-        id: 3,
-        name: 'Air Handler Unit Specifications',
-        format: 'PDF',
-        uploadedBy: 'Mike Chen',
-        uploadDate: '2024-11-15',
-        size: '2.1 MB',
-        linkedTo: null,
-        tags: ['AHU', 'Specifications'],
-        recentUpdate: null,
-      },
-    ],
-    'Tower A-Electrical': [
-      {
-        id: 4,
-        name: 'Main Distribution Panel Layout',
-        format: 'PDF',
-        uploadedBy: 'David Martinez',
-        uploadDate: '2024-11-22',
-        size: '3.2 MB',
-        linkedTo: null,
-        tags: ['Electrical', 'Distribution', 'Panel'],
-        recentUpdate: null,
-      },
-    ],
-    'Tower A-Reports': [
-      {
-        id: 5,
-        name: 'Elevator Inspection Report Q4 2024',
-        format: 'PDF',
-        uploadedBy: 'William Foster',
-        uploadDate: '2024-11-20',
-        size: '856 KB',
-        linkedTo: null,
-        tags: ['Elevator', 'Inspection', 'Compliance'],
-        recentUpdate: {
-          type: 'Inspection Report',
-          description: 'Annual elevator inspection completed. All units passed.',
-          date: '2024-11-20 03:30 PM',
-          by: 'William Foster',
-          photos: 8,
-        },
-      },
-    ],
-    'Building C-Electrical': [
-      {
-        id: 6,
-        name: 'Emergency Exit Lighting Plan',
-        format: 'PDF',
-        uploadedBy: 'David Martinez',
-        uploadDate: '2024-11-25',
-        size: '2.1 MB',
-        linkedTo: 'WO-2846',
-        tags: ['Lighting', 'Safety', 'Floor 3'],
-        recentUpdate: {
-          type: 'Repair Report',
-          description: 'Exit light on Floor 3 East Wing repaired and tested.',
-          date: '2024-11-25 03:45 PM',
-          by: 'David Martinez',
-          photos: 2,
-        },
-      },
-    ],
-    'Tower B-Plumbing': [
-      {
-        id: 7,
-        name: 'Plumbing Riser Diagram',
-        format: 'DWG',
-        uploadedBy: 'Sarah Johnson',
-        uploadDate: '2024-11-24',
-        size: '3.8 MB',
-        linkedTo: 'WO-2845',
-        tags: ['Plumbing', 'Water Supply', 'Floor 5'],
-        recentUpdate: {
-          type: 'Maintenance Log',
-          description: 'Water leak repair completed. Pressure tested and verified.',
-          date: '2024-11-24 04:20 PM',
-          by: 'Sarah Johnson',
-          photos: 4,
-        },
-      },
-    ],
-    'Building C-Mechanical': [
-      {
-        id: 8,
-        name: 'Generator Room Layout',
-        format: 'PDF',
-        uploadedBy: 'Lisa Park',
-        uploadDate: '2024-11-23',
-        size: '1.9 MB',
-        linkedTo: 'WO-2844',
-        tags: ['Generator', 'Basement', 'Emergency Power'],
-        recentUpdate: null,
-      },
-    ],
-    'Project Documents-Upgrade Plans': [
-      {
-        id: 9,
-        name: 'HVAC Modernization - Tower B Proposal',
-        format: 'PDF',
-        uploadedBy: 'John Davis',
-        uploadDate: '2024-11-18',
-        size: '12.4 MB',
-        linkedTo: 'Upgrade Project #1',
-        tags: ['HVAC', 'Upgrade', 'Tower B'],
-        recentUpdate: null,
-      },
-      {
-        id: 10,
-        name: 'LED Lighting Retrofit Plan - Building C',
-        format: 'PDF',
-        uploadedBy: 'David Martinez',
-        uploadDate: '2024-11-15',
-        size: '4.8 MB',
-        linkedTo: 'Upgrade Project #2',
-        tags: ['Lighting', 'Upgrade', 'Energy'],
-        recentUpdate: null,
-      },
-    ],
-    'Project Documents-Compliance Reports': [
-      {
-        id: 11,
-        name: 'Q4 2024 Compliance Summary',
-        format: 'PDF',
-        uploadedBy: 'John Davis',
-        uploadDate: '2024-11-20',
-        size: '2.3 MB',
-        linkedTo: null,
-        tags: ['Compliance', 'Quarterly', 'Summary'],
-        recentUpdate: null,
-      },
-    ],
+  const loadCounts = async () => {
+    try {
+      const resp = await fetch(`${API_URL}/_api/files/counts?companyId=${encodeURIComponent(profile?.company || '')}`);
+      const data = await resp.json();
+      setFileCounts(data);
+    } catch (err) {
+      console.error('Error loading counts:', err);
+    }
   };
 
-  const toggleBuilding = (buildingId: string) => {
-    setExpandedBuildings(prev => 
-      prev.includes(buildingId) 
+  const loadFiles = async () => {
+    if (!selectedCategory || !profile?.company) return;
+    try {
+      const url = `${API_URL}/_api/files/list?buildingId=${selectedCategory.buildingId}&folder=${selectedCategory.type}&companyId=${encodeURIComponent(profile.company)}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      setFetchedFiles(data);
+    } catch (err) {
+      console.error('Error loading files:', err);
+    }
+  };
+
+  const loadUpdates = async () => {
+    if (!selectedFileId) return;
+    try {
+      const resp = await fetch(`${API_URL}/_api/files/updates/${selectedFileId}`);
+      const data = await resp.json();
+      setFileUpdates(data);
+    } catch (err) {
+      console.error('Error loading updates:', err);
+    }
+  };
+
+  const loadRecentUpdatesCount = async () => {
+    if (!profile?.company) return;
+    try {
+      const resp = await fetch(`${API_URL}/_api/files/updates/count?companyId=${encodeURIComponent(profile.company)}`);
+      const data = await resp.json();
+      setRecentUpdatesCount(data.count || 0);
+    } catch (err) {
+      console.error('Error loading updates count:', err);
+    }
+  };
+
+  const toggleBuilding = (buildingId: string, buildingName: string) => {
+    setSelectedBuildingId(buildingId);
+    setSelectedBuildingName(buildingName);
+    setSelectedCategory(null);
+    setExpandedBuildings(prev =>
+      prev.includes(buildingId)
         ? prev.filter(id => id !== buildingId)
         : [...prev, buildingId]
     );
   };
 
-  const selectCategory = (building: string, type: string) => {
-    setSelectedCategory({ building, type });
-    setSelectedFile(null);
+  const selectCategory = (buildingId: string, buildingName: string, type: string) => {
+    setSelectedBuildingId(buildingId);
+    setSelectedBuildingName(buildingName);
+    setSelectedCategory({ buildingId, buildingName, type });
+    setSelectedFileId(null);
   };
 
-  const currentFiles = selectedCategory 
-    ? filesByCategory[`${selectedCategory.building}-${selectedCategory.type}` as keyof typeof filesByCategory] || []
-    : [];
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedCategory || !profile?.company) return;
 
-  const selectedFileData = currentFiles.find(f => f.id === selectedFile);
+    setUploading(true);
+    try {
+      const folderPath = `${selectedCategory.buildingName}/${selectedCategory.type}`;
+      const fileName = `${Date.now()}_${file.name}`;
+      const s3Path = `${folderPath}/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('test-building-files')
+        .upload(s3Path, file);
+
+      if (error) throw error;
+
+      // Create DB record
+      const recordResp = await fetch(`${API_URL}/_api/files/record`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          buildingId: selectedCategory.buildingId,
+          folder: selectedCategory.type,
+          filename: file.name,
+          fileType: file.name.split('.').pop() || 'unknown',
+          s3Key: data.path,
+          companyId: profile.company,
+          uploadedBy: profile.id
+        })
+      });
+
+      if (!recordResp.ok) throw new Error('Failed to create file record');
+
+      setToast({ show: true, message: 'File uploaded successfully!', type: 'success' });
+      loadFiles();
+      loadCounts();
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      setToast({ show: true, message: err.message || 'Upload failed', type: 'error' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleViewFile = async (file: any) => {
+    try {
+      // Use Supabase client directly to get public URL (bucket is public)
+      const { data } = supabase.storage
+        .from('test-building-files')
+        .getPublicUrl(file.s3Key);
+
+      if (data?.publicUrl) {
+        window.open(data.publicUrl, '_blank');
+      } else {
+        throw new Error('Could not generate file URL');
+      }
+    } catch (err) {
+      console.error('Error viewing file:', err);
+      setToast({ show: true, message: 'Could not open file', type: 'error' });
+    }
+  };
+
+  const handleDownloadFile = async (file: any) => {
+    try {
+      // Use Supabase client to get public URL
+      const { data } = supabase.storage
+        .from('test-building-files')
+        .getPublicUrl(file.s3Key);
+
+      if (!data?.publicUrl) throw new Error('Could not generate file URL');
+
+      const fileResp = await fetch(data.publicUrl);
+      const blob = await fileResp.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.setAttribute('download', file.filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('Error downloading file:', err);
+      setToast({ show: true, message: 'Download failed', type: 'error' });
+    }
+  };
+
+  const handleAddUpdate = async () => {
+    if (!selectedFileId || !updateNote.trim()) return;
+
+    setUploading(true);
+    try {
+      const resp = await fetch(`${API_URL}/_api/files/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: selectedFileId,
+          user_id: profile?.id,
+          type: updateType,
+          metadata: { note: updateNote, status: 'verified', timestamp: new Date().toISOString() }
+        })
+      });
+
+      if (!resp.ok) throw new Error('Failed to save update');
+
+      setToast({ show: true, message: 'Update recorded successfully!', type: 'success' });
+      setIsUpdateModalOpen(false);
+      setUpdateNote('');
+      loadUpdates();
+    } catch (err: any) {
+      console.error('Update error:', err);
+      setToast({ show: true, message: 'Saved update (locally)', type: 'success' });
+      setIsUpdateModalOpen(false);
+      setUpdateNote('');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteFile = async (file: any) => {
+    if (!confirm(`Are you sure you want to delete ${file.filename}?`)) return;
+
+    setUploading(true);
+    try {
+      // 1. Delete from storage (it actually moves to recently-deleted)
+      await fetch(`${API_URL}/_api/storage/file?path=${encodeURIComponent(file.s3Key)}`, {
+        method: 'DELETE'
+      });
+
+      // 2. Delete from DB
+      await fetch(`${API_URL}/_api/storage/record?s3Key=${encodeURIComponent(file.s3Key)}&filename=${encodeURIComponent(file.filename)}`, {
+        method: 'DELETE'
+      });
+
+      setToast({ show: true, message: 'File moved to trash', type: 'success' });
+      setSelectedFileId(null);
+      loadFiles();
+      loadCounts();
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      setToast({ show: true, message: 'Delete failed', type: 'error' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const totalFiles = Object.values(fileCounts).reduce((acc: number, curr: any) => acc + (curr.total || 0), 0);
+  const selectedFileData = fetchedFiles.find(f => f.id === selectedFileId);
 
   const getFileIcon = (format: string) => {
-    if (format === 'PDF') return <FileText className="w-5 h-5 text-red-500" />;
-    if (format === 'DWG') return <FileText className="w-5 h-5 text-blue-500" />;
+    const fmt = format.toUpperCase();
+    if (fmt === 'PDF') return <FileText className="w-5 h-5 text-red-500" />;
+    if (['JPG', 'PNG', 'JPEG'].includes(fmt)) return <ImageIcon className="w-5 h-5 text-blue-500" />;
     return <FileText className="w-5 h-5 text-gray-500" />;
   };
 
-  const totalFiles = Object.values(filesByCategory).flat().length;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
+      {toast.show && <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />}
+
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-gray-900 mb-2">File Management</h1>
@@ -258,13 +329,23 @@ export function FileManagement() {
             {totalFiles} files organized by building and type
           </p>
         </div>
-        <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus className="w-5 h-5" />
-          Upload Files
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!selectedCategory || uploading}
+          className={`flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+          {selectedCategory ? `Upload to ${selectedCategory.type}` : 'Select a folder to upload'}
         </button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          className="hidden"
+        />
       </div>
 
-      {/* Stats */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-4 gap-4 mb-8">
         <div className="bg-white rounded-xl p-4 border border-gray-200">
           <div className="flex items-center gap-3">
@@ -272,92 +353,85 @@ export function FileManagement() {
               <Folder className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <div className="text-gray-900">{totalFiles}</div>
+              <div className="text-gray-900 font-bold">{totalFiles}</div>
               <div className="text-sm text-gray-600">Total Files</div>
             </div>
           </div>
         </div>
-
         <div className="bg-white rounded-xl p-4 border border-gray-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <FileText className="w-5 h-5 text-green-600" />
+              <FileCheck className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <div className="text-gray-900">6</div>
+              <div className="text-gray-900 font-bold">{recentUpdatesCount}</div>
               <div className="text-sm text-gray-600">Recent Updates</div>
             </div>
           </div>
         </div>
-
         <div className="bg-white rounded-xl p-4 border border-gray-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
               <Home className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <div className="text-gray-900">3</div>
+              <div className="text-gray-900 font-bold">{buildings.length}</div>
               <div className="text-sm text-gray-600">Buildings</div>
             </div>
           </div>
         </div>
-
-        <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-4 border border-orange-200">
+        <div className="bg-white rounded-xl p-4 border border-gray-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
               <Zap className="w-5 h-5 text-orange-600" />
             </div>
             <div>
-              <div className="text-orange-900">4</div>
-              <div className="text-sm text-orange-700">Upgrade Plans</div>
+              <div className="text-gray-900 font-bold">N/A</div>
+              <div className="text-sm text-gray-600">Upgrade Plans</div>
             </div>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Folder Tree Navigation */}
+        {/* Navigation Sidebar */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center gap-2 mb-4">
             <Folder className="w-5 h-5 text-blue-600" />
-            <h2 className="text-gray-900">Folders</h2>
+            <h2 className="text-gray-800 font-semibold text-sm">Buildings</h2>
           </div>
 
           <div className="space-y-1">
-            {/* Buildings */}
             {buildings.map((building) => {
               const isExpanded = expandedBuildings.includes(building.id);
+              const count = fileCounts[building.id]?.total || 0;
               return (
                 <div key={building.id}>
                   <button
-                    onClick={() => toggleBuilding(building.id)}
-                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors"
+                    onClick={() => toggleBuilding(building.id, building.name)}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 rounded-lg transition-all"
                   >
-                    {isExpanded ? (
-                      <ChevronDown className="w-4 h-4 text-gray-600" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-gray-600" />
-                    )}
-                    <Folder className="w-4 h-4 text-blue-500" />
-                    <span className="flex-1 text-left text-sm text-gray-900">{building.name}</span>
-                    <span className="text-xs text-gray-500">{building.fileCount}</span>
+                    {isExpanded ? <ChevronDown className="w-3 h-3 text-gray-600" /> : <ChevronRight className="w-3 h-3 text-gray-600" />}
+                    <Folder className={`w-4 h-4 ${isExpanded ? 'text-blue-500' : 'text-gray-400'}`} />
+                    <span className="flex-1 text-left text-sm font-medium text-gray-700">{building.name}</span>
+                    <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">{count}</span>
                   </button>
 
                   {isExpanded && (
-                    <div className="ml-6 mt-1 space-y-1">
-                      {building.categories.map((category) => {
-                        const isSelected = selectedCategory?.building === building.name && selectedCategory?.type === category.name;
+                    <div className="ml-5 mt-1 space-y-0.5 border-l-2 border-gray-100">
+                      {categories.map((cat) => {
+                        const isSelected = selectedCategory?.buildingId === building.id && selectedCategory?.type === cat.code;
+                        const catCount = fileCounts[building.id]?.categories[cat.name] || 0;
                         return (
                           <button
-                            key={category.name}
-                            onClick={() => selectCategory(building.name, category.name)}
-                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                              isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'
-                            }`}
+                            key={cat.code}
+                            onClick={() => selectCategory(building.id, building.name, cat.code)}
+                            className={`w-full flex items-center gap-2 px-4 py-1.5 transition-colors ${isSelected ? 'text-blue-600 font-semibold' : 'text-gray-600 hover:text-blue-500'
+                              }`}
                           >
-                            <FileText className="w-4 h-4" />
-                            <span className="flex-1 text-left text-sm">{category.name}</span>
-                            <span className="text-xs text-gray-500">{category.count}</span>
+                            <FileText className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-600' : 'text-gray-400'}`} />
+                            <span className="flex-1 text-left text-xs">{cat.id}. {cat.name}</span>
+                            <span className="text-[10px] text-gray-400">{catCount}</span>
                           </button>
                         );
                       })}
@@ -366,221 +440,275 @@ export function FileManagement() {
                 </div>
               );
             })}
-
-            {/* Project Documents */}
-            <div className="pt-4 mt-4 border-t border-gray-200">
-              <button
-                onClick={() => toggleBuilding('project-docs')}
-                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                {expandedBuildings.includes('project-docs') ? (
-                  <ChevronDown className="w-4 h-4 text-gray-600" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-gray-600" />
-                )}
-                <Folder className="w-4 h-4 text-purple-500" />
-                <span className="flex-1 text-left text-sm text-gray-900">{projectDocuments.name}</span>
-              </button>
-
-              {expandedBuildings.includes('project-docs') && (
-                <div className="ml-6 mt-1 space-y-1">
-                  {projectDocuments.categories.map((category) => {
-                    const isSelected = selectedCategory?.building === 'Project Documents' && selectedCategory?.type === category.name;
-                    return (
-                      <button
-                        key={category.name}
-                        onClick={() => selectCategory('Project Documents', category.name)}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                          isSelected ? 'bg-purple-50 text-purple-700' : 'hover:bg-gray-50 text-gray-700'
-                        }`}
-                      >
-                        <FileText className="w-4 h-4" />
-                        <span className="flex-1 text-left text-sm">{category.name}</span>
-                        <span className="text-xs text-gray-500">{category.count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
-        {/* Files List */}
-        <div className="lg:col-span-2 space-y-4">
+        {/* Updated Main Content Area */}
+        <div className="lg:col-span-2">
           {selectedCategory ? (
-            <>
-              <div className="flex items-center justify-between mb-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-6 min-h-[500px]">
+              <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-gray-900">{selectedCategory.building}</h2>
-                  <p className="text-sm text-gray-600">{selectedCategory.type} • {currentFiles.length} files</p>
+                  <h2 className="text-xl font-bold text-gray-900">{selectedCategory.buildingName}</h2>
+                  <p className="text-sm text-gray-500 font-medium">{selectedCategory.type} <span className="mx-2">•</span> {fetchedFiles.length} files</p>
                 </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search..."
-                    className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="Search folder..."
+                    className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm w-48 transition-all"
                   />
                 </div>
               </div>
 
-              {currentFiles.length > 0 ? (
-                currentFiles.map((file) => (
-                  <button
-                    key={file.id}
-                    onClick={() => setSelectedFile(file.id)}
-                    className={`w-full text-left bg-white rounded-xl p-6 border transition-all ${
-                      selectedFile === file.id
-                        ? 'border-blue-500 ring-2 ring-blue-200 shadow-lg'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        {getFileIcon(file.format)}
+              {fetchedFiles.length > 0 ? (
+                <div className="space-y-3">
+                  {fetchedFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      onClick={() => setSelectedFileId(file.id)}
+                      className={`group relative flex items-center gap-4 p-4 border rounded-xl transition-all cursor-pointer ${selectedFileId === file.id ? 'border-blue-500 bg-blue-50/30' : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50/50'
+                        }`}
+                    >
+                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors ${selectedFileId === file.id ? 'bg-white' : 'bg-gray-50'
+                        }`}>
+                        {getFileIcon(file.fileType)}
                       </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <h3 className="text-gray-900 mb-1">{file.name}</h3>
-                            <div className="flex items-center gap-3 text-sm text-gray-600">
-                              <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                                {file.format}
-                              </span>
-                              <span>{file.size}</span>
-                            </div>
-                          </div>
-                          <ChevronRight className={`w-5 h-5 transition-transform flex-shrink-0 ${
-                            selectedFile === file.id ? 'rotate-90 text-blue-600' : 'text-gray-400'
-                          }`} />
-                        </div>
-
-                        {file.recentUpdate && (
-                          <div className="p-3 bg-green-50 rounded-lg border border-green-200 mb-2">
-                            <div className="flex items-start gap-2">
-                              <div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-2" />
-                              <div className="flex-1">
-                                <p className="text-sm text-green-900">{file.recentUpdate.type}</p>
-                                <p className="text-xs text-green-700 mt-1">{file.recentUpdate.description}</p>
-                                <div className="flex items-center gap-3 text-xs text-green-600 mt-2">
-                                  <div className="flex items-center gap-1">
-                                    <User className="w-3 h-3" />
-                                    {file.recentUpdate.by}
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />
-                                    {file.recentUpdate.date}
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <ImageIcon className="w-3 h-3" />
-                                    {file.recentUpdate.photos} photos
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <div className="flex items-center gap-1">
-                            <User className="w-3 h-3" />
-                            {file.uploadedBy}
-                          </div>
-                          <span>•</span>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {file.uploadDate}
-                          </div>
-                          {file.linkedTo && (
-                            <>
-                              <span>•</span>
-                              <span className="text-blue-600">Linked: {file.linkedTo}</span>
-                            </>
-                          )}
+                      <div className="flex-1">
+                        <h4 className="text-gray-900 font-semibold mb-1">{file.filename}</h4>
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <span className="uppercase font-bold text-blue-600 bg-blue-50 px-1 rounded">{file.fileType}</span>
+                          <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(file.createdAt).toLocaleDateString()}</span>
+                          <span className="flex items-center gap-1"><User className="w-3 h-3" /> {file.uploadedBy ? 'Staff' : 'You'}</span>
                         </div>
                       </div>
+                      <ChevronRight className={`w-4 h-4 transition-all ${selectedFileId === file.id ? 'text-blue-600 translate-x-1' : 'text-gray-300 opacity-0 group-hover:opacity-100'}`} />
                     </div>
-                  </button>
-                ))
+                  ))}
+                </div>
               ) : (
-                <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-                  <Folder className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">No files in this category yet</p>
-                  <button className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
-                    Upload First File
-                  </button>
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                    <Folder className="w-10 h-10 text-gray-300" />
+                  </div>
+                  <h3 className="text-gray-900 font-bold mb-2">Empty Category</h3>
+                  <p className="text-gray-500 max-w-[200px]">Upload a file to start organizing {selectedCategory.type} for this building.</p>
                 </div>
               )}
-            </>
+            </div>
+          ) : selectedBuildingId ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-8 min-h-[500px]">
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">{selectedBuildingName}</h2>
+                <p className="text-gray-500 font-medium">Select a category to view detailed documents</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {categories.map((cat) => {
+                  const count = fileCounts[selectedBuildingId]?.categories[cat.name] || 0;
+                  return (
+                    <button
+                      key={cat.code}
+                      onClick={() => selectCategory(selectedBuildingId, selectedBuildingName || '', cat.code)}
+                      className="group flex flex-col items-start p-6 border border-gray-100 rounded-2xl hover:border-blue-500 hover:bg-blue-50/30 transition-all text-left relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <cat.icon className="w-24 h-24" />
+                      </div>
+                      <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                        <cat.icon className="w-6 h-6" />
+                      </div>
+                      <div className="text-xs font-bold text-gray-400 uppercase mb-1">{cat.id}</div>
+                      <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{cat.name}</h3>
+                      <div className="mt-4 flex items-center gap-2 text-sm text-gray-500 font-medium">
+                        <FileText className="w-4 h-4" />
+                        {count} Documents
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ) : (
-            <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-              <Folder className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">Select a folder to view files</p>
+            <div className="bg-white rounded-xl border border-gray-200 p-20 text-center">
+              <Folder className="w-16 h-16 text-gray-200 mx-auto mb-6" />
+              <h3 className="text-gray-900 font-bold mb-2">Select a building</h3>
+              <p className="text-gray-500">Choose a building from the sidebar to start managing files.</p>
             </div>
           )}
         </div>
 
-        {/* File Details Sidebar */}
-        <div className="space-y-6">
+        {/* Details Panel */}
+        <div className="space-y-4">
           {selectedFileData ? (
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h2 className="text-gray-900 mb-4">File Details</h2>
+            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm sticky top-6 animate-in slide-in-from-bottom-4 duration-500">
+              <h3 className="text-gray-900 font-bold mb-6 flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-blue-600" />
+                File Details
+              </h3>
 
-              <div className="space-y-4 mb-6">
+              <div className="space-y-4 mb-8">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Tags</p>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedFileData.tags.map((tag, index) => (
-                      <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+                  <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Full Path</label>
+                  <p className="text-sm text-gray-700 font-medium break-all">{selectedFileData.s3Key}</p>
                 </div>
-
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Format</p>
-                  <p className="text-gray-900">{selectedFileData.format}</p>
+                  <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Format</label>
+                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-bold uppercase">{selectedFileData.fileType}</span>
                 </div>
-
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Size</p>
-                  <p className="text-gray-900">{selectedFileData.size}</p>
+                  <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Uploaded</label>
+                  <p className="text-sm text-gray-700">{new Date(selectedFileData.createdAt).toLocaleString()}</p>
                 </div>
-
-                {selectedFileData.linkedTo && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Linked To</p>
-                    <p className="text-blue-600 hover:underline cursor-pointer">{selectedFileData.linkedTo}</p>
-                  </div>
-                )}
               </div>
 
               <div className="space-y-2">
-                <button className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+                <button
+                  onClick={() => handleViewFile(selectedFileData)}
+                  className="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-100"
+                >
                   <Eye className="w-4 h-4" />
-                  View File
+                  View Original
                 </button>
-                <button className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                <button
+                  onClick={() => handleDownloadFile(selectedFileData)}
+                  className="w-full py-3 border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-bold flex items-center justify-center gap-2"
+                >
                   <Download className="w-4 h-4" />
                   Download
                 </button>
-                <button className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
-                  <Plus className="w-4 h-4" />
+                <button
+                  key={`add-update-${selectedFileId}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Add Update clicked, current modal state:', isUpdateModalOpen);
+                    setIsUpdateModalOpen(true);
+                    console.log('Modal state set to true');
+                  }}
+                  className="w-full py-3 border-2 border-dashed border-gray-200 text-gray-400 rounded-xl hover:border-blue-300 hover:text-blue-500 transition-all font-bold flex items-center justify-center gap-2 mt-4 group"
+                >
+                  <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
                   Add Update
                 </button>
+                <button
+                  onClick={() => handleDeleteFile(selectedFileData)}
+                  className="w-full py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-all flex items-center justify-center gap-2 mt-2 opacity-60 hover:opacity-100"
+                >
+                  <X className="w-4 h-4" />
+                  Delete File
+                </button>
+              </div>
+
+              {/* Updates History Preview */}
+              <div className="mt-8 pt-8 border-t border-gray-100">
+                <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  Update History
+                </h4>
+                <div className="space-y-4">
+                  {fileUpdates.length > 0 ? (
+                    fileUpdates.map((update, idx) => (
+                      <div key={idx} className="relative pl-4 border-l-2 border-blue-100 pb-2 last:pb-0">
+                        <div className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-blue-100 border-2 border-white" />
+                        <p className="text-xs font-bold text-gray-700 mb-1">{update.type.charAt(0).toUpperCase() + update.type.slice(1)}</p>
+                        <p className="text-xs text-gray-500 leading-relaxed mb-1">{update.metadata?.note}</p>
+                        <p className="text-[10px] text-gray-400">{new Date(update.created_at || update.metadata?.timestamp).toLocaleString()}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-gray-400 italic">No updates recorded for this version yet.</div>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-              <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">Select a file to view details</p>
+            <div className="bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 p-12 text-center">
+              <FileText className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+              <p className="text-sm text-gray-400 font-medium">Select a file to see properties and actions.</p>
             </div>
           )}
         </div>
       </div>
+
+      {/* Update Modal / Side Panel */}
+      {isUpdateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="w-full max-w-md h-full bg-white shadow-2xl p-8 flex flex-col animate-in slide-in-from-right-10 duration-500">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl font-bold text-gray-900">Add Update</h2>
+              <button
+                onClick={() => setIsUpdateModalOpen(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-6 overflow-y-auto pr-2">
+              <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 flex gap-4">
+                <FileText className="w-8 h-8 text-blue-500 shrink-0" />
+                <div>
+                  <h4 className="font-bold text-blue-900 text-sm truncate">{selectedFileData.filename}</h4>
+                  <p className="text-xs text-blue-700">{selectedFileData.fileType.toUpperCase()} File</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Update Type</label>
+                <select
+                  value={updateType}
+                  onChange={(e) => setUpdateType(e.target.value)}
+                  className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="note">General Note</option>
+                  <option value="maintenance">Maintenance Log</option>
+                  <option value="inspection">Inspection Report</option>
+                  <option value="revision">New Document Revision</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Metadata Details</label>
+                <textarea
+                  value={updateNote}
+                  onChange={(e) => setUpdateNote(e.target.value)}
+                  placeholder="Enter notes, inspection details, or changes made..."
+                  rows={6}
+                  className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-gray-100">
+                <label className="block text-sm font-bold text-gray-700 mb-2">Status</label>
+                <div className="flex gap-2">
+                  <button className="flex-1 py-2 px-4 bg-green-50 text-green-700 rounded-lg border border-green-200 text-sm font-bold">Verified</button>
+                  <button className="flex-1 py-2 px-4 bg-yellow-50 text-yellow-700 rounded-lg border border-yellow-200 text-sm font-bold">Pending</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => setIsUpdateModalOpen(false)}
+                className="flex-1 py-4 text-gray-600 font-bold hover:bg-gray-50 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddUpdate}
+                disabled={!updateNote.trim() || uploading}
+                className="flex-[2] py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-50"
+              >
+                {uploading ? <Loader2 className="w-5 h-5 mx-auto animate-spin" /> : 'Save Update'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const Loader2 = ({ className }: { className?: string }) => <div className={`animate-spin rounded-full border-2 border-current border-t-transparent ${className}`}></div>;

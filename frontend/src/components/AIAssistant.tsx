@@ -36,12 +36,9 @@ export function AIAssistant() {
   useEffect(() => {
     if (!profile?.company) return;
     
-    const fetchBuildings = async (isInitialLoad = false) => {
+    const fetchBuildings = async () => {
       try {
-        // Only show loading spinner on initial load, not background refreshes
-        if (isInitialLoad) {
-          setLoadingBuildings(true);
-        }
+        setLoadingBuildings(true);
         const response = await fetch(`${API_URL}/_api/buildings?companyId=${encodeURIComponent(profile.company)}`);
         if (response.ok) {
           const data = await response.json();
@@ -50,15 +47,13 @@ export function AIAssistant() {
       } catch (error) {
         console.error('Error fetching buildings:', error);
       } finally {
-        if (isInitialLoad) {
-          setLoadingBuildings(false);
-        }
+        setLoadingBuildings(false);
       }
     };
-    fetchBuildings(true); // Initial load shows loading spinner
+    fetchBuildings();
     
-    // Refresh every 30 seconds (no loading spinner)
-    const interval = setInterval(() => fetchBuildings(false), 30000);
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchBuildings, 30000);
     return () => clearInterval(interval);
   }, [profile?.company]);
 

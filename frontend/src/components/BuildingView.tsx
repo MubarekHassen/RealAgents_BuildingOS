@@ -107,40 +107,15 @@ export function BuildingView() {
 
     loadBuildings();
 
-    // Subscribe to building changes (for health bars and list status)
-    const channel = supabase
-      .channel('public:Building')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'Building'
-        },
-        (payload) => {
-          console.log('Realtime change received:', payload);
-          if (payload.eventType === 'UPDATE') {
-            const raw = payload.new as any;
-            // Only update if it belongs to our company
-            if (raw.companyId !== profile?.company) return;
-            const updatedBuilding: Building = {
-              ...raw,
-              occupancy: raw.utilization ?? 85
-            };
-            setBuildings(prev => {
-              const updated = prev.map(b => b.id === updatedBuilding.id ? { ...b, ...updatedBuilding } : b);
-              return updated;
-            });
-          } else {
-            loadBuildings();
-          }
-        }
-      )
-      .subscribe();
+    // Realtime subscription disabled per user request to stop auto-refresh behavior
+    // const channel = supabase
+    //   .channel('public:Building')
+    //   .on(...)
+    //   .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    // return () => {
+    //   supabase.removeChannel(channel);
+    // };
   }, [profile?.company]);
 
   // Update environmental state whenever the selected building record updates in the main 'buildings' array
@@ -171,28 +146,28 @@ export function BuildingView() {
     {
       name: 'HVAC',
       status: 'good',
-      value: 'Pending',
+      value: 'N/A',
       icon: Wind,
       alert: undefined,
     },
     {
       name: 'Electrical',
       status: 'good',
-      value: 'Pending',
+      value: 'N/A',
       icon: Zap,
       alert: undefined
     },
     {
       name: 'Water',
       status: 'good',
-      value: 'Pending',
+      value: 'N/A',
       icon: Droplets,
       alert: undefined
     },
     {
       name: 'Fire Safety',
       status: 'good',
-      value: 'Pending',
+      value: 'N/A',
       icon: AlertTriangle,
       alert: undefined
     },
@@ -221,13 +196,42 @@ export function BuildingView() {
       return;
     }
 
+    const tempId = `temp-${Date.now()}`;
+    const payload = { ...newBuilding, companyId: profile?.company || 'default' };
+
+    // Optimistic Update
+    const optimisticBuilding: any = {
+      id: tempId,
+      ...newBuilding,
+      companyId: payload.companyId,
+      floors: String(newBuilding.floors || '0'),
+      sqft: String(newBuilding.sqft || '0'),
+      occupancy: 0,
+      status: 'operational',
+      temperature: 70,
+      humidity: 45,
+      energyUsage: 2000,
+      airQuality: 'Good',
+      utilization: 85,
+      hvacHealth: 100,
+      electricalHealth: 100,
+      waterHealth: 100,
+      fireSafetyHealth: 100,
+      fileCount: 0
+    };
+
+    const originalBuildings = [...buildings];
+    setBuildings(prev => [...prev, optimisticBuilding].sort((a, b) => a.name.localeCompare(b.name)));
+    setSelectedBuilding(tempId);
+    handleCloseDropdown();
+
     try {
       const response = await fetch(`${API_URL}/_api/buildings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ...newBuilding, companyId: profile?.company || 'default' }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -241,21 +245,39 @@ export function BuildingView() {
           hvacHealth: 100,
           electricalHealth: 100,
           waterHealth: 100,
-          fireSafetyHealth: 100
+          fireSafetyHealth: 100,
+          temperature: createdBuilding.temperature || 70,
+          humidity: createdBuilding.humidity || 45,
+          energyUsage: createdBuilding.energyUsage || 2000,
+          airQuality: createdBuilding.airQuality || 'Good',
+          utilization: createdBuilding.utilization || 85,
+          fileCount: 0
         };
-        setBuildings(prev => [...prev, mappedBuilding]);
+
+        // Replace temp with real
+        setBuildings(prev => prev.map(b => b.id === tempId ? mappedBuilding : b));
         setSelectedBuilding(createdBuilding.id);
-        handleCloseDropdown();
-        // Trigger a reload to sync from backend properly
-        loadBuildings();
+
+        // Reset form
+        setNewBuilding({ name: '', address: '', city: '', state: '', country: '', floors: '', sqft: '' });
       } else {
         const errorData = await response.json();
         console.error('Error creating building:', response.statusText);
         alert(`Failed to create building: ${errorData.detail || response.statusText}`);
+        // Revert
+        setBuildings(prev => prev.filter(b => b.id !== tempId));
+        if (selectedBuilding === tempId && originalBuildings.length > 0) {
+          setSelectedBuilding(originalBuildings[0].id);
+        }
       }
     } catch (error) {
       console.error('Error creating building:', error);
       alert('Failed to connect to the server.');
+      // Revert
+      setBuildings(prev => prev.filter(b => b.id !== tempId));
+      if (selectedBuilding === tempId && originalBuildings.length > 0) {
+        setSelectedBuilding(originalBuildings[0].id);
+      }
     }
   };
 
@@ -404,25 +426,35 @@ export function BuildingView() {
   };
 
   const handleDeleteBuilding = async (buildingId: string) => {
+    // Optimistic Update: Remove from UI immediately
+    const originalBuildings = [...buildings];
+    setBuildings(prev => prev.filter(b => b.id !== buildingId));
+
+    // Switch selection if needed (optimistically)
+    if (selectedBuilding === buildingId) {
+      const remainingBuildings = buildings.filter(b => b.id !== buildingId);
+      if (remainingBuildings.length > 0) {
+        setSelectedBuilding(remainingBuildings[0].id);
+      }
+    }
+    handleCloseDeleteDropdown(); // Close UI immediately
+
     try {
       const response = await fetch(`${API_URL}/_api/buildings/${buildingId}`, {
         method: 'DELETE',
       });
 
-      if (response.ok) {
-        setBuildings(prev => prev.filter(b => b.id !== buildingId));
-        if (selectedBuilding === buildingId) {
-          const remainingBuildings = buildings.filter(b => b.id !== buildingId);
-          if (remainingBuildings.length > 0) {
-            setSelectedBuilding(remainingBuildings[0].id);
-          }
-        }
-        handleCloseDeleteDropdown();
-      } else {
+      if (!response.ok) {
+        // Revert on failure
+        setBuildings(originalBuildings);
         console.error('Error deleting building:', response.statusText);
+        alert('Failed to delete building');
       }
     } catch (error) {
+      // Revert on error
+      setBuildings(originalBuildings);
       console.error('Error deleting building:', error);
+      alert('Failed to connect to the server.');
     }
   };
 
@@ -466,7 +498,7 @@ export function BuildingView() {
             <div className="flex items-center gap-4 text-sm text-gray-600">
               <span>{building.floors} floors</span>
               <span>•</span>
-              <span>{building.sqft} sq ft</span>
+              <span>{Number(building.sqft.replace(/,/g, '')).toLocaleString()} sq ft</span>
             </div>
           </button>
         ))}
@@ -480,28 +512,28 @@ export function BuildingView() {
                 <ThermometerSun className="w-5 h-5 text-orange-600" />
                 <span className="text-sm text-gray-600">Temperature</span>
               </div>
-              <div className="text-gray-900 font-medium">Pending</div>
+              <div className="text-gray-900 font-medium">N/A</div>
             </div>
             <div className="bg-white rounded-xl p-4 border border-gray-200">
               <div className="flex items-center gap-2 mb-2">
                 <Droplets className="w-5 h-5 text-blue-600" />
                 <span className="text-sm text-gray-600">Humidity</span>
               </div>
-              <div className="text-gray-900 font-medium">Pending</div>
+              <div className="text-gray-900 font-medium">N/A</div>
             </div>
             <div className="bg-white rounded-xl p-4 border border-gray-200">
               <div className="flex items-center gap-2 mb-2">
                 <Wind className="w-5 h-5 text-green-600" />
                 <span className="text-sm text-gray-600">Air Quality</span>
               </div>
-              <div className="text-gray-900 font-medium">Pending</div>
+              <div className="text-gray-900 font-medium">N/A</div>
             </div>
             <div className="bg-white rounded-xl p-4 border border-gray-200">
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="w-5 h-5 text-yellow-600" />
                 <span className="text-sm text-gray-600">Energy</span>
               </div>
-              <div className="text-gray-900 font-medium">Pending</div>
+              <div className="text-gray-900 font-medium">N/A</div>
             </div>
           </div>
 
@@ -587,7 +619,7 @@ export function BuildingView() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-600">Square Footage</span>
-                <span className="text-gray-900">{selected.sqft} sq ft</span>
+                <span className="text-gray-900">{Number(selected.sqft.replace(/,/g, '')).toLocaleString()} sq ft</span>
               </div>
             </div>
           </div>

@@ -1,9 +1,9 @@
-import { Building2, Building, FolderOpen, MessageSquare, Settings, LogOut, ClipboardList } from 'lucide-react';
+import { Building2, Building, FolderOpen, MessageSquare, FileText, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '../modules/auth/AuthContext';
 
 interface SidebarProps {
-  activeView: 'buildings' | 'files' | 'assistant' | 'settings' | 'workorders';
-  onNavigate: (view: 'buildings' | 'files' | 'assistant' | 'settings' | 'workorders') => void;
+  activeView: 'buildings' | 'files' | 'assistant' | 'documents' | 'settings';
+  onNavigate: (view: 'buildings' | 'files' | 'assistant' | 'documents' | 'settings') => void;
   user?: any;
 }
 
@@ -13,7 +13,7 @@ export function Sidebar({ activeView, onNavigate, user }: SidebarProps) {
   const navItems = [
     { id: 'buildings' as const, icon: Building, label: 'Buildings' },
     { id: 'files' as const, icon: FolderOpen, label: 'File Management' },
-    { id: 'workorders' as const, icon: ClipboardList, label: 'Work Orders' },
+    { id: 'documents' as const, icon: FileText, label: 'Documents' },
     { id: 'assistant' as const, icon: MessageSquare, label: 'AI Assistant' },
     { id: 'settings' as const, icon: Settings, label: 'Settings' },
   ];

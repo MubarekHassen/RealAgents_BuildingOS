@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 
 export default defineConfig({
+  // 'spa' tells Vite to serve index.html for any unmatched route (React Router handles it client-side)
+  appType: 'spa',
   plugins: [react()],
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
@@ -30,4 +32,6 @@ export default defineConfig({
     },
   },
 });
+
+
 

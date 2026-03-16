@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FileText, Image as ImageIcon, Folder, Search, Calendar, User, Download, Eye, Plus, ChevronRight, ChevronDown, Home, Zap, Trash2, X, CheckCircle, AlertCircle, MessageCircle, Send, Bot, Loader2 } from 'lucide-react';
-import { uploadFile, listFiles, createFileRecord, deleteFileRecord, getFileCounts, deleteFile } from '../lib/supabase';
+import { FileText, Image as ImageIcon, Folder, Search, Calendar, User, Download, Eye, Plus, ChevronRight, ChevronDown, Home, Zap, Trash2, X, CheckCircle, AlertCircle, Paperclip } from 'lucide-react';
+import { uploadFile, uploadFileAtPath, listFiles, createFileRecord, deleteFileRecord, deleteFile, type DocumentUpdate } from '../lib/supabase';
 import { API_URL } from '../lib/api';
 import { useAuth } from '../modules/auth/AuthContext';
 
@@ -30,19 +30,23 @@ const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 
   );
 };
 
+const subTypes = ['Drawing', 'Reports', 'Specs'];
+
 const defaultCategories = [
   { name: 'Architectural', count: 0, icon: Home },
   { name: 'Mechanical', count: 0, icon: Zap },
   { name: 'Electrical', count: 0, icon: Zap },
   { name: 'Plumbing', count: 0, icon: Zap },
   { name: 'Structural', count: 0, icon: Home },
-  { name: 'Reports', count: 0, icon: FileText },
+  { name: 'Civil', count: 0, icon: Home },
+  { name: 'Waterproofing', count: 0, icon: Zap },
 ];
 
 export function FileManagement() {
   const { profile } = useAuth();
   const [expandedBuildings, setExpandedBuildings] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<{ buildingId: string; buildingName: string; type: string } | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<{ buildingId: string; buildingName: string; type: string; subType: string } | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | number | null>(null);
   const [fetchedFiles, setFetchedFiles] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -54,13 +58,30 @@ export function FileManagement() {
   });
 
   const [buildings, setBuildings] = useState<any[]>([]);
-  
-  // Chat modal state
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatFile, setChatFile] = useState<any>(null);
-  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
+
+  // Update Modal State
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateType, setUpdateType] = useState<DocumentUpdate['type']>('note');
+  const [updateTitle, setUpdateTitle] = useState('');
+  const [updateNote, setUpdateNote] = useState('');
+  const [updateFile, setUpdateFile] = useState<File | null>(null);
+  const [updateAttachments, setUpdateAttachments] = useState<File[]>([]);
+  const [submittingUpdate, setSubmittingUpdate] = useState(false);
+
+  // File Updates State
+  const [fileUpdates, setFileUpdates] = useState<any[]>([]);
+
+  // Load updates when selected file changes
+  useEffect(() => {
+    if (selectedFile) {
+      fetch(`${API_URL}/_api/files/updates/${selectedFile}`)
+        .then(res => res.json())
+        .then(data => setFileUpdates(data || []))
+        .catch(err => console.error('Error fetching updates:', err));
+    } else {
+      setFileUpdates([]);
+    }
+  }, [selectedFile]);
 
   // Load data function extracted for re-use
   const refreshData = async () => {
@@ -71,25 +92,44 @@ export function FileManagement() {
       if (!response.ok) throw new Error('Failed to fetch buildings');
       const buildingsData = await response.json();
 
-      // 2. Fetch File Counts (scoped to company's buildings only)
-      const buildingIds = buildingsData.map((b: any) => b.id);
-      const counts: any = await getFileCounts(profile?.company, buildingIds);
+      // 2. Count files from storage for each building/category/subType
+      const mappedBuildings = await Promise.all(buildingsData.map(async (b: any) => {
+        let buildingTotal = 0;
+        const categoriesWithCounts = await Promise.all(defaultCategories.map(async (cat) => {
+          let catTotal = 0;
+          const subTypeCounts: Record<string, number> = {};
 
-      // 3. Map to UI State
-      const mappedBuildings = buildingsData.map((b: any) => {
-        const buildingCounts = counts[b.id] || { total: 0, categories: {} };
+          for (const sub of subTypes) {
+            try {
+              const files = await listFiles('test-building-files', `${b.name}/${cat.name}/${sub}`);
+              const fileCount = files.filter((f: any) => f.id).length;
+              subTypeCounts[sub] = fileCount;
+              catTotal += fileCount;
+            } catch {
+              subTypeCounts[sub] = 0;
+            }
+          }
+
+          buildingTotal += catTotal;
+          return { ...cat, count: catTotal, subTypeCounts };
+        }));
+
         return {
           id: b.id,
           name: b.name,
-          fileCount: buildingCounts.total,
-          categories: defaultCategories.map(cat => ({
-            ...cat,
-            count: buildingCounts.categories[cat.name.toLowerCase()] || 0
-          }))
+          fileCount: buildingTotal,
+          categories: categoriesWithCounts
         };
-      });
+      }));
 
       setBuildings(mappedBuildings);
+      sessionStorage.setItem('fm_buildings', JSON.stringify(mappedBuildings));
+
+      setSelectedCategory(prev => {
+        if (prev && !mappedBuildings.some((b: any) => b.id === prev.buildingId)) return null;
+        return prev;
+      });
+      setExpandedBuildings(prev => prev.filter(id => mappedBuildings.some((b: any) => b.id === id)));
     } catch (error) {
       console.error('Error refreshing data:', error);
     }
@@ -105,7 +145,7 @@ export function FileManagement() {
 
   const getFolderPath = () => {
     if (!selectedCategory) return '';
-    return `${selectedCategory.buildingName}/${selectedCategory.type}`;
+    return `${selectedCategory.buildingName}/${selectedCategory.type}/${selectedCategory.subType}`;
   };
 
   // Load files from Supabase when category changes
@@ -119,28 +159,66 @@ export function FileManagement() {
 
   const loadCategoryFiles = async () => {
     const folderPath = getFolderPath();
-    if (!folderPath) return;
+    if (!folderPath || !selectedCategory) return;
 
     try {
       setLoadingFiles(true);
+      // Fetch exact path files from S3
       const files = await listFiles('test-building-files', folderPath);
+      // AND Fetch legacy files directly in the base category path from S3 (e.g. Architectural/ instead of Architectural/Drawing)
+      let legacyFiles: any[] = [];
+      if (selectedCategory.subType === 'Drawing') {
+        legacyFiles = await listFiles('test-building-files', `${selectedCategory.buildingName}/${selectedCategory.type}`);
+        // Filter out any folders that happen to be named after subtypes
+        legacyFiles = legacyFiles.filter((f: any) => f.id && !subTypes.includes(f.name));
+      }
+
+      const allFiles = [...files, ...legacyFiles];
 
       // Transform Supabase files to UI format
-      const formattedFiles = (files || []).map(f => ({
-        id: f.id,
-        name: f.name.replace(/^\d+_/, ''), // Remove timestamp prefix if present for display
-        _realName: f.name, // Keep real name for deletion/download
-        format: f.name.split('.').pop()?.toUpperCase() || 'FILE',
-        uploadedBy: 'You', // Placeholder
-        uploadDate: new Date(f.created_at).toLocaleDateString(),
-        size: (f.metadata?.size ? (f.metadata.size / 1024 / 1024).toFixed(1) + ' MB' : '0 MB'),
-        linkedTo: null,
-        tags: [],
-        recentUpdate: null,
-        isSupabase: true,
+      // Filter out items without ID (folders) to prevent "corrupted" downloads of folder placeholders
+      const formattedFiles = (allFiles || [])
+        .filter(f => f.id)
+        .map(f => ({
+          id: f.id,
+          name: f.name.replace(/^\d+_/, ''), // Remove timestamp prefix if present for display
+          _realName: f.name, // Keep real name for deletion/download
+          folderPath: folderPath, // Store path for reliable download context
+          mimeType: f.metadata?.mimetype, // Store mime type for proper download handling
+          format: f.name.split('.').pop()?.toUpperCase() || 'FILE',
+          uploadedBy: profile?.name || profile?.email || 'User',
+          uploadDate: new Date(f.created_at).toLocaleDateString(),
+          size: (f.metadata?.size ? (f.metadata.size / 1024 / 1024).toFixed(1) + ' MB' : '0 MB'),
+          linkedTo: null,
+          tags: [],
+          recentUpdate: null,
+          isSupabase: true,
+        }));
+
+      // Fetch the most recent update for each file to populate the green banner
+      const filesWithUpdates = await Promise.all(formattedFiles.map(async (file: any) => {
+        try {
+          const res = await fetch(`${API_URL}/_api/files/updates/${file.id}`);
+          const updates = await res.json();
+          if (updates && updates.length > 0) {
+            const latest = updates[0];
+            return {
+              ...file,
+              recentUpdate: {
+                type: latest.metadata?.title || (latest.type === 'new_file_upload' ? 'Version Update' : 'Note'),
+                description: latest.metadata?.note || '',
+                by: latest.metadata?.uploader_name || profile?.name || 'User',
+                date: new Date(latest.created_at).toLocaleDateString(),
+                photos: (latest.metadata?.attachments || []).length,
+                attachments: latest.metadata?.attachments || [],
+              }
+            };
+          }
+        } catch (e) { /* ignore */ }
+        return file;
       }));
 
-      setFetchedFiles(formattedFiles);
+      setFetchedFiles(filesWithUpdates);
     } catch (error) {
       console.error('Error loading files:', error);
     } finally {
@@ -155,9 +233,33 @@ export function FileManagement() {
     try {
       setUploading(true);
       const folderPath = getFolderPath();
-      const { data: result, error: uploadError } = await uploadFile(file, 'test-building-files', folderPath);
+
+      // Optimistic Add
+      const safeName = file.name.replace(/[#?+]/g, '_');
+      const tempId = `temp-${Date.now()}`;
+      const tempFile: any = {
+        id: tempId,
+        name: safeName,
+        _realName: safeName,
+        format: safeName.split('.').pop()?.toUpperCase() || 'FILE',
+        size: (file.size / 1024 / 1024).toFixed(1) + ' MB',
+        uploadedBy: profile?.name || profile?.email || 'User',
+        uploadDate: new Date().toLocaleDateString(),
+        linkedTo: null,
+        tags: [],
+        recentUpdate: null,
+        mimeType: file.type,
+        folderPath: folderPath,
+        isSupabase: true,
+        // isOptimistic: true // Could use this for opacity styling if desired
+      };
+      setFetchedFiles(prev => [...prev, tempFile].sort((a: any, b: any) => a.name.localeCompare(b.name)));
+
+      const safeFile = new File([file], safeName, { type: file.type });
+      const { data: result, error: uploadError } = await uploadFile(safeFile, 'test-building-files', folderPath);
 
       if (uploadError) {
+        setFetchedFiles(prev => prev.filter((f: any) => f.id !== tempId));
         console.error('Storage upload error:', uploadError);
         setToast({
           show: true,
@@ -224,40 +326,42 @@ export function FileManagement() {
 
       console.log('Attempting verify delete for:', file.name, 'Real Name:', file._realName, 'Folder:', folderPath);
 
-      // Construct full path. 
-      // Note: If listFiles matches how we stored it, file._realName is just the filename part.
-      const fullPath = folderPath ? `${folderPath}/${file._realName}` : file._realName;
+      // Optimistic update: Remove file from UI immediately
+      const previousFiles = [...fetchedFiles];
+      setFetchedFiles(prev => prev.filter(f => f.id !== file.id));
 
-      // Permanent delete from storage
-      const deleteSuccess = await deleteFile(fullPath, 'test-building-files');
+      try {
+        // Construct full path
+        // Note: If listFiles matches how we stored it, file._realName is just the filename part.
+        const fullPath = folderPath ? `${folderPath}/${file._realName}` : file._realName;
 
-      if (!deleteSuccess) {
-        console.warn("Permanent delete from storage failed.");
-        // We might still want to try deleting from DB if it was already gone from storage?
-        // But let's warn the user.
+        // Permanent delete from storage
+        const deleteSuccess = await deleteFile(fullPath, 'test-building-files');
+
+        if (!deleteSuccess) {
+          throw new Error("Storage delete failed");
+        }
+
+        // Delete from Database
+        const dbSuccess = await deleteFileRecord(fullPath, file.name);
+
+        if (dbSuccess) {
+          setToast({
+            show: true,
+            message: 'File permanently deleted',
+            type: 'success'
+          });
+          refreshData(); // Background refresh
+        } else {
+          throw new Error("Database delete failed");
+        }
+      } catch (error) {
+        // Revert on failure
+        console.error('Error deleting file:', error);
+        setFetchedFiles(previousFiles);
         setToast({
           show: true,
-          message: 'Failed to delete file from storage',
-          type: 'error'
-        });
-        return;
-      }
-
-      // Delete from Database
-      const dbSuccess = await deleteFileRecord(fullPath, file.name);
-
-      if (dbSuccess) {
-        setFetchedFiles(prev => prev.filter(f => f.id !== file.id));
-        setToast({
-          show: true,
-          message: 'File permanently deleted',
-          type: 'success'
-        });
-        await refreshData(); // Refresh counts
-      } else {
-        setToast({
-          show: true,
-          message: 'Failed to delete file record from database',
+          message: 'Failed to delete file',
           type: 'error'
         });
       }
@@ -285,8 +389,16 @@ export function FileManagement() {
     );
   };
 
-  const selectCategory = (buildingName: string, buildingId: string, type: string) => {
-    setSelectedCategory({ buildingName, buildingId, type });
+  const toggleCategory = (categoryKey: string) => {
+    setExpandedCategories(prev =>
+      prev.includes(categoryKey)
+        ? prev.filter(k => k !== categoryKey)
+        : [...prev, categoryKey]
+    );
+  };
+
+  const selectCategory = (buildingName: string, buildingId: string, type: string, subType: string) => {
+    setSelectedCategory({ buildingName, buildingId, type, subType });
     setSelectedFile(null);
   };
 
@@ -313,11 +425,13 @@ export function FileManagement() {
 
   // Get Supabase public URL for a file
   const getFileUrl = (file: any) => {
-    if (!selectedCategory) return '';
-    const folderPath = getFolderPath();
+    const folderPath = file.folderPath || getFolderPath();
+    if (!folderPath) return '';
+
     // Encode each path segment separately to preserve slashes
-    const encodedPath = folderPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
-    const encodedFileName = encodeURIComponent(file._realName);
+    const encodedPath = folderPath.split('/').map((segment: string) => encodeURIComponent(segment)).join('/');
+    const encodedFileName = encodeURIComponent(file._realName || file.name);
+
     // Construct Supabase storage public URL
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lxlrwiltjwfbvjkhsgis.supabase.co';
     return `${supabaseUrl}/storage/v1/object/public/test-building-files/${encodedPath}/${encodedFileName}`;
@@ -329,37 +443,218 @@ export function FileManagement() {
     window.open(url, '_blank');
   };
 
-  // Download file
-  const handleDownloadFile = async (file: any) => {
+  // Download file - use server-side forced download
+  const handleDownloadFile = (file: any) => {
     try {
-      const url = getFileUrl(file);
-      const response = await fetch(url);
-      const blob = await response.blob();
-      
-      // Create download link
-      const downloadUrl = window.URL.createObjectURL(blob);
+      let url = getFileUrl(file);
+      if (!url) throw new Error('Could not generate download URL');
+
+      // Append ?download query param to force Supabase to send "Content-Disposition: attachment"
+      // This tells the browser to SAVE the file to Downloads/Finder instead of opening it
+      // We pass the clean filename so it saves with the correct name
+      // Note: we use 'download' param which public buckets support to force attachment
+      const cleanName = file.name;
+      // Check if URL already has params (it shouldn't for public URL, but good practice)
+      const separator = url.includes('?') ? '&' : '?';
+      // Append download=filename
+      url += `${separator}download=${encodeURIComponent(cleanName)}`;
+
+      console.log('Triggering native download via:', url);
+
+      // Create standard anchor tag and click it
+      // This relies on the browser's native download manager
       const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = file.name;
+      link.href = url;
+      link.setAttribute('download', cleanName); // Helper hint
+      link.target = '_self'; // Ensure it doesn't open new tab if possible, though download header handles it
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-      
-      setToast({
-        show: true,
-        message: 'File downloaded successfully',
-        type: 'success'
-      });
+
+      setToast({ show: true, message: 'Download started', type: 'success' });
     } catch (error) {
       console.error('Download error:', error);
-      setToast({
-        show: true,
-        message: 'Failed to download file',
-        type: 'error'
-      });
+      setToast({ show: true, message: 'Failed to download file', type: 'error' });
     }
   };
+
+  // Handle creating an update
+  const handleCreateUpdate = async () => {
+    if (!selectedFileData || !profile?.id) {
+      if (!profile?.id) console.error("No user profile found");
+      return;
+    }
+
+    try {
+      setSubmittingUpdate(true);
+
+      // --- VERSION UPDATE ---
+      if (updateType === 'new_file_upload') {
+        if (!updateFile) {
+          setToast({ show: true, message: 'Please select a file to upload', type: 'error' });
+          return;
+        }
+
+        const folderPath = getFolderPath();
+        if (!folderPath) return;
+
+        const oldRealName = selectedFileData._realName;
+        // Compute _v2, _v3 based on old filename
+        const nameParts = oldRealName.split('.');
+        const ext = nameParts.length > 1 ? nameParts.pop() : '';
+        const baseNameRaw = nameParts.join('.');
+
+        const match = baseNameRaw.match(/_v(\d+)$/i);
+        let nextVersion = 2;
+        let baseName = baseNameRaw;
+        if (match) {
+          nextVersion = parseInt(match[1], 10) + 1;
+          baseName = baseNameRaw.replace(/_v\d+$/i, '');
+        }
+
+        const newFilename = ext ? `${baseName}_v${nextVersion}.${ext}` : `${baseName}_v${nextVersion}`;
+        const oldPath = `${folderPath}/${oldRealName}`;
+
+        const formData = new FormData();
+        // create a new File instance so the server sees the correct filename
+        const safeUpdateFile = new File([updateFile], newFilename, { type: updateFile.type });
+        formData.append('file', safeUpdateFile);
+
+        const replaceParams = new URLSearchParams({
+          old_path: oldPath,
+          folder_path: folderPath,
+          bucket: 'test-building-files',
+          db_file_id: String(selectedFileData.id),
+        });
+
+        // Use backend /replace endpoint
+        const replaceRes = await fetch(`${API_URL}/_api/storage/replace?${replaceParams}`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!replaceRes.ok) {
+          throw new Error('File replacement failed');
+        }
+
+        const replaceData = await replaceRes.json();
+        const activeDocId = replaceData.new_s3_id || String(selectedFileData.id);
+
+        const updatePayload = {
+          document_id: activeDocId,
+          user_id: String(profile.id),
+          type: 'new_file_upload',
+          metadata: {
+            title: updateTitle.trim() || 'Version Update',
+            note: updateNote,
+            uploader_name: profile.name || profile.email || 'You',
+            replaced_file: oldRealName,
+            previous_version_path: replaceData.trash_path,
+            new_filename: newFilename,
+            size: updateFile.size,
+          }
+        };
+
+        const saveRes = await fetch(`${API_URL}/_api/files/update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatePayload),
+        });
+
+        if (saveRes.ok) {
+          const saved = await saveRes.json();
+          setFileUpdates(prev => [saved, ...prev]);
+
+          setFetchedFiles(prev => prev.map(f => f.id === selectedFileData.id ? {
+            ...f,
+            id: activeDocId, // Update to the new S3 ID so future notes append correctly
+            name: newFilename, // Optimistically update name
+            _realName: newFilename,
+            recentUpdate: {
+              type: saved.metadata?.title || 'Version Update',
+              description: saved.metadata?.note || '',
+              by: saved.metadata?.uploader_name || profile?.name || profile?.email || 'User',
+              date: new Date(saved.created_at).toLocaleDateString(),
+              photos: 0
+            }
+          } : f));
+        }
+
+        setToast({ show: true, message: 'File replaced successfully', type: 'success' });
+        // After optimistic state update, update our tracking ID
+        setSelectedFile(activeDocId);
+        await refreshData();
+
+        // --- NOTE / REGULAR UPDATE ---
+      } else {
+        if (!updateTitle.trim() && !updateNote.trim()) {
+          setToast({ show: true, message: 'Please provide a title or note', type: 'error' });
+          return;
+        }
+
+        // Upload actual attachments
+        const attachmentPaths: string[] = [];
+        for (const att of updateAttachments) {
+          const safeAttName = att.name.replace(/[#?+]/g, '_');
+          const exactPath = `note-attachments/${Date.now()}_${safeAttName}`;
+          // Use uploadFileAtPath (from lib/supabase.ts) to push direct to s3 path
+          const safeFile = new File([att], safeAttName, { type: att.type });
+          const res = await uploadFileAtPath(safeFile, exactPath, 'test-building-files');
+          if (!res.error) {
+            attachmentPaths.push(exactPath);
+          }
+        }
+
+        const updatePayload = {
+          document_id: String(selectedFileData.id),
+          user_id: String(profile.id),
+          type: 'note',
+          metadata: {
+            title: updateTitle.trim() || 'Note',
+            note: updateNote.trim(),
+            uploader_name: profile.name || profile.email || 'User',
+            attachments: attachmentPaths
+          }
+        };
+
+        const saveRes = await fetch(`${API_URL}/_api/files/update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatePayload),
+        });
+
+        if (!saveRes.ok) throw new Error('Failed to save update');
+
+        const saved = await saveRes.json();
+        setFileUpdates(prev => [saved, ...prev]);
+
+        setFetchedFiles(prev => prev.map(f => f.id === selectedFileData.id ? {
+          ...f,
+          recentUpdate: {
+            type: saved.metadata?.title || 'Note',
+            description: saved.metadata?.note || '',
+            by: saved.metadata?.uploader_name || profile?.name || profile?.email || 'User',
+            date: new Date(saved.created_at).toLocaleDateString(),
+            photos: (saved.metadata?.attachments || []).length
+          }
+        } : f));
+
+        setToast({ show: true, message: 'Update added successfully', type: 'success' });
+      }
+
+      setShowUpdateModal(false);
+      setUpdateNote('');
+      setUpdateTitle('');
+      setUpdateFile(null);
+      setUpdateAttachments([]);
+    } catch (error) {
+      console.error('Update create error:', error);
+      setToast({ show: true, message: 'Failed to add update', type: 'error' });
+    } finally {
+      setSubmittingUpdate(false);
+    }
+  };
+
 
   // Auto-sync documents for AI after file upload
   const syncBuildingDocuments = async (buildingName: string) => {
@@ -371,56 +666,6 @@ export function FileManagement() {
       console.log(`Auto-synced documents for ${buildingName}`);
     } catch (error) {
       console.error('Auto-sync error:', error);
-    }
-  };
-
-  // Open chat for a specific file
-  const openFileChat = (file: any) => {
-    setChatFile(file);
-    setChatMessages([]);
-    setChatInput('');
-    setChatOpen(true);
-  };
-
-  // Send chat message about the file
-  const sendChatMessage = async () => {
-    if (!chatInput.trim() || !chatFile || !selectedCategory) return;
-
-    const userMessage = chatInput.trim();
-    setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setChatLoading(true);
-
-    // Construct the file path for filtering (matches how it's stored in embeddings)
-    const filePath = `${selectedCategory.buildingName}/${selectedCategory.type}/${chatFile._realName}`;
-
-    try {
-      // Call the AI chat endpoint with single-file filter
-      const response = await fetch(`${API_URL}/_api/ai/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMessage,
-          selectedBuildings: [selectedCategory.buildingName],
-          filterFilePath: filePath,  // Single-file filter
-          conversationHistory: chatMessages.map(m => ({
-            role: m.role,
-            content: m.content
-          }))
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setChatMessages(prev => [...prev, { role: 'assistant', content: data.response || 'No response received.' }]);
-      } else {
-        setChatMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }]);
-      }
-    } catch (error) {
-      console.error('Chat error:', error);
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I could not connect to the AI service.' }]);
-    } finally {
-      setChatLoading(false);
     }
   };
 
@@ -479,7 +724,7 @@ export function FileManagement() {
               <FileText className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <div className="text-gray-900">Pending</div>
+              <div className="text-gray-900">N/A</div>
               <div className="text-sm text-gray-600">Recent Updates</div>
             </div>
           </div>
@@ -503,7 +748,7 @@ export function FileManagement() {
               <Zap className="w-5 h-5 text-orange-600" />
             </div>
             <div>
-              <div className="text-orange-900">Pending</div>
+              <div className="text-orange-900">N/A</div>
               <div className="text-sm text-orange-700">Upgrade Plans</div>
             </div>
           </div>
@@ -542,21 +787,50 @@ export function FileManagement() {
 
                   {isExpanded && (
                     <div className="ml-6 mt-1 space-y-1">
-                      {building.categories.map((category) => {
-                        const isSelected = selectedCategory?.buildingName === building.name && selectedCategory?.type === category.name;
+                      {building.categories.map((category: any, catIdx: number) => {
+                        const categoryKey = `${building.id}-${category.name}`;
+                        const isCatExpanded = expandedCategories.includes(categoryKey);
                         return (
-                          <button
-                            key={category.name}
-                            onClick={() => selectCategory(building.name, building.id, category.name)}
-                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'
-                              }`}
-                          >
-                            <FileText className="w-4 h-4" />
-                            <span className="flex-1 text-left text-sm">{category.name}</span>
-                            {category.count > 0 && (
-                              <span className="text-xs text-gray-500">{category.count}</span>
+                          <div key={category.name}>
+                            <button
+                              onClick={() => toggleCategory(categoryKey)}
+                              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors text-gray-700"
+                            >
+                              {isCatExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-gray-600" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-gray-600" />
+                              )}
+                              <Folder className="w-4 h-4 text-yellow-500" />
+                              <span className="flex-1 text-left text-sm">{catIdx + 1}. {category.name}</span>
+                              {category.count > 0 && (
+                                <span className="text-xs text-gray-500">{category.count}</span>
+                              )}
+                            </button>
+
+                            {isCatExpanded && (
+                              <div className="ml-6 mt-1 space-y-1">
+                                {subTypes.map((sub) => {
+                                  const isSelected = selectedCategory?.buildingName === building.name && selectedCategory?.type === category.name && selectedCategory?.subType === sub;
+                                  const subCount = category.subTypeCounts?.[sub] || 0;
+                                  return (
+                                    <button
+                                      key={sub}
+                                      onClick={() => selectCategory(building.name, building.id, category.name, sub)}
+                                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'
+                                        }`}
+                                    >
+                                      <FileText className="w-4 h-4" />
+                                      <span className="flex-1 text-left text-sm">{sub}</span>
+                                      {subCount > 0 && (
+                                        <span className="text-xs text-gray-500">{subCount}</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             )}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -576,7 +850,7 @@ export function FileManagement() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-gray-900">{selectedCategory.buildingName}</h2>
-                  <p className="text-sm text-gray-600">{selectedCategory.type} • {currentFiles.length} files</p>
+                  <p className="text-sm text-gray-600">{selectedCategory.type} / {selectedCategory.subType} • {currentFiles.length} files</p>
                 </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -634,8 +908,25 @@ export function FileManagement() {
                             <div className="flex items-start gap-2">
                               <div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-2" />
                               <div className="flex-1">
-                                <p className="text-sm text-green-900">{file.recentUpdate.type}</p>
+                                <p className="text-sm text-green-900 font-medium">{file.recentUpdate.type}</p>
                                 <p className="text-xs text-green-700 mt-1">{file.recentUpdate.description}</p>
+                                {file.recentUpdate.attachments?.length > 0 && (
+                                  <div className="mt-1 space-y-0.5">
+                                    {file.recentUpdate.attachments.map((att: string, i: number) => (
+                                      <a
+                                        key={i}
+                                        href={`${import.meta.env.VITE_SUPABASE_URL || 'https://lxlrwiltjwfbvjkhsgis.supabase.co'}/storage/v1/object/public/test-building-files/${att.split('/').map(c => encodeURIComponent(c)).join('/')}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <Paperclip className="w-3 h-3" />
+                                        {att.split('/').pop()?.replace(/^\d+_/, '')}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-3 text-xs text-green-600 mt-2">
                                   <div className="flex items-center gap-1">
                                     <User className="w-3 h-3" />
@@ -645,10 +936,12 @@ export function FileManagement() {
                                     <Calendar className="w-3 h-3" />
                                     {file.recentUpdate.date}
                                   </div>
-                                  <div className="flex items-center gap-1">
-                                    <ImageIcon className="w-3 h-3" />
-                                    {file.recentUpdate.photos} photos
-                                  </div>
+                                  {file.recentUpdate.photos > 0 && (
+                                    <div className="flex items-center gap-1">
+                                      <ImageIcon className="w-3 h-3" />
+                                      {file.recentUpdate.photos} photos
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -735,28 +1028,24 @@ export function FileManagement() {
               </div>
 
               <div className="space-y-2">
-                <button 
+                <button
                   onClick={() => handleViewFile(selectedFileData)}
                   className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <Eye className="w-4 h-4" />
                   View File
                 </button>
-                <button 
-                  onClick={() => openFileChat(selectedFileData)}
-                  className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Chat About File
-                </button>
-                <button 
+                <button
                   onClick={() => handleDownloadFile(selectedFileData)}
                   className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
                 >
                   <Download className="w-4 h-4" />
                   Download
                 </button>
-                <button className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
+                <button
+                  onClick={() => setShowUpdateModal(true)}
+                  className="w-full py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                >
                   <Plus className="w-4 h-4" />
                   Add Update
                 </button>
@@ -770,6 +1059,82 @@ export function FileManagement() {
                   </button>
                 )}
               </div>
+
+              {/* UPDATES SCROLLABLE LIST */}
+              <div className="mt-8 pt-6 border-t border-gray-100">
+                <h3 className="text-gray-900 font-semibold mb-4">Updates & Notes</h3>
+                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                  {fileUpdates.length > 0 ? fileUpdates.map((update, idx) => (
+                    <div key={update.id || idx} className="bg-gray-50 border border-gray-100 rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-900">{update.metadata?.title || 'Note'}</h4>
+                          <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-1 inline-block">
+                            {update.type === 'new_file_upload' ? 'Version Update' : 'Note'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm("Delete this update?")) return;
+                            try {
+                              await fetch(`${API_URL}/_api/files/updates/${update.id}`, { method: 'DELETE' });
+                              setFileUpdates(prev => prev.filter(u => u.id !== update.id));
+                            } catch (e) { console.error('Error deleting:', e); }
+                          }}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap my-2">{update.metadata?.note}</p>
+
+                      {update.type === 'new_file_upload' && update.metadata?.previous_version_path && (
+                        <div className="my-3">
+                          <a
+                            href={`${import.meta.env.VITE_SUPABASE_URL || 'https://lxlrwiltjwfbvjkhsgis.supabase.co'}/storage/v1/object/public/test-building-files/${update.metadata.previous_version_path.split('/').map((c: string) => encodeURIComponent(c)).join('/')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-xs font-medium transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            View Previous Version ({update.metadata.replaced_file?.split('/').pop()?.replace(/^\d+_/, '') || 'File'})
+                          </a>
+                        </div>
+                      )}
+
+                      {update.metadata?.attachments?.length > 0 && (
+                        <div className="my-3 space-y-1">
+                          {update.metadata.attachments.map((att: string, i: number) => (
+                            <a
+                              key={i}
+                              href={`${import.meta.env.VITE_SUPABASE_URL || 'https://lxlrwiltjwfbvjkhsgis.supabase.co'}/storage/v1/object/public/test-building-files/${att.split('/').map(c => encodeURIComponent(c)).join('/')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                            >
+                              <Paperclip className="w-3 h-3" />
+                              <span>{att.split('/').pop()?.replace(/^\d+_/, '')}</span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-4 text-xs text-gray-500 mt-3 pt-3 border-t border-gray-200">
+                        <div className="flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          <span className="font-medium text-gray-700">{update.metadata?.uploader_name || profile?.name || profile?.email || 'User'}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(update.created_at).toLocaleDateString()} at {new Date(update.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="text-sm text-gray-500 text-center py-4 italic">No updates or notes yet.</p>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
@@ -778,90 +1143,127 @@ export function FileManagement() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Chat Modal */}
-      {chatOpen && chatFile && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-2xl h-[600px] flex flex-col shadow-2xl mx-4">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <MessageCircle className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <h3 className="text-gray-900 font-medium">Chat About File</h3>
-                  <p className="text-sm text-gray-500 truncate max-w-[300px]">{chatFile.name}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setChatOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {chatMessages.length === 0 && (
-                <div className="text-center py-8">
-                  <Bot className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 text-sm">Ask any question about this document.</p>
-                  <p className="text-gray-400 text-xs mt-1">The AI will search the document content to answer.</p>
-                </div>
-              )}
-              {chatMessages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[80%] px-4 py-3 rounded-xl ${
-                      msg.role === 'user'
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-gray-100 text-gray-900'
-                    }`}
-                  >
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  </div>
-                </div>
-              ))}
-              {chatLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 px-4 py-3 rounded-xl flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
-                    <span className="text-sm text-gray-500">Thinking...</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Input */}
-            <div className="p-4 border-t border-gray-200">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
-                  placeholder="Ask a question about this document..."
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
-                  disabled={chatLoading}
-                />
+        {/* Update Modal */}
+        {showUpdateModal && (
+          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl animate-scale-up">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">
+                  Add Update: {selectedFileData?._realName || 'File'}
+                </h3>
                 <button
-                  onClick={sendChatMessage}
-                  disabled={chatLoading || !chatInput.trim()}
-                  className="p-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setShowUpdateModal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                  title="Close"
                 >
-                  <Send className="w-5 h-5" />
+                  <X className="w-5 h-5" />
                 </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Update Type</label>
+                  <select
+                    value={updateType}
+                    onChange={(e) => {
+                      setUpdateType(e.target.value as any);
+                      setUpdateTitle('');
+                      setUpdateNote('');
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  >
+                    <option value="note">Note</option>
+                    <option value="new_file_upload">Version Update</option>
+                  </select>
+                </div>
+
+                {updateType !== 'new_file_upload' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                    <input
+                      type="text"
+                      value={updateTitle}
+                      onChange={(e) => setUpdateTitle(e.target.value)}
+                      placeholder="Enter update title..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                )}
+
+                {updateType === 'new_file_upload' && (
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <label className="block text-sm font-medium text-blue-900 mb-2">Select Replacement File</label>
+                    <input
+                      type="file"
+                      onChange={(e) => setUpdateFile(e.target.files?.[0] || null)}
+                      className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
+                    />
+                    {updateFile && (
+                      <p className="text-xs text-green-700 mt-2 flex items-center gap-1 font-medium">
+                        <CheckCircle className="w-3 h-3" /> Selected: {updateFile.name}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {updateType === 'new_file_upload' ? 'Version Notes' : 'Content'}
+                  </label>
+                  <textarea
+                    value={updateNote}
+                    onChange={(e) => setUpdateNote(e.target.value)}
+                    placeholder="Type your notes here..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg h-32 resize-none focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+
+                  {updateType === 'note' && (
+                    <div className="mt-3">
+                      <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Attachments (Optional)</label>
+                      <input
+                        type="file"
+                        multiple
+                        onChange={(e) => setUpdateAttachments(Array.from(e.target.files || []))}
+                        className="w-full text-xs text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer"
+                      />
+                      {updateAttachments.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {updateAttachments.map((f, i) => (
+                            <p key={i} className="text-xs text-gray-600 flex items-center gap-1">
+                              <Paperclip className="w-3 h-3" /> {f.name}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setShowUpdateModal(false)}
+                    className="flex-1 py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateUpdate}
+                    disabled={submittingUpdate || (updateType === 'new_file_upload' && !updateFile)}
+                    className="flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+                  >
+                    {submittingUpdate ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                        Saving...
+                      </>
+                    ) : 'Save Update'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

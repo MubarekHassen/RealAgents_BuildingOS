@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -64,14 +64,14 @@ def init_supabase_client():
 supabase = init_supabase_client()
 
 # ===== SUPABASE ANALYTICS (ICEBERG) INITIALIZATION =====
-PROJECT_REF = os.getenv("SUPABASE_PROJECT_REF", "")
+PROJECT_REF = os.getenv("ICEBERG_PROJECT_REF", "dummy_ref")
 WAREHOUSE = "test"
-TOKEN = os.getenv("SUPABASE_ICEBERG_TOKEN", "")
-S3_ACCESS_KEY = os.getenv("SUPABASE_S3_ACCESS_KEY", "")
-S3_SECRET_KEY = os.getenv("SUPABASE_S3_SECRET_KEY", "")
+TOKEN = os.getenv("ICEBERG_TOKEN", "dummy_token")
+S3_ACCESS_KEY = os.getenv("ICEBERG_S3_ACCESS_KEY", "dummy_access_key")
+S3_SECRET_KEY = os.getenv("ICEBERG_S3_SECRET_KEY", "dummy_secret_key")
 S3_REGION = "us-west-2"
-S3_ENDPOINT = f"https://{PROJECT_REF}.storage.supabase.co/storage/v1/s3" if PROJECT_REF else ""
-CATALOG_URI = f"https://{PROJECT_REF}.storage.supabase.co/storage/v1/iceberg" if PROJECT_REF else ""
+S3_ENDPOINT = f"https://{PROJECT_REF}.storage.supabase.co/storage/v1/s3"
+CATALOG_URI = f"https://{PROJECT_REF}.storage.supabase.co/storage/v1/iceberg"
 
 iceberg_catalog = None
 iceberg_table = None
@@ -432,8 +432,8 @@ async def get_buildings(companyId: Optional[str] = None) -> List[Building]:
     
     if supabase:
         try:
-            # Fetch buildings filtered by company
-            response = supabase.table("Building").select("*").eq("companyId", companyId).execute()
+            # Fetch buildings filtered by company, ordered by name
+            response = supabase.table("Building").select("*").eq("companyId", companyId).order("name", desc=False).execute()
             raw_data = response.data if response.data else []
             
             # Map Supabase data to our schema
@@ -446,9 +446,9 @@ async def get_buildings(companyId: Optional[str] = None) -> List[Building]:
                     "city": item.get("city", ""),
                     "state": item.get("country", ""), # Assuming 'country' column holds state/region or we need to check schema
                     "country": "USA", # Default if not in DB, or fetch if available
-                    # Use floors/sqFt if they exist, otherwise use default values
-                    "floors": str(item.get("floors", "0")) if item.get("floors") is not None else "0",
-                    "sqft": str(item.get("sqFt", "0")) if item.get("sqFt") is not None else "0",
+                    # Use floors/sqft if they exist, otherwise use default values
+                    "floors": str(item.get("floors", "0")),
+                    "sqft": str(item.get("sqft") or item.get("sqFt", "0")),
                     "occupancy": int(item.get("utilization", 0)) if item.get("utilization") is not None else 85,
                     "temperature": float(item.get("temperature", 72.0)),
                     "humidity": float(item.get("humidity", 45.0)),
@@ -492,9 +492,17 @@ async def create_building(building: BuildingCreate) -> Building:
     # Sync to Supabase - use 'Building' table (capital B) to match Supabase
     if supabase:
         try:
-            # Convert floors and sqft to integers for database
-            floors_int = int(new_building["floors"]) if new_building["floors"].isdigit() else 0
-            sqft_int = int(new_building["sqft"]) if new_building["sqft"].isdigit() else 0
+            # Clean inputs with regex (find digits)
+            import re
+            sqft_str = str(new_building["sqft"])
+            floors_str = str(new_building["floors"])
+            
+            # Extract digits only, ignoring everything else
+            sqft_digits = "".join(re.findall(r'\d+', sqft_str))
+            floors_digits = "".join(re.findall(r'\d+', floors_str))
+            
+            sqft_int = int(sqft_digits) if sqft_digits else 0
+            floors_int = int(floors_digits) if floors_digits else 0
             
             supabase_building = {
                 "id": new_building["id"],
@@ -503,7 +511,9 @@ async def create_building(building: BuildingCreate) -> Building:
                 "city": new_building["city"],
                 "country": new_building["state"], # Mapping State to DB 'country' column based on observation
                 "floors": floors_int,
-                "sqFt": sqft_int,
+                "sqft": sqft_int, # Lowercase column
+                "sqFt": sqft_int, # CamelCase column (for legacy compatibility)
+
                 "companyId": building.companyId or "default", # Use company from request
                 # Initialize health columns
                 "hvacHealth": 100,
@@ -580,31 +590,395 @@ async def delete_storage_file(path: str, bucket: str = "test-building-files"):
         # Fallback: if move fails (maybe file missing), try to report success if already gone
         raise HTTPException(status_code=500, detail=str(e))
 
+class MoveRequest(BaseModel):
+    from_path: str
+    to_path: str
+    bucket: str = "test-building-files"
+
+@app.post("/_api/storage/move")
+async def move_storage_file(req: MoveRequest):
+    """Move a file within storage using service role key — bypasses RLS."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+    try:
+        supabase.storage.from_(req.bucket).move(req.from_path, req.to_path)
+        print(f"[Move] {req.from_path} -> {req.to_path}")
+        return {"status": "success", "from": req.from_path, "to": req.to_path}
+    except Exception as e:
+        print(f"[Move] FAILED: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/_api/storage/upload")
+async def upload_storage_file(
+    path: str,
+    bucket: str = "test-building-files",
+    file: UploadFile = File(...),
+    building_id: str = "",
+    company_id: str = "",
+    folder: str = "",
+    uploaded_by: str = ""
+):
+    """Universal file upload endpoint using service role key — bypasses all RLS.
+    Returns: { status, path, publicUrl, db_id } where db_id is the File table record ID."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+    try:
+        contents = await file.read()
+        filename = file.filename or path.split('/')[-1]
+
+        # Upload to storage with upsert=True (overwrite if same path somehow)
+        supabase.storage.from_(bucket).upload(
+            path,
+            contents,
+            file_options={"content-type": file.content_type or "application/octet-stream", "upsert": "true"}
+        )
+        print(f"[Upload] Stored at {path}")
+
+        # Build public URL
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}"
+
+        # Create/upsert File DB record
+        db_id = None
+        if building_id and company_id:
+            file_ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'unknown'
+            folder_parts = path.split('/')
+            folder_type = folder_parts[1].upper() if len(folder_parts) > 1 else (folder.upper() or 'OTHER')
+            db_payload = {
+                "id": str(__import__('uuid').uuid4()),
+                "companyId": company_id,
+                "buildingId": building_id,
+                "folder": folder_type,
+                "filename": filename,
+                "fileType": file_ext,
+                "s3Key": path,
+                "uploadedBy": uploaded_by or None,
+            }
+            try:
+                db_res = supabase.table("File").insert(db_payload).execute()
+                if db_res.data:
+                    db_id = db_res.data[0].get("id")
+                    print(f"[Upload] DB record created: {db_id}")
+            except Exception as db_err:
+                print(f"[Upload] DB record creation failed (non-critical): {db_err}")
+
+        return {"status": "success", "path": path, "publicUrl": public_url, "db_id": db_id, "filename": filename}
+    except Exception as e:
+        print(f"[Upload] FAILED: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/_api/storage/replace")
+async def replace_storage_file(
+    old_path: str,
+    bucket: str = "test-building-files",
+    file: UploadFile = File(...),
+    folder_path: str = "",
+    db_file_id: str = ""
+):
+    """Replace a file: trash the old one, upload new file under its OWN filename,
+    and update the File DB record's s3Key + filename.
+    Uses service role key — bypasses all RLS."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+    try:
+        import time
+        new_filename = file.filename or old_path.split('/')[-1]
+
+        # Determine the folder from old_path or explicit folder_path param
+        if not folder_path:
+            parts = old_path.rsplit('/', 1)
+            folder_path = parts[0] if len(parts) == 2 else ''
+
+        new_path = f"{folder_path}/{new_filename}" if folder_path else new_filename
+
+        # Step 1: move old file to trash (non-fatal)
+        trash_path = None
+        try:
+            timestamp = int(time.time())
+            trash_path = f"recently-deleted/{timestamp}_{old_path.replace('/', '_')}"
+            supabase.storage.from_(bucket).move(old_path, trash_path)
+            print(f"[Replace] Trashed {old_path} -> {trash_path}")
+        except Exception as move_err:
+            print(f"[Replace] Trash move failed (may not exist, continuing): {move_err}")
+
+        # Step 2: upload new file under its own name
+        contents = await file.read()
+        supabase.storage.from_(bucket).upload(
+            new_path,
+            contents,
+            file_options={"content-type": file.content_type or "application/octet-stream", "upsert": "true"}
+        )
+        print(f"[Replace] Uploaded new file at {new_path}")
+
+        # Get the new S3 ID so we can migrate notes
+        new_s3_id = None
+        try:
+            # We don't use search because it's not supported by all SDKs properly, just list the folder
+            folder_res = supabase.storage.from_(bucket).list(folder_path, {"limit": 1000})
+            for x in folder_res:
+                if x["name"] == new_filename:
+                    new_s3_id = x["id"]
+                    break
+        except Exception as e:
+            print(f"[Replace] Could not fetch new S3 ID: {e}")
+
+        # Migrate existing notes from old S3 ID to new S3 ID
+        if db_file_id and new_s3_id:
+            try:
+                supabase.table("DocumentUpdates").update({"document_id": new_s3_id}).eq("document_id", db_file_id).execute()
+                print(f"[Replace] Migrated notes from {db_file_id} to {new_s3_id}")
+            except Exception as e:
+                print(f"[Replace] Note migration failed: {e}")
+
+        # Step 3: update File DB record if we have the id
+        if db_file_id:
+            try:
+                file_ext = new_filename.rsplit('.', 1)[-1].lower() if '.' in new_filename else 'unknown'
+                supabase.table("File").update({
+                    "filename": new_filename,
+                    "s3Key": new_path,
+                    "fileType": file_ext,
+                }).eq("id", db_file_id).execute()
+                print(f"[Replace] Updated DB record {db_file_id}: s3Key={new_path}")
+            except Exception as db_err:
+                print(f"[Replace] DB update failed (non-critical): {db_err}")
+
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{new_path}"
+        return {
+            "status": "success", 
+            "old_path": old_path, 
+            "new_path": new_path, 
+            "publicUrl": public_url, 
+            "new_filename": new_filename,
+            "new_s3_id": new_s3_id,
+            "trash_path": trash_path
+        }
+    except Exception as e:
+        print(f"[Replace] FAILED: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/_api/files/list")
+async def list_db_files(building_name: str, type: str, subtype: str):
+    """List files from the database for a specific building/folder path.
+    This ensures we have persistent IDs for notes and versioning."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    try:
+        # Construct the prefix path used in s3Key
+        path_prefix = f"{building_name}/{type}/{subtype}/"
+        # Search by s3Key starting with the prefix
+        result = supabase.table("File").select("*")\
+            .ilike("s3Key", f"{path_prefix}%")\
+            .execute()
+        return result.data or []
+    except Exception as e:
+        print(f"Error listing DB files: {e}")
+        return []
+
+class FileRecord(BaseModel):
+    buildingId: str
+    folder: str
+    filename: str
+    fileType: str
+    s3Key: str
+    companyId: str
+    uploadedBy: Optional[str] = None
+
+@app.post("/_api/files/record")
+async def create_file_record(file: FileRecord):
+    """Create a metadata record for an uploaded file"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized")
+    try:
+        # Map to Documents table schema (Phase 1.3)
+        # We try Documents first, fallback to File if needed
+        doc_data = {
+            "building_id": file.buildingId,
+            "category": file.folder.upper(),
+            "filename": file.filename,
+            "s3_key": file.s3Key,
+            "company_id": file.companyId,
+            "uploaded_by": file.uploadedBy
+        }
+        try:
+            res = supabase.table("Documents").insert(doc_data).execute()
+            return res.data[0]
+        except Exception:
+            # Fallback for older schema if migration hasn't fully run
+            print("Notice: Falling back to 'File' table")
+            res = supabase.table("File").insert(file.dict()).execute()
+            return res.data[0]
+    except Exception as e:
+        print(f"Error creating file record: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/_api/files/list")
+async def list_files(buildingId: str, folder: str, companyId: str):
+    """List files for a specific building and folder"""
+    if not supabase:
+        return []
+    try:
+        # Try Documents table first
+        try:
+            res = supabase.table("Documents").select("*")\
+                .eq("building_id", buildingId)\
+                .eq("category", folder.upper())\
+                .eq("company_id", companyId)\
+                .execute()
+            
+            if res.data:
+                # Map snake_case to camelCase for frontend compatibility
+                return [
+                    {
+                        "id": d["id"],
+                        "buildingId": d["building_id"],
+                        "folder": d["category"],
+                        "filename": d["filename"],
+                        "s3Key": d["s3_key"],
+                        "createdAt": d["created_at"],
+                        "fileType": d["filename"].split('.')[-1] if '.' in d["filename"] else "file"
+                    } for d in res.data
+                ]
+            
+            # If no data in Documents, try File table
+            raise Exception("No data in Documents")
+        except Exception:
+            res = supabase.table("File").select("*")\
+                .eq("buildingId", buildingId)\
+                .eq("folder", folder.upper())\
+                .eq("companyId", companyId)\
+                .execute()
+            return res.data or []
+    except Exception as e:
+        print(f"Error listing files: {e}")
+        return []
+
+@app.get("/_api/files/counts")
+async def get_file_counts(companyId: str):
+    """Get file counts per building and category for a company"""
+    if not supabase:
+        return {}
+    try:
+        # Try Documents table
+        try:
+            res = supabase.table("Documents").select("building_id, category").eq("company_id", companyId).execute()
+            if not res.data: raise Exception("No data")
+            
+            counts = {}
+            for item in res.data:
+                bid = item['building_id']
+                folder = item['category'].capitalize()
+                if bid not in counts:
+                    counts[bid] = {"total": 0, "categories": {}}
+                counts[bid]["total"] += 1
+                counts[bid]["categories"][folder] = counts[bid]["categories"].get(folder, 0) + 1
+            return counts
+        except Exception:
+            res = supabase.table("File").select("buildingId, folder").eq("companyId", companyId).execute()
+            counts = {}
+            for item in (res.data or []):
+                bid = item['buildingId']
+                folder = item['folder'].capitalize()
+                if bid not in counts:
+                    counts[bid] = {"total": 0, "categories": {}}
+                counts[bid]["total"] += 1
+                counts[bid]["categories"][folder] = counts[bid]["categories"].get(folder, 0) + 1
+            return counts
+    except Exception as e:
+        print(f"Error getting file counts: {e}")
+        return {}
+
+@app.post("/_api/files/url")
+async def get_file_url(request: dict):
+    """Get a URL for viewing a file - returns the public URL since bucket is public"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    path = request.get("path")
+    bucket = request.get("bucket", "test-building-files")
+    
+    if not path:
+        raise HTTPException(status_code=400, detail="File path is required")
+        
+    try:
+        # Try signed URL first
+        try:
+            res = supabase.storage.from_(bucket).create_signed_url(path, 3600)
+            if isinstance(res, dict) and res.get('signedURL'):
+                return {"url": res['signedURL']}
+            elif isinstance(res, str) and res.startswith('http'):
+                return {"url": res}
+        except Exception as sign_err:
+            print(f"Signed URL failed, using proxy: {sign_err}")
+        
+        # Fallback: return a proxy URL that serves the file through our backend
+        return {"url": f"/_api/files/download/{bucket}/{path}"}
+    except Exception as e:
+        print(f"Error generating file URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+from fastapi.responses import Response
+
+@app.get("/_api/files/download/{bucket}/{path:path}")
+async def proxy_file_download(bucket: str, path: str):
+    """Proxy file download through the backend (bypasses storage RLS)"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        file_bytes = supabase.storage.from_(bucket).download(path)
+        
+        # Determine content type
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(path)
+        if not content_type:
+            content_type = "application/octet-stream"
+        
+        filename = path.split("/")[-1]
+        
+        return Response(
+            content=file_bytes,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Cache-Control": "public, max-age=3600"
+            }
+        )
+    except Exception as e:
+        print(f"Error downloading file: {e}")
+        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+
 @app.delete("/_api/storage/record")
 async def delete_file_record_endpoint(s3Key: str, filename: Optional[str] = None):
-    """Delete a file record from the 'File' table and remove embeddings"""
+    """Delete a file record from the 'Documents' or 'File' table and remove embeddings"""
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase client not initialized")
     
     try:
-        # Try deleting by s3Key
+        # Try Documents table first
+        try:
+            supabase.table("Documents").delete().eq("s3_key", s3Key).execute()
+        except Exception:
+            pass
+
+        # Try File table
         res = supabase.table("File").delete().eq("s3Key", s3Key).execute()
         
-        # If no record removed and filename provided, try filename
+        # If no record removed from File and filename provided, try filename
         if not res.data and filename:
             print(f"Retrying delete by filename: {filename}")
             res = supabase.table("File").delete().eq("filename", filename).execute()
         
-        # Also remove embeddings for this file from the vectors table
+        # Also remove embeddings for this file
         try:
             supabase.table(VECTORS_TABLE).delete().filter("metadata->>file_path", "eq", s3Key).execute()
-            print(f"Removed embeddings for file: {s3Key}")
-        except Exception as embed_error:
-            print(f"Could not remove embeddings (non-critical): {embed_error}")
+        except Exception:
+            pass
             
-        return {"message": "Record deleted successfully", "data": res.data}
+        return {"message": "Record deleted successfully"}
     except Exception as e:
-        print(f"Error deleting file record from DB: {e}")
+        print(f"Error deleting file record: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/_api/buildings/{building_id}")
@@ -614,31 +988,58 @@ async def delete_building(building_id: str):
     if building_index is None:
         raise HTTPException(status_code=404, detail="Building not found")
     
+    # Get building name for storage folder cleanup
+    building_name = buildings_db[building_index].get("name", "") if building_index is not None else ""
+    
     # Sync to Supabase - use 'Building' table (capital B) to match Supabase
     if supabase:
         try:
-            # 1. Fetch file records for this building to get s3Keys for Storage cleanup
-            file_records = supabase.table("File").select("s3Key").eq("buildingId", building_id).execute()
-            s3_keys = [rec["s3Key"] for rec in file_records.data]
-            
-            if s3_keys:
-                print(f"Moving {len(s3_keys)} files to recently-deleted for building {building_id}")
-                import time
-                timestamp = int(time.time())
-                for key in s3_keys:
-                    try:
-                        target = f"recently-deleted/{timestamp}_{key.replace('/', '_')}"
-                        supabase.storage.from_("test-building-files").move(key, target)
-                    except Exception as se:
-                        print(f"Warning: Failed to move {key} to recently-deleted: {se}")
+            # If we don't have the name from local cache, fetch from Supabase
+            if not building_name:
+                building_record = supabase.table("Building").select("name").eq("id", building_id).execute()
+                if building_record.data:
+                    building_name = building_record.data[0].get("name", "")
 
-                # 3. Delete from File table
-                supabase.table("File").delete().eq("buildingId", building_id).execute()
-                print(f"Deleted file records from DB for building {building_id}")
+            # 1. Delete file records from File table
+            supabase.table("File").delete().eq("buildingId", building_id).execute()
+            print(f"Deleted file records from DB for building {building_id}")
 
-            # 4. Finally delete the building record
+            # 2. Delete the building record from Building table
             supabase.table("Building").delete().eq("id", building_id).execute()
             print(f"Deleted building from Supabase: {building_id}")
+            
+            # 3. Move all storage files to recently-deleted (safety net), then clean the building folder
+            #    NEVER touch recently-deleted or all-uploads — they are backup/safety nets
+            if building_name:
+                try:
+                    import time
+                    timestamp = int(time.time())
+                    bucket = supabase.storage.from_("test-building-files")
+                    
+                    def move_folder_to_trash(folder_path):
+                        try:
+                            items = bucket.list(folder_path)
+                            if not items:
+                                return
+                            for item in items:
+                                item_path = f"{folder_path}/{item['name']}"
+                                if item.get('id') is None:
+                                    move_folder_to_trash(item_path)
+                                else:
+                                    safe_name = item_path.replace('/', '_')
+                                    target = f"recently-deleted/{timestamp}_{safe_name}"
+                                    try:
+                                        bucket.move(item_path, target)
+                                        print(f"Moved {item_path} -> {target}")
+                                    except Exception as move_err:
+                                        print(f"Warning: Failed to move {item_path}: {move_err}")
+                        except Exception as list_err:
+                            print(f"Warning listing {folder_path}: {list_err}")
+                    
+                    move_folder_to_trash(building_name)
+                    print(f"Moved all files from {building_name}/ to recently-deleted/")
+                except Exception as storage_err:
+                    print(f"Warning: Storage cleanup failed for {building_name}: {storage_err}")
             
         except Exception as e:
             print(f"Error syncing deletion to Supabase: {e}")
@@ -906,7 +1307,6 @@ class ChatRequest(BaseModel):
     message: str
     conversationHistory: Optional[List[dict]] = []
     selectedBuildings: Optional[List[str]] = []
-    filterFilePath: Optional[str] = None  # For single-file chat in File Management
 
 class ChatResponse(BaseModel):
     response: str
@@ -1105,126 +1505,66 @@ async def ai_chat(request: ChatRequest):
                     )
                     query_embedding = embed_response.data[0].embedding
                     
-                    # Check if this is a single-file chat (File Management tab)
-                    if request.filterFilePath:
-                        # Single-file mode: only get chunks from the specific file
-                        try:
-                            chunks_result = supabase.table(VECTORS_TABLE)\
-                                .select("content, metadata")\
-                                .limit(50)\
-                                .execute()
-                            
-                            if chunks_result.data:
-                                # Filter chunks by exact file path
-                                file_chunks = [c for c in chunks_result.data 
-                                               if c.get("metadata", {}).get("file_path") == request.filterFilePath]
-                                if file_chunks:
-                                    document_content = f"\n\n===== CONTENT FROM SELECTED FILE =====\n"
-                                    for chunk in file_chunks:
-                                        document_content += f"{chunk.get('content', '')}\n"
-                                        document_content += "---\n"
-                                else:
-                                    document_content = "\n\n[Note: No indexed content found for this specific file. The file may need to be synced first.]\n"
-                        except Exception as file_error:
-                            print(f"Single-file query error: {file_error}")
-                            document_content = "\n\n[Note: Could not retrieve file content.]\n"
-                    else:
-                        # Multi-building mode: query all files under selected buildings
-                        # First try with vector similarity (requires match_documents function in Supabase)
-                        try:
-                            result = supabase.rpc(
-                                "match_documents",
-                                {
-                                    "query_embedding": query_embedding,
-                                    "match_count": 10,
-                                    "filter_buildings": request.selectedBuildings
-                                }
-                            ).execute()
-                            
-                            if result.data:
-                                document_content = "\n\n===== RELEVANT DOCUMENT EXCERPTS =====\n"
-                                document_content += "NOTE: The building association is determined by which building folder the document was uploaded to, NOT by the document filename.\n"
-                                for chunk in result.data:
-                                    # Extract building name from metadata, emphasize it over filename
-                                    chunk_building = chunk.get('building_name', 'Unknown')
-                                    document_content += f"\n[BUILDING: {chunk_building}]\n"
-                                    document_content += f"{chunk.get('chunk_text', chunk.get('content', ''))}\n"
-                                    document_content += "---\n"
-                        except Exception as rpc_error:
-                            print(f"RPC match_documents not available: {rpc_error}")
-                            # Fallback: Get chunks from Supabase Vectors table (no vector search)
-                            for building_name in request.selectedBuildings:
-                                try:
-                                    # Query the vectors table
-                                    chunks_result = supabase.table(VECTORS_TABLE)\
-                                        .select("content, metadata")\
-                                        .limit(50)\
-                                        .execute()
-                                    
-                                    if chunks_result.data:
-                                        building_chunks = [c for c in chunks_result.data 
-                                                           if c.get("metadata", {}).get("building_name") == building_name]
-                                        if building_chunks:
-                                            document_content += f"\n\n===== DOCUMENT EXCERPTS FOR BUILDING: {building_name} =====\n"
-                                            document_content += "NOTE: All content below belongs to this building, regardless of document filename.\n"
-                                            for chunk in building_chunks[:10]:
-                                                document_content += f"\n[BUILDING: {building_name}]\n"
-                                                document_content += f"{chunk.get('content', '')}\n"
-                                                document_content += "---\n"
-                                except Exception as table_error:
-                                    print(f"Table query error for {building_name}: {table_error}")
+                    # Query similar chunks from Supabase Vectors table
+                    # First try with vector similarity (requires match_documents function in Supabase)
+                    try:
+                        result = supabase.rpc(
+                            "match_documents",
+                            {
+                                "query_embedding": query_embedding,
+                                "match_count": 10,
+                                "filter_buildings": request.selectedBuildings
+                            }
+                        ).execute()
+                        
+                        if result.data:
+                            document_content = "\n\n===== RELEVANT DOCUMENT EXCERPTS =====\n"
+                            for chunk in result.data:
+                                document_content += f"\n[From: {chunk.get('file_path', 'Unknown')}]\n"
+                                document_content += f"{chunk.get('chunk_text', chunk.get('content', ''))}\n"
+                                document_content += "---\n"
+                    except Exception as rpc_error:
+                        print(f"RPC match_documents not available: {rpc_error}")
+                        # Fallback: Get chunks from Supabase Vectors table (no vector search)
+                        for building_name in request.selectedBuildings:
+                            try:
+                                # Query the vectors table
+                                chunks_result = supabase.table(VECTORS_TABLE)\
+                                    .select("content, metadata")\
+                                    .limit(50)\
+                                    .execute()
+                                
+                                if chunks_result.data:
+                                    building_chunks = [c for c in chunks_result.data 
+                                                       if c.get("metadata", {}).get("building_name") == building_name]
+                                    if building_chunks:
+                                        document_content += f"\n\n===== DOCUMENT EXCERPTS FROM {building_name} =====\n"
+                                        for chunk in building_chunks[:10]:
+                                            file_path = chunk.get("metadata", {}).get("file_path", "Unknown")
+                                            document_content += f"\n[From: {file_path}]\n"
+                                            document_content += f"{chunk.get('content', '')}\n"
+                                            document_content += "---\n"
+                            except Exception as table_error:
+                                print(f"Table query error for {building_name}: {table_error}")
                 except Exception as rag_error:
                     print(f"RAG query error: {rag_error}")
                     document_content = "\n\n[Note: Could not retrieve document content. Please ensure documents have been indexed.]\n"
         
         # Build system prompt with RAG content
-        # Get the selected building names for emphasis
-        selected_building_names = ", ".join(request.selectedBuildings) if request.selectedBuildings else "None"
-        
-        # Different prompts for single-file mode vs multi-building mode
-        if request.filterFilePath:
-            # Single-file mode (File Management tab chat)
-            file_name = request.filterFilePath.split('/')[-1] if request.filterFilePath else "Unknown"
-            system_prompt = f"""Role: You are a document assistant helping users understand a specific file.
-
-IMPORTANT: You are answering questions about ONE SPECIFIC FILE ONLY.
-File: {file_name}
-
-You must ONLY answer questions based on the content from this specific file provided below.
-Do NOT use information from any other documents or general knowledge.
-If the answer is not in this file's content, say "This information is not found in the selected file."
-
-{document_content if document_content else "No content found for this file. The file may need to be synced/indexed first."}
-
-Remember: Only answer based on the content above from this specific file. Do not reference other files or documents."""
-        else:
-            # Multi-building mode (AI Assistant tab)
-            system_prompt = f"""Role: You are a professional AI assistant specializing in building information and compliance.
-
-CRITICAL - BUILDING NAME RULES:
-The user has selected: {selected_building_names}
-These are the ONLY valid building names. You MUST follow these rules:
-
-1. NEVER use building names from inside document content (like "Tower A", "Tower B", "Building 1", etc.)
-2. ALWAYS replace any building name references with the actual selected building name
-3. When describing a building, use the selected name, not what the document says
-
-Example: If the user selected "Todays test" and the document says "Tower A has 300 meters height", you should say "Todays test has 300 meters height" - NOT "Tower A has 300 meters height".
-
-The documents were uploaded UNDER these buildings, so all their content BELONGS to the selected building, even if the document internally uses different names.
+        system_prompt = f"""Role: You are a professional AI assistant specializing in building information and compliance. Your role is to provide accurate, actionable insights based strictly on the files associated with the user's selected buildings.
 
 Core Instructions:
-- When presenting information, ALWAYS use the selected building name ({selected_building_names})
-- REPLACE any building name references in documents with the correct selected building name
-- If content is from a document under "Data Center 11", call it "Data Center 11" not "Tower B"
-- If content is from a document under "Todays test", call it "Todays test" not "Tower A"
+- Source Integrity: Answer questions ONLY using the information provided in the document excerpts below. These excerpts are from the actual uploaded PDF files.
+- Uncertainty & Accuracy: If the provided documentation does not contain a clear answer, or if you are unsure, explicitly acknowledge the limitation. Do not provide speculative or "confidently wrong" answers.
+- Contextual Focus: Only address topics related to the building documentation provided. Politely decline to answer unrelated general knowledge questions.
+- Citation: When referencing information, cite the source document file path.
 
 Selected Building Metadata:
 {building_context if building_context else "No specific buildings selected."}
 
 {document_content if document_content else "No indexed document content found. Documents may need to be synced/indexed first."}
 
-FINAL REMINDER: Replace ALL building name references (Tower A, Tower B, Building 1, etc.) with the actual selected building names ({selected_building_names}). Never mention the original document's building names in your response."""
+Remember: Base your answers ONLY on the document excerpts provided above. If the information is not in these excerpts, say so clearly."""
 
         # Build messages for OpenAI
         messages = [{"role": "system", "content": system_prompt}]
@@ -1841,133 +2181,111 @@ async def register_admin(request: RegisterAdminRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ===== WORK ORDERS ENDPOINTS =====
+class DocumentUpdate(BaseModel):
+    document_id: str
+    user_id: Optional[str] = None
+    type: str
+    metadata: Optional[dict] = {}
+    s3_version_id: Optional[str] = None
 
-class WorkOrderCreate(BaseModel):
-    wo_number: str
-    title: str
-    company_id: str
-    location_building_id: Optional[str] = None
-    location_name: Optional[str] = None
-    assigned_user_id: Optional[str] = None
-    assigned_user_name: Optional[str] = None
-    due_date: Optional[str] = None
-    est_time: Optional[str] = None
-    status: str = "open"
-    priority: str = "normal"
-
-class WorkOrder(BaseModel):
-    id: str
-    wo_number: str
-    title: str
-    company_id: str
-    location_building_id: Optional[str] = None
-    location_name: Optional[str] = None
-    assigned_user_id: Optional[str] = None
-    assigned_user_name: Optional[str] = None
-    due_date: Optional[str] = None
-    est_time: Optional[str] = None
-    status: str
-    priority: str
-    created_at: Optional[str] = None
-
-@app.get("/_api/work-orders")
-async def get_work_orders(companyId: Optional[str] = None) -> List[WorkOrder]:
-    """Get work orders filtered by company"""
-    if not companyId:
-        return []
-    
-    if supabase:
-        try:
-            response = supabase.table("WorkOrder").select("*").eq("company_id", companyId).order("created_at", desc=True).execute()
-            
-            if response.data:
-                return [WorkOrder(
-                    id=str(wo.get("id", "")),
-                    wo_number=wo.get("wo_number", ""),
-                    title=wo.get("title", ""),
-                    company_id=wo.get("company_id", ""),
-                    location_building_id=wo.get("location_building_id"),
-                    location_name=wo.get("location_name", ""),
-                    assigned_user_id=wo.get("assigned_user_id"),
-                    assigned_user_name=wo.get("assigned_user_name", ""),
-                    due_date=wo.get("due_date"),
-                    est_time=wo.get("est_time"),
-                    status=wo.get("status", "open"),
-                    priority=wo.get("priority", "normal"),
-                    created_at=wo.get("created_at")
-                ) for wo in response.data]
-        except Exception as e:
-            print(f"Error fetching work orders: {e}")
-    
-    return []
-
-@app.post("/_api/work-orders")
-async def create_work_order(work_order: WorkOrderCreate) -> WorkOrder:
-    """Create a new work order"""
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
-    
+# NOTE: count route MUST come before /{document_id} to avoid FastAPI route conflict
+@app.get("/_api/files/updates/count")
+async def get_updates_count(companyId: str):
+    """Get total update count for a company's documents"""
+    if not supabase: return {"count": 0}
     try:
-        new_wo = {
-            "wo_number": work_order.wo_number,
-            "title": work_order.title,
-            "company_id": work_order.company_id,
-            "location_building_id": work_order.location_building_id,
-            "location_name": work_order.location_name,
-            "assigned_user_id": work_order.assigned_user_id,
-            "assigned_user_name": work_order.assigned_user_name,
-            "due_date": work_order.due_date,
-            "est_time": work_order.est_time,
-            "status": work_order.status,
-            "priority": work_order.priority,
+        res = supabase.table("DocumentUpdates").select("id").execute()
+        return {"count": len(res.data) if res.data else 0}
+    except Exception as e:
+        print(f"Error fetching updates count: {e}")
+        return {"count": 0}
+
+# NOTE: 'recent' route MUST come before /{document_id} to avoid route conflict
+@app.get("/_api/files/updates/recent")
+async def get_recent_updates_batch(ids: str = ""):
+    """Get the most recent update for each of a comma-separated list of document IDs.
+    Returns a dict mapping document_id -> most recent update row."""
+    if not supabase or not ids.strip():
+        return {}
+    try:
+        id_list = [i.strip() for i in ids.split(',') if i.strip()]
+        if not id_list:
+            return {}
+        # Fetch all updates for these IDs in one query, ordered newest first
+        res = supabase.table("DocumentUpdates")\
+            .select("*")\
+            .in_("document_id", id_list)\
+            .order("created_at", desc=True)\
+            .execute()
+        # Keep only the first (most recent) update per document_id
+        seen: dict = {}
+        for row in (res.data or []):
+            doc_id = row.get("document_id")
+            if doc_id and doc_id not in seen:
+                seen[doc_id] = row
+        return seen
+    except Exception as e:
+        print(f"Error fetching recent updates batch: {e}")
+        return {}
+
+
+@app.post("/_api/files/update")
+async def create_document_update(update: DocumentUpdate):
+    """Create an update record for a document"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    try:
+        # Only insert columns that exist in the table
+        payload = {
+            "document_id": update.document_id,
+            "user_id": update.user_id,
+            "type": update.type,
+            "metadata": update.metadata or {},
         }
-        
-        response = supabase.table("WorkOrder").insert(new_wo).execute()
-        
-        if response.data and len(response.data) > 0:
-            created = response.data[0]
-            return WorkOrder(
-                id=str(created.get("id", "")),
-                wo_number=created.get("wo_number", ""),
-                title=created.get("title", ""),
-                company_id=created.get("company_id", ""),
-                location_building_id=created.get("location_building_id"),
-                location_name=created.get("location_name", ""),
-                assigned_user_id=created.get("assigned_user_id"),
-                assigned_user_name=created.get("assigned_user_name", ""),
-                due_date=created.get("due_date"),
-                est_time=created.get("est_time"),
-                status=created.get("status", "open"),
-                priority=created.get("priority", "normal"),
-                created_at=created.get("created_at")
-            )
-        
-        raise HTTPException(status_code=500, detail="Failed to create work order")
+        if update.s3_version_id:
+            payload["s3_version_id"] = update.s3_version_id
+
+        print(f"[DocumentUpdates] Inserting: doc={update.document_id} type={update.type}")
+        res = supabase.table("DocumentUpdates").insert(payload).execute()
+        print(f"[DocumentUpdates] Insert result: {res.data}")
+        if res.data:
+            return res.data[0]
+        raise HTTPException(status_code=500, detail="Insert returned no data")
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error creating work order: {e}")
+        print(f"[DocumentUpdates] Insert FAILED: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.patch("/_api/work-orders/{work_order_id}")
-async def update_work_order(work_order_id: str, updates: dict):
-    """Update a work order"""
+@app.get("/_api/files/updates/{document_id}")
+async def get_document_updates(document_id: str):
+    """Get update history for a document"""
     if not supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
-    
+        return []
     try:
-        response = supabase.table("WorkOrder").update(updates).eq("id", work_order_id).execute()
-        
-        if response.data and len(response.data) > 0:
-            return response.data[0]
-        
-        raise HTTPException(status_code=404, detail="Work order not found")
+        res = supabase.table("DocumentUpdates")\
+            .select("*")\
+            .eq("document_id", document_id)\
+            .order("created_at", desc=True)\
+            .execute()
+        return res.data or []
     except Exception as e:
-        print(f"Error updating work order: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error fetching document updates: {e}")
+        return []
 
+@app.delete("/_api/files/updates/{update_id}")
+async def delete_document_update(update_id: str):
+    """Delete a single document update (note) by its id"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    try:
+        supabase.table("DocumentUpdates").delete().eq("id", update_id).execute()
+        return {"status": "deleted"}
+    except Exception as e:
+        print(f"Error deleting document update: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
