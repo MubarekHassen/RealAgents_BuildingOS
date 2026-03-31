@@ -88,28 +88,58 @@ token usage and file info.
 
 ---
 
-## Deploying to production
+## Deploying to Production
 
-For a live URL you can share with customers:
+### Step 1: Deploy Backend to Railway
 
-**Option A — Railway (easiest, ~$5/mo)**
-```bash
-# Install Railway CLI: https://docs.railway.app/develop/cli
-railway login
-railway init
-railway up
-railway variables set ANTHROPIC_API_KEY=sk-ant-your-key
+1. Go to [railway.app](https://railway.app) and sign in with GitHub
+2. Click "New Project" → "Deploy from GitHub repo"
+3. Select `BuildingOS26/MVP-mvp`
+4. Railway will auto-detect Python and start deploying
+5. Go to **Variables** tab and add these environment variables:
+
+```
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_STORAGE_BUCKET=documents
+EMBEDDING_API_URL=https://api.openai.com/v1/embeddings
+EMBEDDING_API_KEY=sk-your-openai-key
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
 ```
 
-**Option B — Render**
-1. Push this folder to a GitHub repo
-2. Create a new Web Service at render.com pointing to the repo
-3. Set `ANTHROPIC_API_KEY` in Environment Variables
-4. Build command: `pip install -r requirements.txt`
-5. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+6. Once deployed, copy your Railway URL (e.g., `https://mvp-mvp-production.up.railway.app`)
 
-Once deployed, update `CONFIG.BACKEND_URL` in `buildingos-mvp.html` to your
-production URL (e.g. `https://buildingos-api.railway.app`).
+### Step 2: Update Frontend
+
+In `buildingos-mvp.html`, find this line near the top:
+```javascript
+const PRODUCTION_BACKEND_URL = ''; // <-- SET THIS AFTER DEPLOYING BACKEND
+```
+
+Change it to your Railway URL:
+```javascript
+const PRODUCTION_BACKEND_URL = 'https://mvp-mvp-production.up.railway.app';
+```
+
+### Step 3: Deploy Frontend to Vercel
+
+**Option A: Drag & Drop**
+1. Go to [vercel.com](https://vercel.com)
+2. Drag `buildingos-mvp.html` into the dashboard
+3. Done!
+
+**Option B: From GitHub**
+1. Push the updated `buildingos-mvp.html` to GitHub
+2. Connect Vercel to your repo
+3. Deploy
+
+### Alternative: Railway Only
+
+You can also serve both frontend and backend from Railway:
+1. The HTML file is served at the root `/` endpoint
+2. Just use your Railway URL directly
 
 ---
 

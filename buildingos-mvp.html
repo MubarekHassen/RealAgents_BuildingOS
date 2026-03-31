@@ -997,7 +997,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <script>
 // ─── CONFIG ─────────────────────────────────────────────────
-const CONFIG = { BACKEND_URL: 'http://localhost:8000' };
+// For production: Replace with your Railway backend URL (e.g., 'https://your-app.up.railway.app')
+const PRODUCTION_BACKEND_URL = ''; // <-- SET THIS AFTER DEPLOYING BACKEND
+const CONFIG = { 
+  BACKEND_URL: PRODUCTION_BACKEND_URL || 'http://localhost:8000'
+};
 const PIPELINE_STEPS = ['Reading document structure','Identifying document type','Extracting building data','Mapping intelligence categories','Generating insights'];
 
 // ─── ROLES & DOC TYPES ──────────────────────────────────────
