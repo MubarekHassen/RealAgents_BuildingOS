@@ -997,10 +997,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <script>
 // ─── CONFIG ─────────────────────────────────────────────────
-// For production: Replace with your Railway backend URL (e.g., 'https://your-app.up.railway.app')
-const PRODUCTION_BACKEND_URL = ''; // <-- SET THIS AFTER DEPLOYING BACKEND
+// Production backend URL (Railway)
+const PRODUCTION_BACKEND_URL = 'https://web-production-12aec.up.railway.app';
 const CONFIG = { 
-  BACKEND_URL: PRODUCTION_BACKEND_URL || 'http://localhost:8000'
+  BACKEND_URL: PRODUCTION_BACKEND_URL
 };
 const PIPELINE_STEPS = ['Reading document structure','Identifying document type','Extracting building data','Mapping intelligence categories','Generating insights'];
 
