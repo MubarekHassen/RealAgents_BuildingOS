@@ -1085,9 +1085,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
               <!-- Google Drive Card -->
               <div id="gdriveCard" onclick="handleCloudCardClick('gdrive')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:16px 18px;background:#fff;cursor:pointer;transition:all .2s;position:relative;overflow:hidden" onmouseover="this.style.borderColor='#818cf8';this.style.boxShadow='0 4px 16px rgba(99,102,241,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-                  <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#4285F4 0%,#34A853 50%,#FBBC05 100%);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M7.71 3.5L1.15 15l2.84 4.92h6.56L4 10.08 7.71 3.5zM22.85 15L16.29 3.5H9.71L16.29 15h6.56zM14.57 16.5H1.71L4.55 21.5h13.12l-3.1-5z"/></svg>
-                  </div>
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" width="40" height="40" style="flex-shrink:0" onerror="this.outerHTML='<div style=&quot;width:40px;height:40px;border-radius:10px;background:#4285F4;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:18px;font-weight:700&quot;>D</div>'">
                   <div>
                     <div style="font-size:14px;font-weight:700;color:#1e1b4b">Google Drive</div>
                     <div style="font-size:11px;color:#6b7280">PDFs, images, floor plans</div>
@@ -1099,9 +1097,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
               <!-- Google Sheets Card -->
               <div id="gsheetsCard" onclick="handleCloudCardClick('gsheets')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:16px 18px;background:#fff;cursor:pointer;transition:all .2s;position:relative;overflow:hidden" onmouseover="this.style.borderColor='#34d399';this.style.boxShadow='0 4px 16px rgba(16,185,129,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-                  <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0F9D58 0%,#34A853 100%);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="white" stroke-width="1.5"/><line x1="3" y1="9" x2="21" y2="9" stroke="white" stroke-width="1.5"/><line x1="3" y1="15" x2="21" y2="15" stroke="white" stroke-width="1.5"/><line x1="9" y1="3" x2="9" y2="21" stroke="white" stroke-width="1.5"/></svg>
-                  </div>
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/3/30/Google_Sheets_logo_%282014-2020%29.svg" width="40" height="40" style="flex-shrink:0" onerror="this.outerHTML='<div style=&quot;width:40px;height:40px;border-radius:10px;background:#0F9D58;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:18px;font-weight:700&quot;>S</div>'">
                   <div>
                     <div style="font-size:14px;font-weight:700;color:#1e1b4b">Google Sheets</div>
                     <div style="font-size:11px;color:#6b7280">Rent rolls, budgets, data</div>
@@ -5716,9 +5712,7 @@ async function showGSheetsModal() {
     <div class="drive-modal">
       <div class="dm-top" style="border-bottom:2.5px solid #34A853">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0F9D58,#34A853);display:flex;align-items:center;justify-content:center">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="white" stroke-width="1.5"/><line x1="3" y1="9" x2="21" y2="9" stroke="white" stroke-width="1.5"/><line x1="3" y1="15" x2="21" y2="15" stroke="white" stroke-width="1.5"/><line x1="9" y1="3" x2="9" y2="21" stroke="white" stroke-width="1.5"/></svg>
-          </div>
+          <img src="https://upload.wikimedia.org/wikipedia/commons/3/30/Google_Sheets_logo_%282014-2020%29.svg" width="32" height="32" style="border-radius:4px" onerror="this.style.display='none'">
           <div>
             <div style="font-size:16px;font-weight:800;color:#1e1b4b">Google Sheets</div>
             <div style="font-size:12px;color:#6b7280;margin-top:2px">Select spreadsheets to analyze for building data</div>

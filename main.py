@@ -612,7 +612,7 @@ def extract_drive_folder_entries(page_html: str) -> tuple[list[dict[str, str]], 
     subfolders: list[dict[str, str]] = []
     seen_ids: set[str] = set()
 
-    # Extract file links
+    # Extract file links (anchor tags)
     link_pattern = re.compile(
         r'<a[^>]+href="([^"]*(?:/file/d/|[?&]id=)[^"]+)"[^>]*>(.*?)</a>',
         re.IGNORECASE | re.DOTALL,
@@ -633,7 +633,7 @@ def extract_drive_folder_entries(page_html: str) -> tuple[list[dict[str, str]], 
         )
         seen_ids.add(file_id)
 
-    # Extract subfolder links
+    # Extract subfolder links (anchor tags)
     folder_link_pattern = re.compile(
         r'<a[^>]+href="([^"]*(?:/folders/)[^"]+)"[^>]*>(.*?)</a>',
         re.IGNORECASE | re.DOTALL,
@@ -654,9 +654,9 @@ def extract_drive_folder_entries(page_html: str) -> tuple[list[dict[str, str]], 
         )
         seen_ids.add(folder_id)
 
-    # Also extract from JSON-like patterns in the page source
+    # Extract from JSON-like patterns: file IDs with file extensions
     json_pattern = re.compile(
-        r'"([A-Za-z0-9_-]{20,})","([^"]+\.(?:pdf|png|jpg|jpeg|webp))"',
+        r'"([A-Za-z0-9_-]{20,})","([^"]+\.(?:pdf|png|jpg|jpeg|webp|xlsx|xls|csv|doc|docx))"',
         re.IGNORECASE,
     )
     for match in json_pattern.finditer(page_html):
@@ -672,8 +672,7 @@ def extract_drive_folder_entries(page_html: str) -> tuple[list[dict[str, str]], 
         )
         seen_ids.add(file_id)
 
-    # Extract folder references from JS data blobs (Google embeds folder IDs in arrays)
-    # Pattern: folder ID followed by folder name in JSON-like structures
+    # Extract ALL /folders/ references from JS data blobs and HTML
     folder_json_pattern = re.compile(
         r'/folders/([A-Za-z0-9_-]{20,})',
         re.IGNORECASE,
@@ -688,7 +687,6 @@ def extract_drive_folder_entries(page_html: str) -> tuple[list[dict[str, str]], 
         context = page_html[context_start:context_end]
         name_match = re.search(r'"([^"]{2,60})"', context)
         name = name_match.group(1) if name_match else folder_id
-        # Clean HTML tags from name
         name = re.sub(r'<[^>]+>', '', name).strip()
         if name and not name.startswith('http') and not name.startswith('/'):
             subfolders.append({
@@ -698,6 +696,81 @@ def extract_drive_folder_entries(page_html: str) -> tuple[list[dict[str, str]], 
             })
             seen_ids.add(folder_id)
 
+    # Extract file/folder IDs from Google's JS data arrays:
+    # Google embeds data as arrays like ["0","FILE_ID","FILE_NAME",...]
+    # Also look for patterns: [null,"FILE_ID","name.pdf","application/pdf",...]
+    js_array_pattern = re.compile(
+        r'\["[^"]*","([A-Za-z0-9_-]{25,60})","([^"]{2,120})"(?:,"([^"]*)")?',
+    )
+    for match in js_array_pattern.finditer(page_html):
+        item_id = match.group(1)
+        item_name = html.unescape(match.group(2))
+        mime_hint = match.group(3) or ""
+        if item_id in seen_ids:
+            continue
+        # Determine if this is a folder or file based on mime type or name
+        is_folder = (
+            "folder" in mime_hint.lower()
+            or "vnd.google-apps.folder" in mime_hint
+            or (not "." in item_name and not "application/" in mime_hint and not "image/" in mime_hint)
+        )
+        if is_folder and len(item_id) >= 25:
+            subfolders.append({
+                "folder_id": item_id,
+                "name": item_name,
+                "url": f"https://drive.google.com/drive/folders/{item_id}",
+            })
+            seen_ids.add(item_id)
+        elif not is_folder and any(
+            item_name.lower().endswith(ext)
+            for ext in ('.pdf', '.png', '.jpg', '.jpeg', '.webp', '.xlsx', '.csv', '.doc', '.docx')
+        ):
+            files.append({
+                "file_id": item_id,
+                "name": item_name,
+                "url": f"https://drive.google.com/file/d/{item_id}/view?usp=sharing",
+            })
+            seen_ids.add(item_id)
+
+    return files, subfolders
+
+
+async def _try_google_drive_api_public_folder(folder_id: str) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Try the Google Drive API v3 with API key to list contents of a public folder.
+    This fallback works when HTML scraping fails to parse Google's changing page structure."""
+    api_key = os.getenv("GOOGLE_API_KEY", "")  # Optional: set in .env for public folder listing
+    if not api_key:
+        return [], []
+    files = []
+    subfolders = []
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            url = (
+                f"https://www.googleapis.com/drive/v3/files"
+                f"?q=%27{folder_id}%27+in+parents+and+trashed%3Dfalse"
+                f"&key={api_key}"
+                f"&fields=files(id,name,mimeType)"
+                f"&pageSize=100"
+            )
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return [], []
+            data = resp.json()
+            for f in data.get("files", []):
+                if f["mimeType"] == "application/vnd.google-apps.folder":
+                    subfolders.append({
+                        "folder_id": f["id"],
+                        "name": f["name"],
+                        "url": f"https://drive.google.com/drive/folders/{f['id']}",
+                    })
+                else:
+                    files.append({
+                        "file_id": f["id"],
+                        "name": f["name"],
+                        "url": f"https://drive.google.com/file/d/{f['id']}/view?usp=sharing",
+                    })
+    except Exception as e:
+        logger.warning(f"Google Drive API fallback failed: {e}")
     return files, subfolders
 
 
@@ -713,6 +786,7 @@ async def list_google_drive_shared_folder_files(url: str, max_depth: int = 6, _d
     # Try multiple URL formats to maximise discovery
     candidates = [
         f"https://drive.google.com/embeddedfolderview?id={folder_id}#list",
+        f"https://drive.google.com/drive/folders/{folder_id}?usp=sharing",
         f"https://drive.google.com/drive/folders/{folder_id}",
         url,
     ]
@@ -752,9 +826,24 @@ async def list_google_drive_shared_folder_files(url: str, max_depth: int = 6, _d
             if all_entries or all_subfolders:
                 break
 
+    # If HTML scraping found nothing, try the Google Drive API as fallback
+    if not all_entries and not all_subfolders:
+        logger.info(f"HTML scraping found nothing for folder {folder_id}, trying API fallback")
+        api_files, api_subfolders = await _try_google_drive_api_public_folder(folder_id)
+        for f in api_files:
+            fid = f.get("file_id", f.get("name", ""))
+            if fid not in seen_file_ids:
+                seen_file_ids.add(fid)
+                all_entries.append(f)
+        for sf in api_subfolders:
+            sfid = sf.get("folder_id", sf.get("name", ""))
+            if sfid not in seen_folder_ids:
+                seen_folder_ids.add(sfid)
+                all_subfolders.append(sf)
+
     # Recurse into ALL discovered subfolders (even if no files at this level)
     for subfolder in all_subfolders:
-        if len(all_entries) >= 100:
+        if len(all_entries) >= 200:
             break  # Safety cap
         try:
             subfolder_files = await list_google_drive_shared_folder_files(
@@ -775,7 +864,7 @@ async def list_google_drive_shared_folder_files(url: str, max_depth: int = 6, _d
                 f"Make sure the folder is public and contains PDFs or images. Last status: {last_status or 'unknown'}."
             ),
         )
-    return all_entries[:100]
+    return all_entries[:200]
 
 
 def index_document_bytes(
