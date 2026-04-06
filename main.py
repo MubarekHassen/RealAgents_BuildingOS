@@ -26,7 +26,7 @@ import anthropic
 import httpx
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
@@ -377,7 +377,7 @@ def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_
     try:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-haiku-4-5-20251001",
             max_tokens=8192,
             messages=[
                 {
@@ -386,8 +386,12 @@ def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_
                 }
             ],
         )
-    except anthropic.AuthenticationError:
+    except anthropic.AuthenticationError as exc:
+        logger.error("Anthropic auth error: %s", exc)
         raise HTTPException(status_code=401, detail="Invalid Anthropic API key. Check your .env file.")
+    except anthropic.PermissionDeniedError as exc:
+        logger.error("Anthropic permission denied (likely low credits): %s", exc)
+        raise HTTPException(status_code=403, detail="Anthropic API access denied — your credit balance may be too low. Check console.anthropic.com.")
     except anthropic.RateLimitError:
         raise HTTPException(status_code=429, detail="Anthropic rate limit reached. Please wait a moment and retry.")
     except anthropic.BadRequestError as exc:
@@ -416,7 +420,7 @@ def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_
         "filename": filename,
         "file_size_kb": round(len(file_bytes) / 1024, 1),
         "content_type": normalized_type,
-        "model": "claude-sonnet-4-6",
+        "model": "claude-haiku-4-5-20251001",
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
     }
@@ -602,10 +606,13 @@ async def download_shared_file(url: str) -> tuple[bytes, str, str, dict[str, Any
     )
 
 
-def extract_drive_folder_entries(page_html: str) -> list[dict[str, str]]:
-    entries: list[dict[str, str]] = []
+def extract_drive_folder_entries(page_html: str) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Parse a Google Drive folder page and return (file_entries, subfolder_entries)."""
+    files: list[dict[str, str]] = []
+    subfolders: list[dict[str, str]] = []
     seen_ids: set[str] = set()
 
+    # Extract file links
     link_pattern = re.compile(
         r'<a[^>]+href="([^"]*(?:/file/d/|[?&]id=)[^"]+)"[^>]*>(.*?)</a>',
         re.IGNORECASE | re.DOTALL,
@@ -617,7 +624,7 @@ def extract_drive_folder_entries(page_html: str) -> list[dict[str, str]]:
             continue
         raw_name = re.sub(r"<[^>]+>", "", html.unescape(match.group(2))).strip()
         name = re.sub(r"\s+", " ", raw_name)
-        entries.append(
+        files.append(
             {
                 "file_id": file_id,
                 "name": name or f"{file_id}.pdf",
@@ -626,6 +633,28 @@ def extract_drive_folder_entries(page_html: str) -> list[dict[str, str]]:
         )
         seen_ids.add(file_id)
 
+    # Extract subfolder links
+    folder_link_pattern = re.compile(
+        r'<a[^>]+href="([^"]*(?:/folders/)[^"]+)"[^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    for match in folder_link_pattern.finditer(page_html):
+        href = html.unescape(match.group(1))
+        folder_id = extract_google_drive_folder_id(href)
+        if not folder_id or folder_id in seen_ids:
+            continue
+        raw_name = re.sub(r"<[^>]+>", "", html.unescape(match.group(2))).strip()
+        name = re.sub(r"\s+", " ", raw_name)
+        subfolders.append(
+            {
+                "folder_id": folder_id,
+                "name": name or folder_id,
+                "url": href if href.startswith("http") else f"https://drive.google.com/drive/folders/{folder_id}",
+            }
+        )
+        seen_ids.add(folder_id)
+
+    # Also extract from JSON-like patterns in the page source
     json_pattern = re.compile(
         r'"([A-Za-z0-9_-]{20,})","([^"]+\.(?:pdf|png|jpg|jpeg|webp))"',
         re.IGNORECASE,
@@ -634,7 +663,7 @@ def extract_drive_folder_entries(page_html: str) -> list[dict[str, str]]:
         file_id = match.group(1)
         if file_id in seen_ids:
             continue
-        entries.append(
+        files.append(
             {
                 "file_id": file_id,
                 "name": html.unescape(match.group(2)),
@@ -643,38 +672,110 @@ def extract_drive_folder_entries(page_html: str) -> list[dict[str, str]]:
         )
         seen_ids.add(file_id)
 
-    return entries
+    # Extract folder references from JS data blobs (Google embeds folder IDs in arrays)
+    # Pattern: folder ID followed by folder name in JSON-like structures
+    folder_json_pattern = re.compile(
+        r'/folders/([A-Za-z0-9_-]{20,})',
+        re.IGNORECASE,
+    )
+    for match in folder_json_pattern.finditer(page_html):
+        folder_id = match.group(1)
+        if folder_id in seen_ids:
+            continue
+        # Try to find a name near this reference
+        context_start = max(0, match.start() - 200)
+        context_end = min(len(page_html), match.end() + 200)
+        context = page_html[context_start:context_end]
+        name_match = re.search(r'"([^"]{2,60})"', context)
+        name = name_match.group(1) if name_match else folder_id
+        # Clean HTML tags from name
+        name = re.sub(r'<[^>]+>', '', name).strip()
+        if name and not name.startswith('http') and not name.startswith('/'):
+            subfolders.append({
+                "folder_id": folder_id,
+                "name": name,
+                "url": f"https://drive.google.com/drive/folders/{folder_id}",
+            })
+            seen_ids.add(folder_id)
+
+    return files, subfolders
 
 
-async def list_google_drive_shared_folder_files(url: str) -> list[dict[str, str]]:
+async def list_google_drive_shared_folder_files(url: str, max_depth: int = 6, _depth: int = 0) -> list[dict[str, str]]:
+    """Recursively list files from a shared Google Drive folder and ALL subfolders."""
+    if _depth > max_depth:
+        return []
+
     folder_id = extract_google_drive_folder_id(url)
     if not folder_id:
         raise HTTPException(status_code=400, detail="Google Drive folder link is missing a folder ID.")
 
+    # Try multiple URL formats to maximise discovery
     candidates = [
         f"https://drive.google.com/embeddedfolderview?id={folder_id}#list",
+        f"https://drive.google.com/drive/folders/{folder_id}",
         url,
     ]
-    headers = {"User-Agent": "BuildingOS/1.0"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     last_status: Optional[int] = None
+    all_entries: list[dict[str, str]] = []
+    all_subfolders: list[dict[str, str]] = []
+    seen_file_ids: set[str] = set()
+    seen_folder_ids: set[str] = set()
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=90.0) as client:
         for candidate in candidates:
-            response = await client.get(candidate, headers=headers)
+            try:
+                response = await client.get(candidate, headers=headers)
+            except Exception:
+                continue
             last_status = response.status_code
             if response.status_code >= 400:
                 continue
-            entries = extract_drive_folder_entries(response.text)
-            if entries:
-                return entries[:20]
+            file_entries, subfolder_entries = extract_drive_folder_entries(response.text)
 
-    raise HTTPException(
-        status_code=400,
-        detail=(
-            "Could not read files from this shared Google Drive folder. "
-            f"Make sure the folder is public and contains PDFs or images. Last status: {last_status or 'unknown'}."
-        ),
-    )
+            # Deduplicate files
+            for f in file_entries:
+                fid = f.get("file_id", f.get("name", ""))
+                if fid not in seen_file_ids:
+                    seen_file_ids.add(fid)
+                    all_entries.append(f)
+
+            # Deduplicate subfolders
+            for sf in subfolder_entries:
+                sfid = sf.get("folder_id", sf.get("name", ""))
+                if sfid not in seen_folder_ids:
+                    seen_folder_ids.add(sfid)
+                    all_subfolders.append(sf)
+
+            # Stop trying candidate URLs once we found content
+            if all_entries or all_subfolders:
+                break
+
+    # Recurse into ALL discovered subfolders (even if no files at this level)
+    for subfolder in all_subfolders:
+        if len(all_entries) >= 100:
+            break  # Safety cap
+        try:
+            subfolder_files = await list_google_drive_shared_folder_files(
+                subfolder["url"], max_depth=max_depth, _depth=_depth + 1,
+            )
+            # Prefix subfolder name for context
+            for sf in subfolder_files:
+                sf["name"] = f"{subfolder['name']}/{sf['name']}"
+            all_entries.extend(subfolder_files)
+        except Exception as exc:
+            logger.warning("Could not read subfolder %s: %s", subfolder.get("name"), exc)
+
+    if _depth == 0 and not all_entries:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Could not read files from this shared Google Drive folder. "
+                f"Make sure the folder is public and contains PDFs or images. Last status: {last_status or 'unknown'}."
+            ),
+        )
+    return all_entries[:100]
 
 
 def index_document_bytes(
@@ -688,6 +789,8 @@ def index_document_bytes(
     building_id: Optional[str],
     source_meta: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     content_type, _ = ensure_supported_upload(content_type, file_bytes)
     document_id = secrets.token_hex(12)
     storage_path = upload_file_to_storage(
@@ -710,11 +813,32 @@ def index_document_bytes(
     )
 
     try:
-        analysis = analyze_file_bytes(file_bytes, filename, content_type, api_key)
+        # ── PARALLEL: Run Claude analysis + text extraction concurrently ──
+        analysis = None
+        extracted_text = None
+        analysis_error = None
+        text_error = None
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_analysis = executor.submit(analyze_file_bytes, file_bytes, filename, content_type, api_key)
+            future_text = executor.submit(extract_text_for_rag, file_bytes, content_type, api_key)
+
+            try:
+                analysis = future_analysis.result()
+            except Exception as exc:
+                analysis_error = exc
+
+            try:
+                extracted_text = future_text.result()
+            except Exception as exc:
+                text_error = exc
+
+        if analysis_error:
+            raise analysis_error
         if source_meta:
             analysis.setdefault("_meta", {}).update(source_meta)
-        extracted_text = extract_text_for_rag(file_bytes, content_type, api_key)
-        if not extracted_text.strip():
+
+        if text_error or not extracted_text or not extracted_text.strip():
             raise HTTPException(
                 status_code=400,
                 detail="No readable text could be extracted from this document for question answering.",
@@ -730,9 +854,21 @@ def index_document_bytes(
         # Batch generate embeddings for all chunks at once (much faster)
         chunk_texts = [chunk["content"] for chunk in chunks]
         embeddings = generate_embeddings_batch(chunk_texts, rag_config)
-        
+
+        # If batch returned fewer embeddings than chunks, log and pad with empty
+        if len(embeddings) < len(chunks):
+            logger.warning("Batch embedding returned %d/%d — padding missing with individual calls", len(embeddings), len(chunks))
+
         chunk_rows = []
         for i, chunk in enumerate(chunks):
+            if i < len(embeddings):
+                emb = embeddings[i]
+            else:
+                try:
+                    emb = generate_embedding(chunk["content"], rag_config)
+                except Exception:
+                    logger.error("Single embedding fallback also failed for chunk %d", i)
+                    emb = [0.0] * rag_config.embedding_dimensions
             chunk_rows.append(
                 {
                     "document_id": document_id,
@@ -740,7 +876,7 @@ def index_document_bytes(
                     "content": chunk["content"],
                     "token_count": chunk["token_count"],
                     "page_refs": chunk["page_refs"],
-                    "embedding": embeddings[i] if i < len(embeddings) else generate_embedding(chunk["content"], rag_config),
+                    "embedding": emb,
                 }
             )
         insert_document_chunks(client, chunk_rows)
@@ -1038,6 +1174,41 @@ def answer_documents_question(
     return parsed
 
 
+def stream_question_answer(
+    *,
+    question: str,
+    matches: list[dict[str, Any]],
+    api_key: str,
+    prompt_prefix: str = "",
+):
+    """Generator that yields Server-Sent Events with streaming Claude Q&A response."""
+    if not matches:
+        yield f"data: {json.dumps({'type': 'answer', 'text': 'I could not find that in the uploaded documents.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'confidence': 'low'})}\n\n"
+        return
+
+    context = build_question_context(matches)
+    prompt = f"{prompt_prefix or QUESTION_ANSWER_PROMPT}\n\nQuestion:\n{question}\n\nRetrieved context:\n{context}"
+
+    client = anthropic.Anthropic(api_key=api_key)
+    accumulated = ""
+    with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=1400,
+        messages=[{"role": "user", "content": prompt}],
+    ) as stream:
+        for text in stream.text_stream:
+            accumulated += text
+            yield f"data: {json.dumps({'type': 'token', 'text': text})}\n\n"
+
+    # Try to parse the final JSON response for citations
+    try:
+        parsed = extract_json_from_response(accumulated)
+        yield f"data: {json.dumps({'type': 'done', 'parsed': parsed})}\n\n"
+    except ValueError:
+        yield f"data: {json.dumps({'type': 'done', 'parsed': {'answer': accumulated.strip(), 'citations': [], 'confidence': 'low'}})}\n\n"
+
+
 def require_rag_configuration() -> None:
     config = load_rag_config()
     if not is_supabase_configured(config):
@@ -1069,10 +1240,52 @@ def health():
     return {
         "status": "ok",
         "api_key_configured": bool(key and key.startswith("sk-ant-")),
+        "api_key_prefix": key[:20] + "..." if key else "(empty)",
         "supabase_configured": is_supabase_configured(rag_config),
         "embeddings_configured": is_embeddings_configured(rag_config),
         "rag_ready": is_rag_ready(rag_config),
     }
+
+
+@app.get("/test-api-key")
+def test_api_key():
+    """Actually test the Anthropic API key by making a tiny request."""
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not key:
+        return {"valid": False, "error": "ANTHROPIC_API_KEY not set in .env"}
+    try:
+        client = anthropic.Anthropic(api_key=key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Say OK"}],
+        )
+        return {"valid": True, "response": response.content[0].text, "key_prefix": key[:20] + "..."}
+    except anthropic.AuthenticationError as e:
+        return {"valid": False, "error": f"AuthenticationError: {str(e)}", "key_prefix": key[:20] + "..."}
+    except anthropic.PermissionDeniedError as e:
+        return {"valid": False, "error": f"PermissionDenied: {str(e)}", "key_prefix": key[:20] + "..."}
+    except Exception as e:
+        return {"valid": False, "error": f"{type(e).__name__}: {str(e)}", "key_prefix": key[:20] + "..."}
+
+
+@app.delete("/documents/clear-errors")
+def clear_errored_documents():
+    """Delete all documents with status='error' from Supabase."""
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+    # Get all error documents
+    response = client.table("documents").select("id").eq("status", "error").execute()
+    error_docs = response.data or []
+    deleted = 0
+    for doc in error_docs:
+        try:
+            delete_rag_document(client, rag_config, doc["id"])
+            deleted += 1
+        except Exception as e:
+            logger.warning(f"Failed to delete error doc {doc['id']}: {e}")
+    return {"deleted": deleted, "total_errors_found": len(error_docs)}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1083,8 +1296,9 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
 ]
-GOOGLE_REDIRECT_URI = "http://localhost:8000/auth/google/callback"
-MICROSOFT_REDIRECT_URI = "http://localhost:8000/auth/microsoft/callback"
+_base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
+GOOGLE_REDIRECT_URI = f"{_base_url}/auth/google/callback"
+MICROSOFT_REDIRECT_URI = f"{_base_url}/auth/microsoft/callback"
 MICROSOFT_SCOPES = ["Files.Read", "Files.Read.All", "offline_access"]
 
 # File types to look for in connected drives
@@ -1176,41 +1390,88 @@ def google_disconnect():
     return {"status": "disconnected"}
 
 
+def _gdrive_list_files_recursive(service, folder_id: Optional[str] = None, query: str = "", max_depth: int = 5, _depth: int = 0) -> list[dict]:
+    """Recursively list PDF/image files from Google Drive, scanning all subfolders."""
+    if _depth > max_depth:
+        return []
+
+    files: list[dict] = []
+    # Build query for files in this folder
+    q_parts = [
+        "(mimeType='application/pdf' or mimeType='image/png' or mimeType='image/jpeg' or mimeType='application/vnd.google-apps.folder')",
+        "trashed=false",
+    ]
+    if folder_id:
+        q_parts.append(f"'{folder_id}' in parents")
+    if query:
+        q_parts.append(f"name contains '{query}'")
+    q = " and ".join(q_parts)
+
+    page_token = None
+    while True:
+        results = service.files().list(
+            q=q, pageSize=100,
+            fields="nextPageToken, files(id,name,mimeType,size,modifiedTime,parents)",
+            orderBy="modifiedTime desc",
+            pageToken=page_token,
+        ).execute()
+
+        for f in results.get("files", []):
+            if f["mimeType"] == "application/vnd.google-apps.folder":
+                # Recurse into subfolder
+                subfolder_files = _gdrive_list_files_recursive(
+                    service, folder_id=f["id"], query=query,
+                    max_depth=max_depth, _depth=_depth + 1,
+                )
+                # Prefix subfolder name to child files for context
+                for sf in subfolder_files:
+                    sf["_folder_path"] = f"{f['name']}/{sf.get('_folder_path', '')}" if sf.get("_folder_path") else f["name"]
+                files.extend(subfolder_files)
+            else:
+                files.append(f)
+
+        page_token = results.get("nextPageToken")
+        if not page_token:
+            break
+
+    return files
+
+
 @app.get("/integrations/google-drive/files")
-def list_google_drive_files(query: str = ""):
-    """List building-relevant PDF files from Google Drive."""
+def list_google_drive_files(query: str = "", folder_id: Optional[str] = None):
+    """List building-relevant PDF files from Google Drive, including all subfolders."""
     if "google" not in _tokens:
         raise HTTPException(401, "Google Drive not connected")
     try:
         service = gdrive_build("drive", "v3", credentials=_tokens["google"])
-        # Build search query — PDFs + images modified in last 2 years
-        q_parts = ["(mimeType='application/pdf' or mimeType='image/png' or mimeType='image/jpeg')", "trashed=false"]
-        if query:
-            q_parts.append(f"name contains '{query}'")
-        q = " and ".join(q_parts)
-        results = service.files().list(
-            q=q, pageSize=50,
-            fields="files(id,name,mimeType,size,modifiedTime,parents)",
-            orderBy="modifiedTime desc",
-        ).execute()
-        files = results.get("files", [])
+        files = _gdrive_list_files_recursive(service, folder_id=folder_id, query=query)
+
+        # Deduplicate by file ID
+        seen = set()
+        unique_files = []
+        for f in files:
+            if f["id"] not in seen:
+                seen.add(f["id"])
+                unique_files.append(f)
+
         # Score files by building-document relevance
         def relevance(f):
             name_lower = f["name"].lower()
             return sum(1 for kw in BUILDING_DOC_KEYWORDS if kw.lower() in name_lower)
-        files.sort(key=relevance, reverse=True)
+        unique_files.sort(key=relevance, reverse=True)
         return {
             "files": [
                 {
                     "id": f["id"], "name": f["name"],
+                    "folder": f.get("_folder_path", ""),
                     "size_kb": round(int(f.get("size", 0)) / 1024, 1),
                     "modified": f.get("modifiedTime", "")[:10],
                     "relevance": relevance(f),
                     "mime_type": f["mimeType"],
                 }
-                for f in files
+                for f in unique_files
             ],
-            "total": len(files),
+            "total": len(unique_files),
         }
     except Exception as e:
         logger.error(f"Google Drive list error: {e}")
@@ -1219,7 +1480,7 @@ def list_google_drive_files(query: str = ""):
 
 @app.post("/integrations/google-drive/analyze")
 async def analyze_google_drive_files(file_ids: List[str]):
-    """Download files from Google Drive and analyze them."""
+    """Download files from Google Drive, analyze with Claude, and store in Supabase."""
     if "google" not in _tokens:
         raise HTTPException(401, "Google Drive not connected")
     if not file_ids:
@@ -1228,6 +1489,10 @@ async def analyze_google_drive_files(file_ids: List[str]):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    rag_config = load_rag_config()
+    rag_enabled = is_rag_ready(rag_config)
+    supabase_client = get_supabase_client(rag_config) if rag_enabled else None
 
     service = gdrive_build("drive", "v3", credentials=_tokens["google"])
     results = []
@@ -1252,29 +1517,30 @@ async def analyze_google_drive_files(file_ids: List[str]):
                 _, done = downloader.next_chunk()
             file_bytes = buf.getvalue()
 
-            # Run AI analysis (reuse core logic)
-            b64_data = base64.standard_b64encode(file_bytes).decode("utf-8")
-            msg_type = "document" if mime_type == "application/pdf" else "image"
-            doc_content = {
-                "type": msg_type,
-                "source": {"type": "base64", "media_type": mime_type, "data": b64_data},
-            }
-            client = anthropic.Anthropic(api_key=api_key)
-            response = client.messages.create(
-                model="claude-sonnet-4-6", max_tokens=8192,
-                messages=[{"role": "user", "content": [doc_content, {"type": "text", "text": ANALYSIS_PROMPT}]}],
-            )
-            intelligence = extract_json_from_response(response.content[0].text)
-            intelligence["_meta"] = {
-                "filename": filename, "file_size_kb": round(len(file_bytes) / 1024, 1),
-                "content_type": mime_type, "model": "claude-sonnet-4-6",
-                "source": "google_drive", "drive_file_id": file_id,
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-            }
-            results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
+            # Use the full RAG pipeline if Supabase is configured
+            if rag_enabled and supabase_client:
+                result = index_document_bytes(
+                    client=supabase_client,
+                    rag_config=rag_config,
+                    api_key=api_key,
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    content_type=mime_type,
+                    building_id=None,
+                    source_meta={"source": "google_drive", "drive_file_id": file_id},
+                )
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": result})
+            else:
+                # Fallback: direct Claude analysis without storage
+                intelligence = analyze_file_bytes(file_bytes, filename, mime_type, api_key)
+                intelligence["_meta"]["source"] = "google_drive"
+                intelligence["_meta"]["drive_file_id"] = file_id
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
             logger.info(f"Drive file analyzed: {filename}")
 
+        except HTTPException as e:
+            logger.error(f"Error analyzing Drive file {file_id}: {e.detail}")
+            results.append({"file_id": file_id, "name": filename if 'filename' in dir() else file_id, "status": "error", "error": e.detail})
         except Exception as e:
             logger.error(f"Error analyzing Drive file {file_id}: {e}")
             results.append({"file_id": file_id, "status": "error", "error": str(e)})
@@ -1421,13 +1687,13 @@ async def analyze_onedrive_files(file_ids: List[str]):
 
                 client = anthropic.Anthropic(api_key=api_key)
                 response = client.messages.create(
-                    model="claude-sonnet-4-6", max_tokens=8192,
+                    model="claude-haiku-4-5-20251001", max_tokens=8192,
                     messages=[{"role": "user", "content": [doc_content, {"type": "text", "text": ANALYSIS_PROMPT}]}],
                 )
                 intelligence = extract_json_from_response(response.content[0].text)
                 intelligence["_meta"] = {
                     "filename": filename, "file_size_kb": round(len(file_bytes) / 1024, 1),
-                    "content_type": mime_type, "model": "claude-sonnet-4-6",
+                    "content_type": mime_type, "model": "claude-haiku-4-5-20251001",
                     "source": "onedrive", "onedrive_file_id": file_id,
                 }
                 results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
@@ -1625,6 +1891,90 @@ def ask_document_question(document_id: str, body: DocumentQuestionRequest):
     }
 
 
+@app.post("/documents/{document_id}/ask-stream")
+def ask_document_question_stream(document_id: str, body: DocumentQuestionRequest):
+    """Streaming variant — returns Server-Sent Events with incremental answer tokens."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured.")
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    sb_client = get_supabase_client(rag_config)
+    response = sb_client.table("documents").select("*").eq("id", document_id).limit(1).execute()
+    document = (response.data or [None])[0]
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if document.get("status") != "ready":
+        raise HTTPException(status_code=409, detail="Document is still indexing.")
+
+    question_embedding = generate_embedding(body.question, rag_config)
+    matches = match_document_chunks(
+        sb_client, document_id=document_id,
+        query_embedding=question_embedding,
+        match_count=body.match_count, match_threshold=body.match_threshold,
+    )
+
+    return StreamingResponse(
+        stream_question_answer(question=body.question, matches=matches, api_key=api_key),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/buildings/{building_id}/ask-documents-stream")
+def ask_building_documents_stream(building_id: str, body: BuildingQuestionRequest):
+    """Streaming variant of ask-documents — returns SSE with incremental answer."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured.")
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    sb_client = get_supabase_client(rag_config)
+
+    document_ids = list(dict.fromkeys([doc_id for doc_id in body.document_ids if doc_id]))
+    if not document_ids:
+        building_docs = rag_list_documents(sb_client, building_id=building_id)
+        document_ids = [doc["id"] for doc in building_docs if doc.get("status") == "ready"]
+    if not document_ids:
+        raise HTTPException(status_code=400, detail="No indexed documents for this building.")
+
+    doc_rows = sb_client.table("documents").select("*").in_("id", document_ids).execute()
+    document_map = {row["id"]: row for row in (doc_rows.data or []) if row.get("status") == "ready"}
+    if not document_map:
+        raise HTTPException(status_code=400, detail="No ready documents found.")
+    document_map = filter_documents_for_question(body.question, document_map)
+
+    query_embedding = generate_embedding(body.question, rag_config)
+    matches: list[dict[str, Any]] = []
+    per_doc_limit = max(2, min(4, body.match_count))
+    for doc_id, doc_row in document_map.items():
+        doc_matches = match_document_chunks(
+            sb_client, document_id=doc_id,
+            query_embedding=query_embedding,
+            match_count=per_doc_limit, match_threshold=body.match_threshold,
+        )
+        for match in doc_matches:
+            match["source"] = doc_row.get("filename")
+        matches.extend(doc_matches)
+    matches.sort(key=lambda item: item.get("similarity", 0), reverse=True)
+    matches = matches[:body.match_count]
+
+    prompt_prefix = (
+        "You answer questions about uploaded building documents using only the supplied retrieved context.\n\n"
+        "Rules:\n- Use only the provided document excerpts.\n- If the answer is not supported, say so clearly.\n"
+        "- Be concise and factual.\n- Do not use markdown markers.\n"
+        "- Return ONLY valid JSON: {\"answer\": \"...\", \"citations\": [...], \"confidence\": \"high|medium|low\"}\n"
+    )
+
+    return StreamingResponse(
+        stream_question_answer(question=body.question, matches=matches, api_key=api_key, prompt_prefix=prompt_prefix),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.post("/buildings/{building_id}/ask-deferred")
 def ask_building_deferred_question(building_id: str, body: BuildingQuestionRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -1654,19 +2004,26 @@ def ask_building_deferred_question(building_id: str, body: BuildingQuestionReque
                     document_map[row["id"]] = row
 
         if document_map:
+            from concurrent.futures import ThreadPoolExecutor
             query_embedding = generate_embedding(body.question, rag_config)
             per_doc_limit = max(2, min(4, body.match_count))
-            for doc_id, doc_row in document_map.items():
-                doc_matches = match_document_chunks(
-                    client,
-                    document_id=doc_id,
+
+            def _match_one_doc(doc_id_and_row):
+                d_id, d_row = doc_id_and_row
+                d_matches = match_document_chunks(
+                    client, document_id=d_id,
                     query_embedding=query_embedding,
                     match_count=per_doc_limit,
                     match_threshold=body.match_threshold,
                 )
-                for match in doc_matches:
-                    match["source"] = doc_row.get("filename")
-                matches.extend(doc_matches)
+                for m in d_matches:
+                    m["source"] = d_row.get("filename")
+                return d_matches
+
+            with ThreadPoolExecutor(max_workers=min(6, len(document_map))) as pool:
+                all_match_lists = list(pool.map(_match_one_doc, document_map.items()))
+            for match_list in all_match_lists:
+                matches.extend(match_list)
 
             matches.sort(key=lambda item: item.get("similarity", 0), reverse=True)
             matches = matches[: body.match_count]
@@ -1725,20 +2082,27 @@ def ask_building_documents_question(building_id: str, body: BuildingQuestionRequ
         raise HTTPException(status_code=400, detail="No ready documents were found for this question.")
     document_map = filter_documents_for_question(body.question, document_map)
 
+    from concurrent.futures import ThreadPoolExecutor
     query_embedding = generate_embedding(body.question, rag_config)
     matches: list[dict[str, Any]] = []
     per_doc_limit = max(2, min(4, body.match_count))
-    for doc_id, doc_row in document_map.items():
-        doc_matches = match_document_chunks(
-            client,
-            document_id=doc_id,
+
+    def _match_one(doc_id_and_row):
+        d_id, d_row = doc_id_and_row
+        d_matches = match_document_chunks(
+            client, document_id=d_id,
             query_embedding=query_embedding,
             match_count=per_doc_limit,
             match_threshold=body.match_threshold,
         )
-        for match in doc_matches:
-            match["source"] = doc_row.get("filename")
-        matches.extend(doc_matches)
+        for m in d_matches:
+            m["source"] = d_row.get("filename")
+        return d_matches
+
+    with ThreadPoolExecutor(max_workers=min(6, len(document_map))) as pool:
+        all_match_lists = list(pool.map(_match_one, document_map.items()))
+    for match_list in all_match_lists:
+        matches.extend(match_list)
 
     matches.sort(key=lambda item: item.get("similarity", 0), reverse=True)
     matches = matches[: body.match_count]
