@@ -1073,28 +1073,62 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <div class="upload-right">
         <div id="uploadInsights"></div>
         <div class="upload-zone-wrap">
-          <!-- Cloud Import Section - Primary -->
-          <div style="margin-bottom:16px;border:1px solid #c7d2fe;border-radius:14px;padding:16px;background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%)">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-              <span style="font-size:20px">☁️</span>
-              <div>
-                <div style="font-size:14px;font-weight:700;color:#3730a3">Import from Google Drive or OneDrive</div>
-                <div style="font-size:12px;color:#6366f1">Paste a shared link to a file or folder — all PDFs will be imported automatically</div>
+          <!-- Cloud Import Section - Modern Cards -->
+          <div style="margin-bottom:20px">
+            <div style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+              Connect Cloud Sources
+            </div>
+
+            <!-- Google Drive + Sheets Cards Row -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px" id="cloudSourceCards">
+              <!-- Google Drive Card -->
+              <div id="gdriveCard" onclick="handleCloudCardClick('gdrive')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:16px 18px;background:#fff;cursor:pointer;transition:all .2s;position:relative;overflow:hidden" onmouseover="this.style.borderColor='#818cf8';this.style.boxShadow='0 4px 16px rgba(99,102,241,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+                  <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#4285F4 0%,#34A853 50%,#FBBC05 100%);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M7.71 3.5L1.15 15l2.84 4.92h6.56L4 10.08 7.71 3.5zM22.85 15L16.29 3.5H9.71L16.29 15h6.56zM14.57 16.5H1.71L4.55 21.5h13.12l-3.1-5z"/></svg>
+                  </div>
+                  <div>
+                    <div style="font-size:14px;font-weight:700;color:#1e1b4b">Google Drive</div>
+                    <div style="font-size:11px;color:#6b7280">PDFs, images, floor plans</div>
+                  </div>
+                </div>
+                <div id="gdriveCardStatus" style="font-size:11px;padding:6px 10px;border-radius:8px;background:#f5f3ff;color:#6366f1;text-align:center">Click to connect</div>
+              </div>
+
+              <!-- Google Sheets Card -->
+              <div id="gsheetsCard" onclick="handleCloudCardClick('gsheets')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:16px 18px;background:#fff;cursor:pointer;transition:all .2s;position:relative;overflow:hidden" onmouseover="this.style.borderColor='#34d399';this.style.boxShadow='0 4px 16px rgba(16,185,129,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+                  <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0F9D58 0%,#34A853 100%);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="white" stroke-width="1.5"/><line x1="3" y1="9" x2="21" y2="9" stroke="white" stroke-width="1.5"/><line x1="3" y1="15" x2="21" y2="15" stroke="white" stroke-width="1.5"/><line x1="9" y1="3" x2="9" y2="21" stroke="white" stroke-width="1.5"/></svg>
+                  </div>
+                  <div>
+                    <div style="font-size:14px;font-weight:700;color:#1e1b4b">Google Sheets</div>
+                    <div style="font-size:11px;color:#6b7280">Rent rolls, budgets, data</div>
+                  </div>
+                </div>
+                <div id="gsheetsCardStatus" style="font-size:11px;padding:6px 10px;border-radius:8px;background:#f0fdf4;color:#059669;text-align:center">Click to connect</div>
               </div>
             </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-              <input type="text" id="sharedLinkInput" placeholder="Paste Google Drive or OneDrive link here (file or folder)" style="flex:1;min-width:280px;border:1px solid #a5b4fc;border-radius:10px;padding:12px 14px;font:inherit;background:#fff">
-              <button class="btn btn-primary" id="importLinkBtn" onclick="importSharedLinks()" style="white-space:nowrap">
-                <span id="importLinkBtnText">Import Link</span>
-              </button>
+
+            <!-- Shared Link Input (collapsed by default, expands on click) -->
+            <div id="sharedLinkSection" style="margin-bottom:14px">
+              <div onclick="toggleSharedLinkInput()" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1.5px dashed #d1d5db;border-radius:12px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='#a5b4fc';this.style.background='#fafafe'" onmouseout="this.style.borderColor='#d1d5db';this.style.background='transparent'" id="sharedLinkToggle">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <span style="font-size:12px;font-weight:600;color:#4f46e5">Paste a shared link instead</span>
+                <span style="font-size:10px;color:#9ca3af;margin-left:auto" id="sharedLinkArrow">▼</span>
+              </div>
+              <div id="sharedLinkExpanded" style="display:none;margin-top:10px;padding:14px;border:1px solid #e0e7ff;border-radius:12px;background:#fafafe">
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+                  <input type="text" id="sharedLinkInput" placeholder="https://drive.google.com/... or https://docs.google.com/spreadsheets/..." style="flex:1;min-width:260px;border:1px solid #c7d2fe;border-radius:10px;padding:11px 14px;font:inherit;background:#fff;font-size:13px;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='#818cf8'" onblur="this.style.borderColor='#c7d2fe'">
+                  <button class="btn btn-primary" id="importLinkBtn" onclick="importSharedLinks()" style="white-space:nowrap;border-radius:10px">
+                    <span id="importLinkBtnText">Import</span>
+                  </button>
+                </div>
+                <div style="font-size:10px;color:#9ca3af">Works with Google Drive files, folders, and OneDrive shared links</div>
+                <div id="importLinkStatus" style="margin-top:8px;display:none"></div>
+              </div>
             </div>
-            <div style="font-size:11px;color:#6366f1">
-              <strong>Examples:</strong> 
-              <code style="background:#fff;padding:2px 6px;border-radius:4px;margin:0 4px">https://drive.google.com/drive/folders/...</code> or
-              <code style="background:#fff;padding:2px 6px;border-radius:4px;margin:0 4px">https://drive.google.com/file/d/...</code> or
-              <code style="background:#fff;padding:2px 6px;border-radius:4px;margin:0 4px">https://1drv.ms/...</code>
-            </div>
-            <div id="importLinkStatus" style="margin-top:10px;display:none"></div>
           </div>
 
           <!-- Divider -->
@@ -1113,15 +1147,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
             <div class="dz-types">PDF, PNG, JPG — PCAs, leases, floor plans, specs, O&amp;M manuals, inspection reports</div>
           </div>
 
-          <!-- OAuth buttons (hidden when not configured) -->
+          <!-- Legacy OAuth buttons (hidden - replaced by cloud cards above) -->
           <div id="integrationsBar" style="display:none;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap">
             <span style="font-size:12px;font-weight:600;color:#6b7280">Connected accounts:</span>
-            <button class="integration-btn" id="btnGdrive" onclick="connectGoogleDrive()">
-              <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" width="14" height="14" onerror="this.style.display='none'"> Google Drive
-            </button>
-            <button class="integration-btn" id="btnOnedrive" onclick="connectOneDrive()">
-              <img src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Microsoft_Office_OneDrive_%282019%E2%80%93present%29.svg" width="14" height="14" onerror="this.style.display='none'"> OneDrive
-            </button>
+            <button class="integration-btn" id="btnGdrive" onclick="connectGoogleDrive()">Google Drive</button>
+            <button class="integration-btn" id="btnOnedrive" onclick="connectOneDrive()">OneDrive</button>
           </div>
           <!-- Processing queue -->
           <div id="processingQueue" style="display:none;margin-top:12px"></div>
@@ -5559,6 +5589,8 @@ function maybeShowEquipmentModal(docEntry) {
 }
 
 // ─── INTEGRATIONS ─────────────────────────────────────────────
+let _googleConnected = false;
+
 async function checkIntegrationStatus() {
   try {
     const res = await fetch(CONFIG.BACKEND_URL + '/integrations/status');
@@ -5572,23 +5604,88 @@ async function checkIntegrationStatus() {
     const oConfigured = status.onedrive?.client_configured;
     const gConnected = status.google_drive?.connected;
     const oConnected = status.onedrive?.connected;
+    _googleConnected = gConnected;
 
     if (bar) {
       bar.style.display = (gConnected || oConnected) ? 'flex' : 'none';
     }
     if (gbtn) {
       gbtn.style.display = gConfigured ? '' : 'none';
-      gbtn.textContent = gConnected ? '✓ Google Drive' : '📁 Google Drive';
+      gbtn.textContent = gConnected ? '✓ Google Drive' : 'Google Drive';
       gbtn.className = 'integration-btn' + (gConnected ? ' connected' : '');
       gbtn.onclick = gConnected ? showGDriveModal : connectGoogleDrive;
     }
     if (obtn) {
       obtn.style.display = oConfigured ? '' : 'none';
-      obtn.textContent = oConnected ? '✓ OneDrive' : '📂 OneDrive';
+      obtn.textContent = oConnected ? '✓ OneDrive' : 'OneDrive';
       obtn.className = 'integration-btn' + (oConnected ? ' connected' : '');
       obtn.onclick = oConnected ? showOneDriveModal : connectOneDrive;
     }
+
+    // Update cloud source cards
+    updateCloudCards(gConnected, gConfigured);
   } catch(_) {}
+}
+
+function updateCloudCards(gConnected, gConfigured) {
+  const driveStatus = document.getElementById('gdriveCardStatus');
+  const sheetsStatus = document.getElementById('gsheetsCardStatus');
+  const driveCard = document.getElementById('gdriveCard');
+  const sheetsCard = document.getElementById('gsheetsCard');
+
+  if (driveStatus) {
+    if (gConnected) {
+      driveStatus.textContent = '✓ Connected — Browse Files';
+      driveStatus.style.background = '#ecfdf5';
+      driveStatus.style.color = '#059669';
+      if (driveCard) driveCard.style.borderColor = '#6ee7b7';
+    } else if (gConfigured) {
+      driveStatus.textContent = 'Click to connect';
+      driveStatus.style.background = '#f5f3ff';
+      driveStatus.style.color = '#6366f1';
+    } else {
+      driveStatus.textContent = 'Not configured';
+      driveStatus.style.background = '#f9fafb';
+      driveStatus.style.color = '#9ca3af';
+    }
+  }
+  if (sheetsStatus) {
+    if (gConnected) {
+      sheetsStatus.textContent = '✓ Connected — Browse Sheets';
+      sheetsStatus.style.background = '#ecfdf5';
+      sheetsStatus.style.color = '#059669';
+      if (sheetsCard) sheetsCard.style.borderColor = '#6ee7b7';
+    } else if (gConfigured) {
+      sheetsStatus.textContent = 'Click to connect';
+      sheetsStatus.style.background = '#f0fdf4';
+      sheetsStatus.style.color = '#059669';
+    } else {
+      sheetsStatus.textContent = 'Not configured';
+      sheetsStatus.style.background = '#f9fafb';
+      sheetsStatus.style.color = '#9ca3af';
+    }
+  }
+}
+
+function handleCloudCardClick(type) {
+  if (_googleConnected) {
+    if (type === 'gdrive') showGDriveModal();
+    else if (type === 'gsheets') showGSheetsModal();
+  } else {
+    connectGoogleDrive();
+  }
+}
+
+function toggleSharedLinkInput() {
+  const expanded = document.getElementById('sharedLinkExpanded');
+  const arrow = document.getElementById('sharedLinkArrow');
+  if (expanded.style.display === 'none') {
+    expanded.style.display = 'block';
+    if (arrow) arrow.textContent = '▲';
+  } else {
+    expanded.style.display = 'none';
+    if (arrow) arrow.textContent = '▼';
+  }
 }
 
 function connectGoogleDrive() {
@@ -5605,6 +5702,203 @@ function connectOneDrive() {
   const poll = setInterval(() => {
     if (w.closed) { clearInterval(poll); checkIntegrationStatus(); }
   }, 500);
+}
+
+// ─── GOOGLE SHEETS BROWSER ───────────────────────────────────
+async function showGSheetsModal() {
+  const existing = document.getElementById('gsheetsModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'gsheetsModal';
+  modal.className = 'drive-modal-overlay';
+  modal.innerHTML = `
+    <div class="drive-modal">
+      <div class="dm-top" style="border-bottom:2.5px solid #34A853">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0F9D58,#34A853);display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="white" stroke-width="1.5"/><line x1="3" y1="9" x2="21" y2="9" stroke="white" stroke-width="1.5"/><line x1="3" y1="15" x2="21" y2="15" stroke="white" stroke-width="1.5"/><line x1="9" y1="3" x2="9" y2="21" stroke="white" stroke-width="1.5"/></svg>
+          </div>
+          <div>
+            <div style="font-size:16px;font-weight:800;color:#1e1b4b">Google Sheets</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px">Select spreadsheets to analyze for building data</div>
+          </div>
+        </div>
+        <button onclick="document.getElementById('gsheetsModal').remove()" style="position:absolute;right:18px;top:18px;background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af">✕</button>
+      </div>
+      <div style="padding:10px 16px 8px;border-bottom:1px solid #f3f4f6">
+        <input type="text" id="gsSearchInput" placeholder="Search sheets..." style="width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font:inherit;font-size:13px;outline:none" oninput="debounceSheetSearch(this.value)">
+      </div>
+      <div id="gsFilesList" style="flex:1;overflow-y:auto;padding:10px 0">
+        <div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px">Loading sheets…</div>
+      </div>
+      <div class="dm-footer">
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="gsSelectAll" onchange="gsToggleAll(this.checked)">
+          <label for="gsSelectAll" style="font-size:12px;cursor:pointer">Select all</label>
+          <span id="gsSelectedCount" style="font-size:11px;color:#9ca3af;margin-left:8px"></span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="previewSelectedSheet()" id="gsPreviewBtn" disabled style="font-size:11px">Preview</button>
+          <button class="btn btn-primary btn-sm" onclick="importGSheetsSelected()" id="gsImportBtn" disabled>Import & Analyze</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  try {
+    const res = await fetch(CONFIG.BACKEND_URL + '/integrations/google-sheets/files');
+    if (!res.ok) throw new Error('Failed to load');
+    const data = await res.json();
+    window._gsheetsFiles = data.files || [];
+    renderSheetFileList(window._gsheetsFiles);
+  } catch(e) {
+    document.getElementById('gsFilesList').innerHTML = `<div style="text-align:center;padding:20px;color:#dc2626;font-size:13px">Could not load sheets: ${e.message}</div>`;
+  }
+}
+
+let _gsSearchTimer = null;
+function debounceSheetSearch(val) {
+  clearTimeout(_gsSearchTimer);
+  _gsSearchTimer = setTimeout(() => {
+    const filtered = (window._gsheetsFiles || []).filter(f => f.name.toLowerCase().includes(val.toLowerCase()));
+    renderSheetFileList(filtered);
+  }, 250);
+}
+
+function renderSheetFileList(files) {
+  const container = document.getElementById('gsFilesList');
+  if (!files.length) {
+    container.innerHTML = '<div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px">No Google Sheets found in your Drive.</div>';
+    return;
+  }
+
+  container.innerHTML = files.map((f, i) => `
+    <div class="dm-file-item" style="padding:10px 16px;border-bottom:1px solid #f9fafb">
+      <input type="checkbox" id="gs-file-${i}" data-file-id="${f.id}" data-file-name="${(f.name||'').replace(/"/g,'')}" class="gs-file-cb" onchange="updateSheetsFooter()">
+      <div style="flex:1;min-width:0;margin-left:10px">
+        <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1e1b4b">${f.name||'Untitled'}</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:2px">${f.owner ? f.owner + ' · ' : ''}Modified ${f.modified || '—'}</div>
+      </div>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:6px">
+        <span style="font-size:10px;padding:3px 8px;background:#f0fdf4;color:#059669;border-radius:6px;font-weight:600">Sheet</span>
+      </div>
+    </div>
+  `).join('');
+  updateSheetsFooter();
+}
+
+function updateSheetsFooter() {
+  const checked = document.querySelectorAll('.gs-file-cb:checked').length;
+  const countEl = document.getElementById('gsSelectedCount');
+  const importBtn = document.getElementById('gsImportBtn');
+  const previewBtn = document.getElementById('gsPreviewBtn');
+  if (countEl) countEl.textContent = checked ? `${checked} selected` : '';
+  if (importBtn) importBtn.disabled = checked === 0;
+  if (previewBtn) previewBtn.disabled = checked !== 1;
+}
+
+function gsToggleAll(checked) {
+  document.querySelectorAll('.gs-file-cb').forEach(cb => cb.checked = checked);
+  updateSheetsFooter();
+}
+
+async function previewSelectedSheet() {
+  const cb = document.querySelector('.gs-file-cb:checked');
+  if (!cb) return;
+  const fileId = cb.dataset.fileId;
+  const fileName = cb.dataset.fileName;
+
+  const existing = document.getElementById('sheetPreviewOverlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'sheetPreviewOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10001;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;width:min(800px,92vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:15px;font-weight:700;color:#1e1b4b">${fileName}</div>
+        <button onclick="document.getElementById('sheetPreviewOverlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af">✕</button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:16px" id="sheetPreviewBody">
+        <div style="text-align:center;padding:30px;color:#9ca3af;font-size:13px">Loading preview…</div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  try {
+    const res = await fetch(CONFIG.BACKEND_URL + '/integrations/google-sheets/read/' + fileId);
+    if (!res.ok) throw new Error('Failed to load');
+    const data = await res.json();
+    const body = document.getElementById('sheetPreviewBody');
+
+    let html = '';
+    for (const [sheetName, rows] of Object.entries(data.data)) {
+      html += `<div style="font-size:13px;font-weight:700;color:#059669;margin-bottom:8px;margin-top:${html ? '20px' : '0'}">${sheetName} (${rows.length} rows)</div>`;
+      if (!rows.length) { html += '<div style="font-size:12px;color:#9ca3af">Empty sheet</div>'; continue; }
+      html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+      rows.slice(0, 50).forEach((row, ri) => {
+        const tag = ri === 0 ? 'th' : 'td';
+        const bg = ri === 0 ? '#f9fafb' : (ri % 2 === 0 ? '#fff' : '#fafafa');
+        html += '<tr>' + row.map(cell => `<${tag} style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;white-space:nowrap;background:${bg};font-weight:${ri===0?'700':'400'}">${cell ?? ''}</${tag}>`).join('') + '</tr>';
+      });
+      html += '</table></div>';
+      if (rows.length > 50) html += `<div style="font-size:11px;color:#9ca3af;margin-top:6px">Showing 50 of ${rows.length} rows</div>`;
+    }
+    body.innerHTML = html || '<div style="color:#9ca3af;text-align:center;padding:20px">No data found</div>';
+  } catch(e) {
+    document.getElementById('sheetPreviewBody').innerHTML = `<div style="text-align:center;padding:20px;color:#dc2626;font-size:13px">Could not load preview: ${e.message}</div>`;
+  }
+}
+
+async function importGSheetsSelected() {
+  const checkboxes = document.querySelectorAll('.gs-file-cb:checked');
+  if (!checkboxes.length) return;
+  const fileIds = [...checkboxes].map(cb => cb.dataset.fileId);
+  const fileNames = [...checkboxes].map(cb => cb.dataset.fileName);
+
+  const btn = document.getElementById('gsImportBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Analyzing…'; }
+
+  try {
+    const res = await fetch(CONFIG.BACKEND_URL + '/integrations/google-sheets/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fileIds),
+    });
+    if (!res.ok) throw new Error('Analysis failed');
+    const data = await res.json();
+
+    // Close modal
+    const modal = document.getElementById('gsheetsModal');
+    if (modal) modal.remove();
+
+    // Show results notification
+    const analyzed = data.analyzed || 0;
+    const total = fileIds.length;
+    showToast(`Analyzed ${analyzed} of ${total} Google Sheets successfully`, 'success');
+
+    // Refresh document list
+    if (typeof syncIndexedDocuments === 'function') syncIndexedDocuments();
+  } catch(e) {
+    showToast('Error analyzing sheets: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Import & Analyze'; }
+  }
+}
+
+function showToast(message, type) {
+  const existing = document.getElementById('_toast');
+  if (existing) existing.remove();
+  const colors = { success: { bg: '#ecfdf5', border: '#6ee7b7', text: '#065f46' }, error: { bg: '#fef2f2', border: '#fca5a5', text: '#991b1b' } };
+  const c = colors[type] || colors.success;
+  const toast = document.createElement('div');
+  toast.id = '_toast';
+  toast.style.cssText = `position:fixed;top:20px;right:20px;z-index:10002;background:${c.bg};border:1px solid ${c.border};color:${c.text};padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.1);animation:fadeInDown .3s ease`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity .3s'; setTimeout(() => toast.remove(), 300); }, 4000);
 }
 
 // ─── GOOGLE DRIVE BROWSER ─────────────────────────────────────
@@ -5707,7 +6001,7 @@ function renderDriveFileList(containerId, files, source) {
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-size:10px;font-weight:700;color:${scoreColor}">${scoreLabel}</div>
-          <div style="font-size:10px;color:#9ca3af;margin-top:2px">${f.mime_type === 'application/pdf' ? '📄 PDF' : '🖼 Image'}</div>
+          <div style="font-size:10px;color:#9ca3af;margin-top:2px">${f.mime_type === 'application/pdf' ? '📄 PDF' : f.mime_type === 'application/vnd.google-apps.spreadsheet' ? '📊 Sheet' : '🖼 Image'}</div>
         </div>
       </div>`;
   }).join('');

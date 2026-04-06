@@ -1295,6 +1295,7 @@ def clear_errored_documents():
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
 ]
 _base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
 GOOGLE_REDIRECT_URI = f"{_base_url}/auth/google/callback"
@@ -1306,6 +1307,10 @@ BUILDING_DOC_MIME_TYPES = [
     "application/pdf",
     "image/png", "image/jpeg",
 ]
+
+# Google Sheets MIME type (exported as xlsx or read via Sheets API)
+GOOGLE_SHEETS_MIME = "application/vnd.google-apps.spreadsheet"
+GOOGLE_DOCS_MIME = "application/vnd.google-apps.document"
 # Keywords that suggest a building document
 BUILDING_DOC_KEYWORDS = [
     "PCA", "condition assessment", "floor plan", "architectural", "MEP",
@@ -1381,7 +1386,7 @@ def google_auth_callback(code: str, state: str):
     flow.fetch_token(code=code)
     _tokens["google"] = flow.credentials
     logger.info("Google Drive connected successfully")
-    return RedirectResponse("http://localhost:8000/?integration=google_connected")
+    return RedirectResponse(f"{_base_url}/?integration=google_connected")
 
 
 @app.get("/auth/google/disconnect")
@@ -1398,7 +1403,7 @@ def _gdrive_list_files_recursive(service, folder_id: Optional[str] = None, query
     files: list[dict] = []
     # Build query for files in this folder
     q_parts = [
-        "(mimeType='application/pdf' or mimeType='image/png' or mimeType='image/jpeg' or mimeType='application/vnd.google-apps.folder')",
+        "(mimeType='application/pdf' or mimeType='image/png' or mimeType='image/jpeg' or mimeType='application/vnd.google-apps.folder' or mimeType='application/vnd.google-apps.spreadsheet')",
         "trashed=false",
     ]
     if folder_id:
@@ -1427,6 +1432,10 @@ def _gdrive_list_files_recursive(service, folder_id: Optional[str] = None, query
                 for sf in subfolder_files:
                     sf["_folder_path"] = f"{f['name']}/{sf.get('_folder_path', '')}" if sf.get("_folder_path") else f["name"]
                 files.extend(subfolder_files)
+            elif f["mimeType"] == GOOGLE_SHEETS_MIME:
+                # Google Sheets don't have a binary size — mark specially
+                f["size"] = f.get("size", "0")
+                files.append(f)
             else:
                 files.append(f)
 
@@ -1504,18 +1513,32 @@ async def analyze_google_drive_files(file_ids: List[str]):
             filename = meta["name"]
             mime_type = meta["mimeType"]
 
-            if mime_type not in BUILDING_DOC_MIME_TYPES:
+            if mime_type == GOOGLE_SHEETS_MIME:
+                # Export Google Sheet as xlsx
+                request = service.files().export_media(
+                    fileId=file_id,
+                    mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+                buf = io.BytesIO()
+                downloader = MediaIoBaseDownload(buf, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                file_bytes = buf.getvalue()
+                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                filename = filename if filename.endswith(".xlsx") else filename + ".xlsx"
+            elif mime_type not in BUILDING_DOC_MIME_TYPES:
                 results.append({"file_id": file_id, "name": filename, "status": "skipped", "reason": "Unsupported file type"})
                 continue
-
-            # Download file content
-            request = service.files().get_media(fileId=file_id)
-            buf = io.BytesIO()
-            downloader = MediaIoBaseDownload(buf, request)
-            done = False
-            while not done:
-                _, done = downloader.next_chunk()
-            file_bytes = buf.getvalue()
+            else:
+                # Download file content
+                request = service.files().get_media(fileId=file_id)
+                buf = io.BytesIO()
+                downloader = MediaIoBaseDownload(buf, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                file_bytes = buf.getvalue()
 
             # Use the full RAG pipeline if Supabase is configured
             if rag_enabled and supabase_client:
@@ -1543,6 +1566,174 @@ async def analyze_google_drive_files(file_ids: List[str]):
             results.append({"file_id": file_id, "name": filename if 'filename' in dir() else file_id, "status": "error", "error": e.detail})
         except Exception as e:
             logger.error(f"Error analyzing Drive file {file_id}: {e}")
+            results.append({"file_id": file_id, "status": "error", "error": str(e)})
+
+    return {"results": results, "analyzed": sum(1 for r in results if r["status"] == "analyzed")}
+
+
+# ── Google Sheets ─────────────────────────────────────────────
+
+@app.get("/integrations/google-sheets/files")
+def list_google_sheets_files(query: str = ""):
+    """List Google Sheets from the connected Google account."""
+    if "google" not in _tokens:
+        raise HTTPException(401, "Google Drive not connected")
+    try:
+        service = gdrive_build("drive", "v3", credentials=_tokens["google"])
+        q_parts = [
+            f"mimeType='{GOOGLE_SHEETS_MIME}'",
+            "trashed=false",
+        ]
+        if query:
+            q_parts.append(f"name contains '{query}'")
+        q = " and ".join(q_parts)
+
+        all_sheets = []
+        page_token = None
+        while True:
+            results = service.files().list(
+                q=q, pageSize=100,
+                fields="nextPageToken, files(id,name,mimeType,size,modifiedTime,owners,webViewLink)",
+                orderBy="modifiedTime desc",
+                pageToken=page_token,
+            ).execute()
+            all_sheets.extend(results.get("files", []))
+            page_token = results.get("nextPageToken")
+            if not page_token:
+                break
+
+        return {
+            "files": [
+                {
+                    "id": f["id"],
+                    "name": f["name"],
+                    "modified": f.get("modifiedTime", "")[:10],
+                    "web_link": f.get("webViewLink", ""),
+                    "mime_type": GOOGLE_SHEETS_MIME,
+                    "owner": (f.get("owners") or [{}])[0].get("displayName", ""),
+                }
+                for f in all_sheets
+            ],
+            "total": len(all_sheets),
+        }
+    except Exception as e:
+        logger.error(f"Google Sheets list error: {e}")
+        raise HTTPException(500, f"Could not list Google Sheets: {str(e)}")
+
+
+@app.get("/integrations/google-sheets/read/{file_id}")
+def read_google_sheet(file_id: str, sheet_name: Optional[str] = None):
+    """Read the contents of a Google Sheet and return as structured data."""
+    if "google" not in _tokens:
+        raise HTTPException(401, "Google account not connected")
+    try:
+        sheets_service = gdrive_build("sheets", "v4", credentials=_tokens["google"])
+        drive_service = gdrive_build("drive", "v3", credentials=_tokens["google"])
+
+        # Get file metadata
+        meta = drive_service.files().get(fileId=file_id, fields="name").execute()
+        filename = meta["name"]
+
+        # Get spreadsheet info (all sheet names)
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=file_id).execute()
+        sheet_titles = [s["properties"]["title"] for s in spreadsheet.get("sheets", [])]
+
+        # Read the requested sheet or all sheets
+        all_data = {}
+        targets = [sheet_name] if sheet_name and sheet_name in sheet_titles else sheet_titles
+        for title in targets:
+            result = sheets_service.spreadsheets().values().get(
+                spreadsheetId=file_id,
+                range=f"'{title}'",
+            ).execute()
+            rows = result.get("values", [])
+            all_data[title] = rows
+
+        return {
+            "file_id": file_id,
+            "name": filename,
+            "sheets": sheet_titles,
+            "data": all_data,
+            "total_rows": sum(len(rows) for rows in all_data.values()),
+        }
+    except Exception as e:
+        logger.error(f"Google Sheets read error: {e}")
+        raise HTTPException(500, f"Could not read Google Sheet: {str(e)}")
+
+
+@app.post("/integrations/google-sheets/analyze")
+async def analyze_google_sheets(file_ids: List[str]):
+    """Read Google Sheets and analyze with Claude for building intelligence."""
+    if "google" not in _tokens:
+        raise HTTPException(401, "Google account not connected")
+    if not file_ids:
+        raise HTTPException(400, "No file IDs provided")
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    rag_config = load_rag_config()
+    rag_enabled = is_rag_ready(rag_config)
+    supabase_client = get_supabase_client(rag_config) if rag_enabled else None
+
+    sheets_service = gdrive_build("sheets", "v4", credentials=_tokens["google"])
+    drive_service = gdrive_build("drive", "v3", credentials=_tokens["google"])
+    results = []
+
+    for file_id in file_ids[:20]:
+        try:
+            meta = drive_service.files().get(fileId=file_id, fields="name").execute()
+            filename = meta["name"]
+
+            # Get all sheet data
+            spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=file_id).execute()
+            sheet_titles = [s["properties"]["title"] for s in spreadsheet.get("sheets", [])]
+
+            all_text_parts = [f"# Google Sheet: {filename}\n"]
+            for title in sheet_titles:
+                result = sheets_service.spreadsheets().values().get(
+                    spreadsheetId=file_id, range=f"'{title}'",
+                ).execute()
+                rows = result.get("values", [])
+                all_text_parts.append(f"\n## Sheet: {title}\n")
+                for row in rows:
+                    all_text_parts.append(" | ".join(str(cell) for cell in row))
+
+            sheet_text = "\n".join(all_text_parts)
+
+            # Use RAG pipeline if available
+            if rag_enabled and supabase_client:
+                # Convert text to bytes for the RAG pipeline
+                text_bytes = sheet_text.encode("utf-8")
+                result = index_document_bytes(
+                    client=supabase_client,
+                    rag_config=rag_config,
+                    api_key=api_key,
+                    file_bytes=text_bytes,
+                    filename=f"{filename}.txt",
+                    content_type="text/plain",
+                    building_id=None,
+                    source_meta={"source": "google_sheets", "sheet_file_id": file_id},
+                )
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": result})
+            else:
+                # Direct Claude analysis
+                client = anthropic.Anthropic(api_key=api_key)
+                msg = client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=4096,
+                    messages=[{"role": "user", "content": f"Analyze this spreadsheet data for building intelligence. Extract any relevant information about building systems, equipment, maintenance, costs, leases, energy, or space data.\n\n{sheet_text[:30000]}"}],
+                )
+                intelligence = {
+                    "_meta": {"filename": filename, "source": "google_sheets", "sheet_file_id": file_id},
+                    "summary": msg.content[0].text if msg.content else "",
+                }
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
+
+            logger.info(f"Sheet analyzed: {filename}")
+        except Exception as e:
+            logger.error(f"Error analyzing Sheet {file_id}: {e}")
             results.append({"file_id": file_id, "status": "error", "error": str(e)})
 
     return {"results": results, "analyzed": sum(1 for r in results if r["status"] == "analyzed")}
