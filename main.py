@@ -2128,6 +2128,220 @@ async def analyze_onedrive_files(file_ids: List[str]):
     return {"results": results, "analyzed": sum(1 for r in results if r["status"] == "analyzed")}
 
 
+# ── AppFolio Property Manager ─────────────────────────────────
+
+class AppFolioConnectRequest(BaseModel):
+    database: str = Field(..., description="AppFolio database name (the subdomain, e.g. 'acme' for acme.appfolio.com)")
+    client_id: str = Field(..., description="AppFolio API Client ID")
+    client_secret: str = Field(..., description="AppFolio API Client Secret")
+
+_appfolio_config: dict[str, Any] = {}
+
+@app.post("/integrations/appfolio/connect")
+async def appfolio_connect(body: AppFolioConnectRequest):
+    """Store AppFolio credentials and test the connection."""
+    base_url = f"https://{body.database}.appfolio.com"
+    # Test connection by fetching chart of accounts (lightweight)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{base_url}/api/v1/reports/chart_of_accounts.json",
+                auth=(body.client_id, body.client_secret),
+            )
+            if resp.status_code == 401:
+                raise HTTPException(401, "Invalid AppFolio credentials. Check Client ID and Client Secret.")
+            if resp.status_code == 404:
+                raise HTTPException(404, f"AppFolio database '{body.database}' not found. Check the database name.")
+            resp.raise_for_status()
+    except httpx.ConnectError:
+        raise HTTPException(400, f"Cannot connect to {base_url}. Check the database name.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Connection test failed: {str(e)}")
+
+    _appfolio_config.update({
+        "database": body.database,
+        "base_url": base_url,
+        "client_id": body.client_id,
+        "client_secret": body.client_secret,
+        "connected": True,
+    })
+    logger.info("AppFolio connected: %s.appfolio.com", body.database)
+    return {"connected": True, "database": body.database, "message": f"Connected to {body.database}.appfolio.com"}
+
+
+@app.get("/integrations/appfolio/status")
+def appfolio_status():
+    """Check AppFolio connection status."""
+    if _appfolio_config.get("connected"):
+        return {"connected": True, "database": _appfolio_config["database"]}
+    return {"connected": False}
+
+
+def _appfolio_auth():
+    if not _appfolio_config.get("connected"):
+        raise HTTPException(401, "AppFolio not connected. Use /integrations/appfolio/connect first.")
+    return (_appfolio_config["client_id"], _appfolio_config["client_secret"])
+
+
+def _appfolio_url(endpoint: str) -> str:
+    return f"{_appfolio_config['base_url']}/api/v1/reports/{endpoint}.json"
+
+
+@app.get("/integrations/appfolio/properties")
+async def appfolio_properties():
+    """Fetch all properties from AppFolio."""
+    auth = _appfolio_auth()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(_appfolio_url("property_directory"), auth=auth)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", data) if isinstance(data, dict) else data
+            return {"properties": results, "total": len(results) if isinstance(results, list) else 0}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch properties: {str(e)}")
+
+
+@app.get("/integrations/appfolio/work-orders")
+async def appfolio_work_orders(
+    status: Optional[str] = Query(default=None, description="Filter: open, completed, cancelled"),
+    property_id: Optional[str] = Query(default=None),
+):
+    """Fetch work orders (maintenance requests) from AppFolio."""
+    auth = _appfolio_auth()
+    endpoint = "work_order_tasks_completed" if status == "completed" else "work_order_tasks_in_progress"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(_appfolio_url(endpoint), auth=auth)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", data) if isinstance(data, dict) else data
+            if property_id and isinstance(results, list):
+                results = [wo for wo in results if str(wo.get("property_id", "")) == property_id]
+            return {"work_orders": results, "total": len(results) if isinstance(results, list) else 0, "status_filter": status}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch work orders: {str(e)}")
+
+
+@app.get("/integrations/appfolio/tenants")
+async def appfolio_tenants(property_id: Optional[str] = Query(default=None)):
+    """Fetch tenant/occupancy data from AppFolio."""
+    auth = _appfolio_auth()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(_appfolio_url("rent_roll"), auth=auth)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", data) if isinstance(data, dict) else data
+            if property_id and isinstance(results, list):
+                results = [t for t in results if str(t.get("property_id", "")) == property_id]
+            return {"tenants": results, "total": len(results) if isinstance(results, list) else 0}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch tenants: {str(e)}")
+
+
+@app.get("/integrations/appfolio/financials")
+async def appfolio_financials(
+    report: str = Query(default="income_statement", description="Report type: income_statement, balance_sheet, cash_flow, general_ledger"),
+    from_date: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
+):
+    """Fetch financial reports from AppFolio."""
+    auth = _appfolio_auth()
+    report_map = {
+        "income_statement": "income_statement",
+        "balance_sheet": "balance_sheet",
+        "cash_flow": "cash_flow",
+        "general_ledger": "general_ledger",
+        "aged_payables": "aged_payables_summary",
+        "aged_receivables": "aged_receivables_summary",
+    }
+    endpoint = report_map.get(report, report)
+    try:
+        params = {}
+        if from_date:
+            params["from_date"] = from_date
+        if to_date:
+            params["to_date"] = to_date
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(_appfolio_url(endpoint), auth=auth, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            return {"report": endpoint, "data": data}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch report: {str(e)}")
+
+
+@app.post("/integrations/appfolio/sync-to-building")
+async def appfolio_sync_to_building(building_id: Optional[str] = None):
+    """Pull AppFolio property data and sync into BuildingOS as analyzed documents."""
+    auth = _appfolio_auth()
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    supabase_client = get_supabase_client(rag_config)
+
+    # Fetch key AppFolio data
+    results = []
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Fetch properties
+            props_resp = await client.get(_appfolio_url("property_directory"), auth=auth)
+            props_data = props_resp.json() if props_resp.status_code == 200 else {}
+
+            # Fetch rent roll
+            rent_resp = await client.get(_appfolio_url("rent_roll"), auth=auth)
+            rent_data = rent_resp.json() if rent_resp.status_code == 200 else {}
+
+            # Fetch work orders
+            wo_resp = await client.get(_appfolio_url("work_order_tasks_in_progress"), auth=auth)
+            wo_data = wo_resp.json() if wo_resp.status_code == 200 else {}
+
+        # Combine into a text document for RAG indexing
+        combined_text = "# AppFolio Property Data Import\n\n"
+        combined_text += f"## Properties\n{json.dumps(props_data, indent=2)[:20000]}\n\n"
+        combined_text += f"## Rent Roll (Tenant Occupancy)\n{json.dumps(rent_data, indent=2)[:20000]}\n\n"
+        combined_text += f"## Active Work Orders (Maintenance)\n{json.dumps(wo_data, indent=2)[:20000]}\n\n"
+
+        # Index as a document for Q&A
+        text_bytes = combined_text.encode("utf-8")
+        result = index_document_bytes(
+            client=supabase_client,
+            rag_config=rag_config,
+            api_key=api_key,
+            file_bytes=text_bytes,
+            filename="AppFolio_Property_Data_Import.txt",
+            content_type="text/plain",
+            building_id=building_id,
+            source_meta={"source": "appfolio", "database": _appfolio_config.get("database")},
+        )
+        results.append({"name": "AppFolio Property Data", "status": "analyzed", **result})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("AppFolio sync failed")
+        results.append({"name": "AppFolio sync", "status": "error", "error": str(e)})
+
+    return {
+        "results": results,
+        "synced": sum(1 for r in results if r.get("status") == "analyzed"),
+        "message": "AppFolio data imported into BuildingOS for AI analysis and Q&A."
+    }
+
+
 # ─────────────────────────────────────────────────────────────
 # DOCUMENT ANALYSIS
 # ─────────────────────────────────────────────────────────────
