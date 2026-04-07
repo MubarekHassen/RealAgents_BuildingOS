@@ -1023,6 +1023,74 @@ def index_document_bytes(
         raise HTTPException(status_code=500, detail=f"Document indexing failed: {str(exc)}")
 
 
+def _index_existing_document(
+    *,
+    client,
+    rag_config,
+    api_key: str,
+    document_id: str,
+    file_bytes: bytes,
+    filename: str,
+    content_type: str,
+    source_meta: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Run Claude analysis + RAG indexing on a pre-created document record."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    content_type, _ = ensure_supported_upload(content_type, file_bytes)
+
+    try:
+        analysis = None
+        extracted_text = None
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_analysis = executor.submit(analyze_file_bytes, file_bytes, filename, content_type, api_key)
+            future_text = executor.submit(extract_text_for_rag, file_bytes, content_type, api_key)
+            analysis = future_analysis.result()
+            extracted_text = future_text.result()
+
+        if source_meta:
+            analysis.setdefault("_meta", {}).update(source_meta)
+
+        if not extracted_text or not extracted_text.strip():
+            update_document_record(client, document_id, {"status": "error", "error_message": "No readable text extracted"})
+            return {"status": "error"}
+
+        chunks = chunk_text(extracted_text)
+        if not chunks:
+            update_document_record(client, document_id, {"status": "error", "error_message": "No searchable chunks produced"})
+            return {"status": "error"}
+
+        chunk_texts = [chunk["content"] for chunk in chunks]
+        embeddings = generate_embeddings_batch(chunk_texts, rag_config)
+
+        chunk_rows = []
+        for i, chunk in enumerate(chunks):
+            emb = embeddings[i] if i < len(embeddings) else [0.0] * rag_config.embedding_dimensions
+            chunk_rows.append({
+                "document_id": document_id,
+                "chunk_index": chunk["chunk_index"],
+                "content": chunk["content"],
+                "token_count": chunk["token_count"],
+                "page_refs": chunk["page_refs"],
+                "embedding": emb,
+            })
+        insert_document_chunks(client, chunk_rows)
+        update_document_record(client, document_id, {
+            "status": "ready",
+            "document_summary": analysis.get("document_summary"),
+            "analysis_json": analysis,
+            "extracted_text": extracted_text,
+            "chunk_count": len(chunk_rows),
+            "error_message": None,
+        })
+        return {"status": "ready", "analysis": analysis}
+    except Exception as exc:
+        logger.exception("Indexing failed for document %s (%s)", document_id, filename)
+        update_document_record(client, document_id, {"status": "error", "error_message": str(exc)[:500]})
+        return {"status": "error", "error": str(exc)}
+
+
 def serialize_document_record(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
     if not row:
         return None
@@ -1394,12 +1462,18 @@ def health():
     }
 
 
+_api_key_cache: dict[str, Any] = {"result": None, "tested_key": None, "ts": 0}
+
 @app.get("/test-api-key")
 def test_api_key():
-    """Actually test the Anthropic API key by making a tiny request."""
+    """Test the Anthropic API key (cached for 5 min to avoid repeated Claude calls)."""
     key = os.getenv("ANTHROPIC_API_KEY", "")
     if not key:
         return {"valid": False, "error": "ANTHROPIC_API_KEY not set in .env"}
+    # Return cached result if same key tested within 5 minutes
+    import time as _time
+    if _api_key_cache["tested_key"] == key and (_time.time() - _api_key_cache["ts"]) < 300:
+        return _api_key_cache["result"]
     try:
         client = anthropic.Anthropic(api_key=key)
         response = client.messages.create(
@@ -1407,13 +1481,15 @@ def test_api_key():
             max_tokens=10,
             messages=[{"role": "user", "content": "Say OK"}],
         )
-        return {"valid": True, "response": _get_text(response.content[0]), "key_prefix": key[:20] + "..."}
+        result = {"valid": True, "response": _get_text(response.content[0]), "key_prefix": key[:20] + "..."}
     except anthropic.AuthenticationError as e:
-        return {"valid": False, "error": f"AuthenticationError: {str(e)}", "key_prefix": key[:20] + "..."}
+        result = {"valid": False, "error": f"AuthenticationError: {str(e)}", "key_prefix": key[:20] + "..."}
     except anthropic.PermissionDeniedError as e:
-        return {"valid": False, "error": f"PermissionDenied: {str(e)}", "key_prefix": key[:20] + "..."}
+        result = {"valid": False, "error": f"PermissionDenied: {str(e)}", "key_prefix": key[:20] + "..."}
     except Exception as e:
-        return {"valid": False, "error": f"{type(e).__name__}: {str(e)}", "key_prefix": key[:20] + "..."}
+        result = {"valid": False, "error": f"{type(e).__name__}: {str(e)}", "key_prefix": key[:20] + "..."}
+    _api_key_cache.update({"result": result, "tested_key": key, "ts": _time.time()})
+    return result
 
 
 @app.delete("/documents/clear-errors")
@@ -2132,21 +2208,60 @@ async def import_shared_link(body: SharedLinkImportRequest):
 
     if is_google_drive_folder_url(body.url.strip()):
         items = await list_google_drive_shared_folder_files(body.url.strip())
-        logger.info("Found %d files in shared folder, starting parallel import", len(items))
-        results: list[dict[str, Any]] = []
+        logger.info("Found %d files in shared folder, starting background import", len(items))
 
-        async def process_single_item(item: dict[str, str]) -> dict[str, Any]:
+        # Pre-create document records immediately so frontend can show them
+        pending_docs: list[dict[str, Any]] = []
+        for item in items:
+            doc_id = secrets.token_hex(12)
+            fname = item.get("name") or "shared-document.pdf"
+            try:
+                create_document_record(
+                    client,
+                    document_id=doc_id,
+                    building_id=body.building_id,
+                    filename=fname,
+                    storage_path="",
+                    mime_type="application/pdf",
+                    size_bytes=0,
+                )
+                pending_docs.append({"document_id": doc_id, "item": item, "name": fname})
+            except Exception as exc:
+                logger.warning("Failed to pre-create doc record for %s: %s", fname, exc)
+
+        async def _process_in_background():
+            """Download, analyze, and index all files from the shared folder."""
+            BATCH_SIZE = 5
+            for i in range(0, len(pending_docs), BATCH_SIZE):
+                batch = pending_docs[i:i + BATCH_SIZE]
+                tasks = [_process_single_bg_item(p, client, rag_config, api_key, body) for p in batch]
+                await asyncio.gather(*tasks)
+
+        async def _process_single_bg_item(pending, client, rag_config, api_key, body):
+            doc_id = pending["document_id"]
+            item = pending["item"]
+            fname = pending["name"]
             try:
                 file_bytes, filename, content_type, source_meta = await download_shared_file(item["url"])
-                imported = await asyncio.to_thread(
-                    index_document_bytes,
-                    client=client,
-                    rag_config=rag_config,
-                    api_key=api_key,
-                    file_bytes=file_bytes,
+                # Upload to storage
+                storage_path = await asyncio.to_thread(
+                    upload_file_to_storage, client, rag_config,
+                    document_id=doc_id, filename=fname,
+                    file_bytes=file_bytes, content_type=content_type,
+                )
+                # Update the record with real metadata
+                update_document_record(client, doc_id, {
+                    "storage_path": storage_path,
+                    "mime_type": content_type,
+                    "size_bytes": len(file_bytes),
+                })
+                # Run analysis + RAG indexing
+                result = await asyncio.to_thread(
+                    _index_existing_document,
+                    client=client, rag_config=rag_config, api_key=api_key,
+                    document_id=doc_id, file_bytes=file_bytes,
                     filename=item.get("name") or filename,
                     content_type=content_type,
-                    building_id=body.building_id,
                     source_meta={
                         **source_meta,
                         "source": "google_drive_folder_link",
@@ -2154,25 +2269,28 @@ async def import_shared_link(body: SharedLinkImportRequest):
                         "folder_item_url": item["url"],
                     },
                 )
-                return {"name": item.get("name"), "status": "analyzed", **imported}
-            except HTTPException as exc:
-                return {"name": item.get("name"), "status": "error", "error": exc.detail}
+                logger.info("Background import done: %s -> %s", fname, result.get("status", "?"))
             except Exception as exc:
-                logger.exception("Folder shared-link import failed for %s", item.get("name"))
-                return {"name": item.get("name"), "status": "error", "error": str(exc)}
+                logger.exception("Background import failed for %s", fname)
+                try:
+                    update_document_record(client, doc_id, {"status": "error", "error_message": str(exc)[:500]})
+                except Exception:
+                    pass
 
-        # Process ALL files in parallel (Haiku handles concurrency well)
-        BATCH_SIZE = 5
-        for i in range(0, len(items), BATCH_SIZE):
-            batch = items[i:i + BATCH_SIZE]
-            batch_results = await asyncio.gather(*[process_single_item(item) for item in batch])
-            results.extend(batch_results)
+        # Fire background processing and return immediately
+        asyncio.create_task(_process_in_background())
 
         return {
             "batch": True,
+            "async": True,
             "folder_url": body.url.strip(),
-            "results": results,
-            "imported": sum(1 for item in results if item.get("status") == "analyzed"),
+            "results": [
+                {"name": p["name"], "status": "processing", "document": {"id": p["document_id"], "filename": p["name"], "status": "processing"}}
+                for p in pending_docs
+            ],
+            "total": len(pending_docs),
+            "imported": 0,
+            "message": f"Importing {len(pending_docs)} files in the background. Documents will appear as they finish processing.",
         }
 
     file_bytes, filename, content_type, source_meta = await download_shared_file(body.url.strip())

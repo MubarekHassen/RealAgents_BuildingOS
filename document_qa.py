@@ -145,7 +145,9 @@ def update_document_record(client: Client, document_id: str, updates: dict[str, 
 
 
 def list_documents(client: Client, building_id: Optional[str] = None) -> list[dict[str, Any]]:
-    query = client.table("documents").select("*").order("created_at", desc=True)
+    # Only select columns needed for listing (skip heavy analysis_json and extracted_text)
+    cols = "id,building_id,filename,mime_type,size_bytes,status,chunk_count,document_summary,error_message,created_at,updated_at"
+    query = client.table("documents").select(cols).order("created_at", desc=True)
     if building_id:
         query = query.eq("building_id", building_id)
     response = query.execute()

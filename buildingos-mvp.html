@@ -3000,7 +3000,10 @@ function importSharedLinks() {
       if (btnText) btnText.textContent = 'Import Link';
       const lastItem = fileQueue[fileQueue.length - 1] || queueResults[queueResults.length - 1];
       const successCount = queueResults.filter(r => r && r.status === 'analyzed').length;
-      if (successCount > 0) {
+      const asyncCount = analyzedDocs.filter(d => d.status === 'analyzing').length;
+      if (asyncCount > 0) {
+        // Async import in progress — don't override the polling status message
+      } else if (successCount > 0) {
         setImportLinkStatus('success', `✓ Successfully imported ${successCount} document${successCount !== 1 ? 's' : ''}! They are now imported and analyzed.`);
       } else if (lastItem?.status === 'error') {
         setImportLinkStatus('error', `Import failed. Make sure the link is publicly shared.`);
@@ -3178,11 +3181,12 @@ async function processSharedLink(queueItem) {
     const payload = await res.json();
     if (payload.batch) {
       analyzedDocs = analyzedDocs.filter(d => d !== docEntry);
+      const isAsync = payload.async === true;
       const batchEntries = (payload.results || []).map((item, index) => ({
         id: Date.now() + index,
         name: item.document?.filename || item.name || `Imported file ${index + 1}`,
-        status: item.status === 'analyzed' ? 'analyzed' : 'error',
-        qaStatus: item.document?.status || (item.status === 'analyzed' ? 'ready' : 'error'),
+        status: item.status === 'analyzed' ? 'analyzed' : (isAsync && item.status === 'processing' ? 'analyzing' : 'error'),
+        qaStatus: item.document?.status || (item.status === 'analyzed' ? 'ready' : (isAsync ? 'processing' : 'error')),
         documentId: item.document?.id || null,
         qaMatches: [],
         qaAnswer: null,
@@ -3193,13 +3197,18 @@ async function processSharedLink(queueItem) {
         errorMsg: item.error || null
       }));
       analyzedDocs.unshift(...batchEntries.reverse());
-      queueItem.status = payload.imported ? 'done' : 'error';
-      queueItem.elapsed = `${payload.imported || 0} imported`;
+      queueItem.status = isAsync ? 'done' : (payload.imported ? 'done' : 'error');
+      queueItem.elapsed = isAsync ? `${payload.total || batchEntries.length} importing...` : `${payload.imported || 0} imported`;
       mergeAllData();
       renderDocLibrary();
       updateSidebar();
       renderDashboard();
       renderQueue();
+      // For async imports, poll for completion
+      if (isAsync) {
+        _pollAsyncImport(batchEntries);
+        setImportLinkStatus('info', `⏳ ${payload.total || batchEntries.length} files importing in background. They'll appear as they finish.`);
+      }
       return batchEntries.filter(item => item.status === 'analyzed');
     }
     docEntry.name = payload.document?.filename || docEntry.name;
@@ -3233,6 +3242,65 @@ async function processSharedLink(queueItem) {
     mergeAIIntoFullProfile(docEntry.data.building_profile);
   }
   return docEntry;
+}
+
+// Poll for async import completion (background Google Drive folder imports)
+async function _pollAsyncImport(entries) {
+  const pendingIds = entries.filter(e => e.documentId && e.status === 'analyzing').map(e => e.documentId);
+  if (!pendingIds.length) return;
+  let remaining = pendingIds.length;
+  const maxPolls = 60; // 5 minutes max
+  for (let poll = 0; poll < maxPolls && remaining > 0; poll++) {
+    await new Promise(r => setTimeout(r, 5000)); // Poll every 5 seconds
+    try {
+      const res = await fetch(CONFIG.BACKEND_URL + `/documents?building_id=${encodeURIComponent(activeBuildingId)}`);
+      if (!res.ok) continue;
+      const payload = await res.json();
+      const docMap = new Map((payload.documents || []).map(d => [d.id, d]));
+      let changed = false;
+      remaining = 0;
+      entries.forEach(entry => {
+        if (!entry.documentId) return;
+        const serverDoc = docMap.get(entry.documentId);
+        if (!serverDoc) return;
+        if (serverDoc.status === 'ready' && entry.status !== 'analyzed') {
+          entry.status = 'analyzed';
+          entry.qaStatus = 'ready';
+          entry.chunkCount = serverDoc.chunk_count || 0;
+          // Find and update in analyzedDocs too
+          const match = analyzedDocs.find(d => d.documentId === entry.documentId);
+          if (match) {
+            match.status = 'analyzed';
+            match.qaStatus = 'ready';
+            match.chunkCount = serverDoc.chunk_count || 0;
+            match.name = serverDoc.filename || match.name;
+          }
+          changed = true;
+        } else if (serverDoc.status === 'error' && entry.status !== 'error') {
+          entry.status = 'error';
+          entry.errorMsg = serverDoc.error_message;
+          const match = analyzedDocs.find(d => d.documentId === entry.documentId);
+          if (match) { match.status = 'error'; match.errorMsg = serverDoc.error_message; }
+          changed = true;
+        } else if (serverDoc.status !== 'ready' && serverDoc.status !== 'error') {
+          remaining++;
+        }
+      });
+      if (changed) {
+        renderDocLibrary();
+        updateSidebar();
+        renderDashboard();
+        if (activeBuildingId) saveDocsForBuilding(activeBuildingId, analyzedDocs);
+        const done = entries.filter(e => e.status === 'analyzed').length;
+        const total = entries.length;
+        if (remaining > 0) {
+          setImportLinkStatus('info', `⏳ ${done}/${total} files imported... ${remaining} still processing.`);
+        } else {
+          setImportLinkStatus('success', `✓ ${done}/${total} files imported successfully!`);
+        }
+      }
+    } catch(_) {}
+  }
 }
 
 // Legacy single-file entry point (kept for compatibility)
