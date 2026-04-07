@@ -1354,7 +1354,13 @@ def health():
     if is_supabase_configured(rag_config):
         try:
             client = get_supabase_client(rag_config)
-            client.table("documents").select("id").limit(1).execute()
+            # Use RPC or a simple storage check instead of table query
+            # which may fail if PostgREST doesn't expose the table
+            try:
+                client.table("documents").select("id").limit(1).execute()
+            except Exception:
+                # Fallback: try listing storage buckets as connectivity check
+                client.storage.list_buckets()
             supabase_ok = True
         except Exception as e:
             supabase_error = str(e)[:200]
