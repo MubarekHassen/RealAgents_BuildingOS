@@ -1438,7 +1438,6 @@ def google_auth_start():
         raise HTTPException(400, "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not set in .env")
 
     state = secrets.token_urlsafe(16)
-    _oauth_states[state] = "google"
     client_config = {
         "web": {
             "client_id": client_id,
@@ -1451,6 +1450,8 @@ def google_auth_start():
     flow = GoogleFlow.from_client_config(client_config, scopes=GOOGLE_SCOPES, state=state)
     flow.redirect_uri = GOOGLE_REDIRECT_URI
     auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+    # Store the PKCE code_verifier so the callback can use it for token exchange
+    _oauth_states[state] = {"provider": "google", "code_verifier": flow.code_verifier}
     return RedirectResponse(auth_url)
 
 
@@ -1465,7 +1466,8 @@ def google_auth_callback(code: Optional[str] = None, state: Optional[str] = None
         raise HTTPException(400, "Missing code or state parameter")
     if state not in _oauth_states:
         raise HTTPException(400, "Invalid OAuth state — possible CSRF attempt")
-    del _oauth_states[state]
+    oauth_data = _oauth_states.pop(state)
+    code_verifier = oauth_data.get("code_verifier") if isinstance(oauth_data, dict) else None
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     client_config = {
@@ -1478,6 +1480,8 @@ def google_auth_callback(code: Optional[str] = None, state: Optional[str] = None
     }
     flow = GoogleFlow.from_client_config(client_config, scopes=GOOGLE_SCOPES)
     flow.redirect_uri = GOOGLE_REDIRECT_URI
+    # Restore the PKCE code_verifier from the original auth request
+    flow.code_verifier = code_verifier
     flow.fetch_token(code=code)
     _tokens["google"] = flow.credentials
     logger.info("Google Drive connected successfully")
