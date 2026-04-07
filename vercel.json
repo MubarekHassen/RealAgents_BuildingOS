@@ -4,9 +4,9 @@
   "framework": null,
   "redirects": [
     {
-      "source": "/",
-      "destination": "/buildingos-mvp.html",
-      "permanent": false
+      "source": "/(.*)",
+      "destination": "https://realagentsbuildingos-production-81ad.up.railway.app/$1",
+      "permanent": true
     }
   ]
 }
