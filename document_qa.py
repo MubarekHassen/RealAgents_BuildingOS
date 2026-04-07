@@ -256,7 +256,11 @@ def extract_text_with_claude(file_bytes: bytes, content_type: str, api_key: str)
             }
         ],
     )
-    parts = [block.text for block in response.content if getattr(block, "type", None) == "text"]
+    parts = [
+        (block.get("text", "") if isinstance(block, dict) else getattr(block, "text", ""))
+        for block in response.content
+        if (block.get("type") if isinstance(block, dict) else getattr(block, "type", None)) == "text"
+    ]
     return normalize_text("\n".join(parts))
 
 
