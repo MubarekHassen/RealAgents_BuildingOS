@@ -2364,7 +2364,17 @@ def get_document_status(document_id: str):
     row = (response.data or [None])[0]
     if not row:
         raise HTTPException(status_code=404, detail="Document not found.")
-    return {"document": serialize_document_record(row)}
+    doc = serialize_document_record(row)
+    # Include analysis_json for detail view
+    analysis = row.get("analysis_json")
+    if analysis:
+        if isinstance(analysis, str):
+            try:
+                analysis = json.loads(analysis)
+            except Exception:
+                pass
+        doc["analysis_json"] = analysis
+    return {"document": doc}
 
 
 @app.delete("/documents/{document_id}", dependencies=[Depends(verify_api_key)])

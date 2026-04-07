@@ -4410,7 +4410,7 @@ function removeDocTag(docIdx, tag) {
   renderDocDetail(doc);
   renderDocLibrary();
 }
-function selectDoc(i) {
+async function selectDoc(i) {
   currentDocIndex = i;
   renderDocLibrary();
   const doc = analyzedDocs[i];
@@ -4419,6 +4419,33 @@ function selectDoc(i) {
   document.querySelector('.upload-zone-wrap').style.display = 'none';
   const chatWrap = document.getElementById('uploadChatPanelWrap');
   if (chatWrap) chatWrap.style.display = 'none';
+
+  // If doc.data is missing but we have a documentId, fetch analysis from backend
+  if (!doc.data && doc.documentId && backendOnline) {
+    document.getElementById('docDetail').style.display = 'flex';
+    document.getElementById('docDetailEmpty').style.display = 'none';
+    document.getElementById('detailTitle').textContent = doc.name;
+    document.getElementById('detailBadges').innerHTML = '<span class="badge-sm" style="background:#eef2ff;color:#6366f1">Loading analysis…</span>';
+    try {
+      const res = await fetch(CONFIG.BACKEND_URL + `/documents/${encodeURIComponent(doc.documentId)}/status`);
+      if (res.ok) {
+        const payload = await res.json();
+        const serverDoc = payload.document || {};
+        if (serverDoc.analysis_json) {
+          doc.data = serverDoc.analysis_json;
+          doc.data.document_summary = doc.data.document_summary || serverDoc.document_summary;
+        } else if (serverDoc.document_summary) {
+          // Build minimal data object from summary
+          doc.data = { document_type: 'general', document_summary: serverDoc.document_summary, missing_data: [], building_profile: {}, deferred_maintenance: { items: [] }, assets: { items: [] }, capital: { items: [] }, energy: { opportunities: [] }, compliance: { flags: [] }, space: {} };
+        }
+        if (doc.data) {
+          saveDocsForBuilding(activeBuildingId, analyzedDocs);
+          renderDocLibrary();
+        }
+      }
+    } catch(e) { console.warn('Failed to fetch doc analysis:', e); }
+  }
+
   document.getElementById('docDetail').style.display = doc?.data ? 'flex' : 'none';
   document.getElementById('docDetailEmpty').style.display = doc?.data ? 'none' : '';
   if (doc?.data) renderDocDetail(doc);
