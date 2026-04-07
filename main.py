@@ -560,7 +560,7 @@ async def download_shared_file(url: str) -> tuple[bytes, str, str, dict[str, Any
     headers = {"User-Agent": "BuildingOS/1.0"}
     last_status: Optional[int] = None
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=90.0) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=45.0) as client:
         for candidate in candidates:
             response = await client.get(candidate, headers=headers)
             last_status = response.status_code
@@ -814,12 +814,10 @@ async def list_google_drive_shared_folder_files(url: str, max_depth: int = 6, _d
     if not folder_id:
         raise HTTPException(status_code=400, detail="Google Drive folder link is missing a folder ID.")
 
-    # Try multiple URL formats to maximise discovery
+    # Try Google Drive API first (fastest), fall back to HTML scraping
     candidates = [
         f"https://drive.google.com/embeddedfolderview?id={folder_id}#list",
         f"https://drive.google.com/drive/folders/{folder_id}?usp=sharing",
-        f"https://drive.google.com/drive/folders/{folder_id}",
-        url,
     ]
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     last_status: Optional[int] = None
@@ -828,64 +826,67 @@ async def list_google_drive_shared_folder_files(url: str, max_depth: int = 6, _d
     seen_file_ids: set[str] = set()
     seen_folder_ids: set[str] = set()
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=90.0) as client:
-        for candidate in candidates:
-            try:
-                response = await client.get(candidate, headers=headers)
-            except Exception:
-                continue
-            last_status = response.status_code
-            if response.status_code >= 400:
-                continue
-            file_entries, subfolder_entries = extract_drive_folder_entries(response.text)
+    # Try Google Drive API first (much faster than scraping)
+    api_files, api_subfolders = await _try_google_drive_api_public_folder(folder_id)
+    for f in api_files:
+        fid = f.get("file_id", f.get("name", ""))
+        if fid not in seen_file_ids:
+            seen_file_ids.add(fid)
+            all_entries.append(f)
+    for sf in api_subfolders:
+        sfid = sf.get("folder_id", sf.get("name", ""))
+        if sfid not in seen_folder_ids:
+            seen_folder_ids.add(sfid)
+            all_subfolders.append(sf)
 
-            # Deduplicate files
-            for f in file_entries:
-                fid = f.get("file_id", f.get("name", ""))
-                if fid not in seen_file_ids:
-                    seen_file_ids.add(fid)
-                    all_entries.append(f)
-
-            # Deduplicate subfolders
-            for sf in subfolder_entries:
-                sfid = sf.get("folder_id", sf.get("name", ""))
-                if sfid not in seen_folder_ids:
-                    seen_folder_ids.add(sfid)
-                    all_subfolders.append(sf)
-
-            # Stop trying candidate URLs once we found content
-            if all_entries or all_subfolders:
-                break
-
-    # If HTML scraping found nothing, try the Google Drive API as fallback
+    # Fall back to HTML scraping only if API found nothing
     if not all_entries and not all_subfolders:
-        logger.info(f"HTML scraping found nothing for folder {folder_id}, trying API fallback")
-        api_files, api_subfolders = await _try_google_drive_api_public_folder(folder_id)
-        for f in api_files:
-            fid = f.get("file_id", f.get("name", ""))
-            if fid not in seen_file_ids:
-                seen_file_ids.add(fid)
-                all_entries.append(f)
-        for sf in api_subfolders:
-            sfid = sf.get("folder_id", sf.get("name", ""))
-            if sfid not in seen_folder_ids:
-                seen_folder_ids.add(sfid)
-                all_subfolders.append(sf)
+        logger.info(f"API found nothing for folder {folder_id}, falling back to HTML scraping")
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+            for candidate in candidates:
+                try:
+                    response = await client.get(candidate, headers=headers)
+                except Exception:
+                    continue
+                last_status = response.status_code
+                if response.status_code >= 400:
+                    continue
+                file_entries, subfolder_entries = extract_drive_folder_entries(response.text)
 
-    # Recurse into ALL discovered subfolders (even if no files at this level)
-    for subfolder in all_subfolders:
-        if len(all_entries) >= 200:
-            break  # Safety cap
-        try:
-            subfolder_files = await list_google_drive_shared_folder_files(
-                subfolder["url"], max_depth=max_depth, _depth=_depth + 1,
-            )
-            # Prefix subfolder name for context
-            for sf in subfolder_files:
-                sf["name"] = f"{subfolder['name']}/{sf['name']}"
-            all_entries.extend(subfolder_files)
-        except Exception as exc:
-            logger.warning("Could not read subfolder %s: %s", subfolder.get("name"), exc)
+                for f in file_entries:
+                    fid = f.get("file_id", f.get("name", ""))
+                    if fid not in seen_file_ids:
+                        seen_file_ids.add(fid)
+                        all_entries.append(f)
+
+                for sf in subfolder_entries:
+                    sfid = sf.get("folder_id", sf.get("name", ""))
+                    if sfid not in seen_folder_ids:
+                        seen_folder_ids.add(sfid)
+                        all_subfolders.append(sf)
+
+                if all_entries or all_subfolders:
+                    break
+
+    # Recurse into ALL discovered subfolders in parallel (much faster)
+    if all_subfolders and len(all_entries) < 200:
+        async def _crawl_subfolder(subfolder):
+            try:
+                subfolder_files = await list_google_drive_shared_folder_files(
+                    subfolder["url"], max_depth=max_depth, _depth=_depth + 1,
+                )
+                for sf in subfolder_files:
+                    sf["name"] = f"{subfolder['name']}/{sf['name']}"
+                return subfolder_files
+            except Exception as exc:
+                logger.warning("Could not read subfolder %s: %s", subfolder.get("name"), exc)
+                return []
+
+        subfolder_results = await asyncio.gather(*[_crawl_subfolder(sf) for sf in all_subfolders])
+        for files in subfolder_results:
+            all_entries.extend(files)
+            if len(all_entries) >= 200:
+                break
 
     if _depth == 0 and not all_entries:
         raise HTTPException(
@@ -2131,8 +2132,9 @@ async def import_shared_link(body: SharedLinkImportRequest):
 
     if is_google_drive_folder_url(body.url.strip()):
         items = await list_google_drive_shared_folder_files(body.url.strip())
+        logger.info("Found %d files in shared folder, starting parallel import", len(items))
         results: list[dict[str, Any]] = []
-        
+
         async def process_single_item(item: dict[str, str]) -> dict[str, Any]:
             try:
                 file_bytes, filename, content_type, source_meta = await download_shared_file(item["url"])
@@ -2158,14 +2160,14 @@ async def import_shared_link(body: SharedLinkImportRequest):
             except Exception as exc:
                 logger.exception("Folder shared-link import failed for %s", item.get("name"))
                 return {"name": item.get("name"), "status": "error", "error": str(exc)}
-        
-        # Process in parallel batches of 3 to respect rate limits
-        BATCH_SIZE = 3
+
+        # Process ALL files in parallel (Haiku handles concurrency well)
+        BATCH_SIZE = 5
         for i in range(0, len(items), BATCH_SIZE):
             batch = items[i:i + BATCH_SIZE]
             batch_results = await asyncio.gather(*[process_single_item(item) for item in batch])
             results.extend(batch_results)
-        
+
         return {
             "batch": True,
             "folder_url": body.url.strip(),
