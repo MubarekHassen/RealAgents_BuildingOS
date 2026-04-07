@@ -1367,8 +1367,16 @@ def health():
             try:
                 client.table("documents").select("id").limit(1).execute()
             except Exception:
-                # Fallback: try listing storage buckets as connectivity check
-                client.storage.list_buckets()
+                # Fallback: use direct HTTP to check Supabase connectivity
+                # (avoid supabase-py storage client bug with resp.text on dicts)
+                sb_url = rag_config.supabase_url
+                sb_key = rag_config.supabase_service_role_key
+                r = httpx.get(
+                    f"{sb_url}/storage/v1/bucket",
+                    headers={"apikey": sb_key, "Authorization": f"Bearer {sb_key}"},
+                    timeout=10,
+                )
+                r.raise_for_status()
             supabase_ok = True
         except Exception as e:
             supabase_error = str(e)[:200]

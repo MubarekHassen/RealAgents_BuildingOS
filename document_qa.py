@@ -89,11 +89,21 @@ def upload_file_to_storage(
     content_type: str,
 ) -> str:
     storage_path = build_storage_path(document_id, filename)
-    client.storage.from_(config.supabase_bucket).upload(
-        storage_path,
-        file_bytes,
-        {"content-type": content_type, "x-upsert": "true"},
+    # Use direct HTTP upload to avoid supabase-py storage client bug
+    # where resp.text fails on dict responses in newer library versions.
+    upload_url = (
+        f"{config.supabase_url}/storage/v1/object/{config.supabase_bucket}/{storage_path}"
     )
+    headers = {
+        "apikey": config.supabase_service_role_key,
+        "Authorization": f"Bearer {config.supabase_service_role_key}",
+        "Content-Type": content_type,
+        "x-upsert": "true",
+    }
+    resp = httpx.post(upload_url, content=file_bytes, headers=headers, timeout=120)
+    if resp.status_code >= 400:
+        logger.error("Storage upload failed (%s): %s", resp.status_code, resp.text[:500])
+        raise RuntimeError(f"Storage upload failed: {resp.status_code} {resp.text[:200]}")
     return storage_path
 
 
@@ -151,7 +161,13 @@ def delete_document(client: Client, config: RAGConfig, document_id: str) -> None
     storage_path = document.get("storage_path")
     if storage_path:
         try:
-            client.storage.from_(config.supabase_bucket).remove([storage_path])
+            # Direct HTTP delete to avoid supabase-py storage client bug
+            del_url = f"{config.supabase_url}/storage/v1/object/{config.supabase_bucket}/{storage_path}"
+            headers = {
+                "apikey": config.supabase_service_role_key,
+                "Authorization": f"Bearer {config.supabase_service_role_key}",
+            }
+            httpx.delete(del_url, headers=headers, timeout=30)
         except Exception as exc:
             logger.warning("Failed to remove storage object %s: %s", storage_path, exc)
 
