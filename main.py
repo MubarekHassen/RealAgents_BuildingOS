@@ -2153,12 +2153,14 @@ async def appfolio_connect(body: AppFolioConnectRequest):
             if resp.status_code == 404:
                 raise HTTPException(404, f"AppFolio database '{body.database}' not found. Check the database name.")
             resp.raise_for_status()
-    except httpx.ConnectError:
+    except (httpx.ConnectError, httpx.ConnectTimeout):
         raise HTTPException(400, f"Cannot connect to {base_url}. Check the database name.")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio returned error {e.response.status_code}")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Connection test failed: {str(e)}")
+        raise HTTPException(400, f"Connection test failed: {str(e)}")
 
     _appfolio_config.update({
         "database": body.database,
