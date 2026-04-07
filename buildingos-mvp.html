@@ -129,10 +129,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 .insight-val{font-size:14px;font-weight:700;color:#111827}
 .insight-meta{font-size:11px;color:#6b7280}
 .upload-zone-wrap{padding:20px 24px;border-bottom:1px solid #e8eaed;flex-shrink:0}
-#dropZone{border:2px dashed #c7d2fe;border-radius:14px;padding:28px;text-align:center;cursor:pointer;transition:all 0.2s ease;background:#fafafe}
+#dropZone{border:2px dashed #c7d2fe;border-radius:14px;padding:16px 20px;text-align:center;cursor:pointer;transition:all 0.2s ease;background:#fafafe}
 #dropZone:hover,#dropZone.drag-over{border-color:#6366f1;background:#eef2ff;box-shadow:0 0 0 4px rgba(99,102,241,0.06)}
-.dz-icon{font-size:30px;margin-bottom:10px}
-.dz-title{font-size:14px;font-weight:700;margin-bottom:4px;color:#1e1b4b}
+.dz-icon{font-size:22px;margin-bottom:6px}
+.dz-title{font-size:13px;font-weight:700;margin-bottom:4px;color:#1e1b4b}
 .dz-sub{font-size:12px;color:#6b7280}
 .dz-types{font-size:11px;color:#9ca3af;margin-top:8px}
 #offlinePanel{padding:16px 22px;display:none}
@@ -544,11 +544,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 .ip-missing-name{font-weight:700;color:#92400e;margin-bottom:2px}
 .ip-missing-sub{color:#b45309}
 .ip-footer{padding:16px 30px;border-top:1px solid #e5e7eb;display:flex;gap:8px;justify-content:flex-end;flex-shrink:0}
-.drive-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px}
+.drive-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.72);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px}
 .dm-file-item input[type=checkbox]{width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:#6366f1}
 
 /* EQUIPMENT CONTEXT MODAL */
-.eq-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9800;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+.eq-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.72);z-index:9800;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
 .eq-modal{background:#fff;border-radius:20px;width:640px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.28)}
 .eq-modal-head{padding:22px 26px 16px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
 .eq-modal-head h2{font-size:17px;font-weight:800;letter-spacing:-0.02em;margin-bottom:3px}
@@ -623,7 +623,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 .eq-mfr-model small{color:#9ca3af;display:block;font-size:11px}
 
 /* BUILDING PROFILE MODAL */
-.bp-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.62);z-index:9900;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto}
+.bp-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.72);z-index:9900;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto}
 .bp-modal{background:#fff;border-radius:20px;width:740px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 28px 90px rgba(0,0,0,0.32)}
 .bp-modal-head{padding:22px 28px 0;flex-shrink:0}
 .bp-modal-head h2{font-size:18px;font-weight:800;letter-spacing:-0.02em;margin-bottom:3px}
@@ -1711,7 +1711,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 const PRODUCTION_BACKEND_URL = 'https://realagentsbuildingos-production-81ad.up.railway.app';
 const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const CONFIG = {
-  BACKEND_URL: IS_LOCAL ? `${window.location.protocol}//${window.location.host}` : PRODUCTION_BACKEND_URL
+  BACKEND_URL: `${window.location.protocol}//${window.location.host}`
 };
 const PIPELINE_STEPS = ['Reading document structure','Identifying document type','Extracting building data','Mapping intelligence categories','Generating insights'];
 
@@ -3173,6 +3173,8 @@ async function processSingleFile(queueItem) {
     showDocumentHighlight(docEntry);
     // Merge any building profile data extracted from this doc
     maybeShowProfileCompletion(docEntry);
+    // Show document summary popup
+    setTimeout(() => showDocSummaryPopup(docEntry), 800);
     // After highlight, prompt for equipment context if assets found
     setTimeout(() => maybeShowEquipmentModal(docEntry), 1200);
   } else {
@@ -3272,6 +3274,8 @@ async function processSharedLink(queueItem) {
   if (fileQueue.length <= 1) {
     showDocumentHighlight(docEntry);
     maybeShowProfileCompletion(docEntry);
+    // Show document summary popup
+    setTimeout(() => showDocSummaryPopup(docEntry), 800);
     setTimeout(() => maybeShowEquipmentModal(docEntry), 1200);
   } else if (docEntry.data?.building_profile) {
     mergeAIIntoFullProfile(docEntry.data.building_profile);
@@ -4225,29 +4229,105 @@ function renderUploadInsights() {
 }
 
 // ─── DOCUMENT LIBRARY ────────────────────────────────────────
+function showDocSummaryPopup(doc) {
+  const existing = document.getElementById('docSummaryPopup');
+  if (existing) existing.remove();
+
+  const summary = doc.data?.document_summary || 'Document analyzed successfully.';
+  const docType = (doc.data?.document_type || 'document').replace(/_/g, ' ');
+  const missing = doc.data?.missing_data || [];
+
+  const missingHtml = missing.length ? `
+    <div style="margin-top:16px">
+      <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Suggested Uploads</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${missing.slice(0, 5).map(m => `<span style="font-size:11px;padding:4px 10px;border-radius:99px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd">${escapeHtml(m.upload_suggestion || m.category || '')}</span>`).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  const popup = document.createElement('div');
+  popup.id = 'docSummaryPopup';
+  popup.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,0.72);animation:fadeIn .2s ease';
+  popup.onclick = (e) => { if (e.target === popup) popup.remove(); };
+  popup.innerHTML = `
+    <div style="background:#fff;border-radius:20px;max-width:560px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,0.28);overflow:hidden;animation:slideUp .25s ease">
+      <div style="padding:24px 28px 0;display:flex;align-items:flex-start;justify-content:space-between">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">${escapeHtml(docType)}</div>
+          <div style="font-size:17px;font-weight:800;color:#111827;letter-spacing:-0.02em">${escapeHtml(doc.name)}</div>
+        </div>
+        <button onclick="this.closest('#docSummaryPopup').remove()" style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:10px;cursor:pointer;font-size:16px;color:#64748b;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+      </div>
+      <div style="padding:20px 28px 28px">
+        <div style="font-size:13px;line-height:1.7;color:#374151;background:#f8fafc;border-radius:12px;padding:16px;border:1px solid #e2e8f0">${escapeHtml(summary)}</div>
+        ${missingHtml}
+        <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end">
+          <button onclick="this.closest('#docSummaryPopup').remove()" style="background:#1e293b;color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer">Got it</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(popup);
+}
+
 function renderDocLibrary() {
   const list = document.getElementById('docLibList');
   document.getElementById('docLibCount').textContent = analyzedDocs.length + ' doc' + (analyzedDocs.length!==1?'s':'');
   renderUploadInsights();
   if (!analyzedDocs.length) { list.innerHTML = '<div style="text-align:center;padding:28px 14px;color:#9ca3af"><div style="font-size:28px;margin-bottom:7px">📁</div><div style="font-size:12px">No documents yet.</div></div>'; return; }
-  list.innerHTML = analyzedDocs.map((d,i) => {
-    const bc = d.status==='analyzed'?'badge-analyzed':d.status==='analyzing'?'badge-analyzing':'badge-error';
-    const bt = d.status==='analyzed'?'Done':d.status==='analyzing'?'…':'Error';
-    const typeLabel = d.data?(d.data.document_type||'').replace(/_/g,' '):'';
-    const qaMeta = d.documentId ? (d.qaStatus === 'ready' ? ' · Analyzed' : ' · Analyzing') : '';
-    const errorMeta = d.status === 'error' && d.errorMsg ? `<div class="doc-card-type" style="color:#dc2626">${escapeHtml(d.errorMsg)}</div>` : '';
-    return `<div class="doc-card${i===currentDocIndex?' selected':''}" onclick="selectDoc(${i})">
-      <div class="doc-card-icon">📄</div>
-      <div class="doc-card-info">
-        <div class="doc-card-name">${d.name}</div>
-        <div class="doc-card-type">${typeLabel}</div>
-        <div class="doc-card-meta">${d.date}${d.elapsed?' · '+d.elapsed:''}${qaMeta}</div>
-        ${errorMeta}
-      </div>
-      <button class="doc-card-delete" onclick="deleteDocumentAt(${i}, event)" title="Remove document">✕</button>
-      <span class="doc-badge ${bc}">${bt}</span>
+
+  // Group by document type
+  const groups = {};
+  analyzedDocs.forEach((d, i) => {
+    const type = d.data?.document_type?.replace(/_/g, ' ') || 'Other';
+    if (!groups[type]) groups[type] = [];
+    groups[type].push({ doc: d, idx: i });
+  });
+
+  const typeColors = {
+    'pca': '#6366f1', 'property condition assessment': '#6366f1',
+    'lease': '#059669', 'rent roll': '#059669',
+    'floor plan': '#0ea5e9', 'architectural': '#0ea5e9',
+    'specification': '#8b5cf6', 'om manual': '#8b5cf6',
+    'inspection': '#f59e0b', 'report': '#f59e0b',
+    'financial': '#ec4899', 'budget': '#ec4899',
+    'general': '#6b7280', 'other': '#6b7280'
+  };
+
+  function getTypeColor(type) {
+    const lower = type.toLowerCase();
+    for (const [key, color] of Object.entries(typeColors)) {
+      if (lower.includes(key)) return color;
+    }
+    return '#6b7280';
+  }
+
+  let html = '';
+  Object.entries(groups).sort((a,b) => b[1].length - a[1].length).forEach(([type, items]) => {
+    const color = getTypeColor(type);
+    html += `<div style="padding:10px 16px 6px;font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.06em;display:flex;align-items:center;gap:6px;border-bottom:1px solid #f3f4f6">
+      <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></span>
+      ${escapeHtml(type)} <span style="color:#9ca3af;font-weight:500">(${items.length})</span>
     </div>`;
-  }).join('');
+    items.forEach(({ doc: d, idx: i }) => {
+      const bc = d.status==='analyzed'?'badge-analyzed':d.status==='analyzing'?'badge-analyzing':'badge-error';
+      const bt = d.status==='analyzed'?'Done':d.status==='analyzing'?'…':'Error';
+      const qaMeta = d.documentId ? (d.qaStatus === 'ready' ? 'Indexed' : 'Indexing…') : '';
+      const errorMeta = d.status === 'error' && d.errorMsg ? `<div style="font-size:10px;color:#dc2626;margin-top:2px">${escapeHtml(d.errorMsg)}</div>` : '';
+      html += `<div class="doc-card${i===currentDocIndex?' selected':''}" onclick="selectDoc(${i})" style="border-left:3px solid ${color}">
+        <div style="width:6px"></div>
+        <div class="doc-card-info">
+          <div class="doc-card-name">${escapeHtml(d.name)}</div>
+          <div class="doc-card-meta">${d.date || ''}${qaMeta ? ' · ' + qaMeta : ''}</div>
+          ${errorMeta}
+        </div>
+        <button class="doc-card-delete" onclick="deleteDocumentAt(${i}, event)" title="Remove document">✕</button>
+        <span class="doc-badge ${bc}">${bt}</span>
+      </div>`;
+    });
+  });
+  list.innerHTML = html;
 }
 
 async function deleteDocumentAt(i, event) {
