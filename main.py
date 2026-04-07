@@ -1455,8 +1455,14 @@ def google_auth_start():
 
 
 @app.get("/auth/google/callback")
-def google_auth_callback(code: str, state: str):
+def google_auth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
     """Handle Google OAuth callback."""
+    # Handle error responses from Google (e.g. user denied access)
+    if error:
+        logger.warning(f"Google OAuth error: {error}")
+        return RedirectResponse(f"{_base_url}/?integration=google_error&reason={error}")
+    if not code or not state:
+        raise HTTPException(400, "Missing code or state parameter")
     if state not in _oauth_states:
         raise HTTPException(400, "Invalid OAuth state — possible CSRF attempt")
     del _oauth_states[state]
