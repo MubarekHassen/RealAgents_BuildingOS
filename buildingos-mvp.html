@@ -1200,8 +1200,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
           <div id="processingQueue" style="display:none;margin-top:12px"></div>
           <div id="offlinePanel" style="display:none">
             <div class="offline-card">
-              <div class="oc-offline-title">⚠ AI Backend Offline</div>
-              <div class="oc-offline-sub">Double-click <strong>start_server.command</strong>, wait for "Uvicorn running on…", then click retry.</div>
+              <div class="oc-offline-title">⚠ Connecting to Server</div>
+              <div class="oc-offline-sub">The server may be waking up — this usually takes a few seconds. Click retry below.</div>
               <button class="retry-btn" onclick="checkBackend()">↻ Check Again</button>
             </div>
           </div>
@@ -2202,30 +2202,41 @@ function closeSourceDrawer() { document.getElementById('sourceDrawer').classList
 async function checkBackend() {
   setBanner('checking', 'Connecting to AI backend…');
   document.getElementById('bannerAction').style.display = 'none';
-  try {
-    const res = await fetch(CONFIG.BACKEND_URL + '/health', { signal: AbortSignal.timeout(4000) });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.api_key_configured) {
-        backendOnline = true;
-        ragReady = !!data.rag_ready;
-        setBanner('online', '● BuildingOS is live');
-        document.getElementById('dropZone').style.display = '';
-        document.getElementById('offlinePanel').style.display = 'none';
-        // Auto-clear old errored documents once on first connect
-        if (!window._errorsCleaned && ragReady) {
-          window._errorsCleaned = true;
-          fetch(CONFIG.BACKEND_URL + '/documents/clear-errors', { method: 'DELETE' })
-            .then(r => r.json()).then(d => { if (d.deleted > 0) { console.log('Cleared', d.deleted, 'old error documents'); loadDocuments(); } })
-            .catch(() => {});
+  // Try with generous timeout first (Railway cold starts can take 10-15s)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const timeout = attempt === 0 ? 15000 : 10000;
+      const res = await fetch(CONFIG.BACKEND_URL + '/health', { signal: AbortSignal.timeout(timeout) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.api_key_configured) {
+          backendOnline = true;
+          ragReady = !!data.rag_ready;
+          setBanner('online', '● BuildingOS is live');
+          document.getElementById('dropZone').style.display = '';
+          document.getElementById('offlinePanel').style.display = 'none';
+          // Auto-clear old errored documents once on first connect
+          if (!window._errorsCleaned && ragReady) {
+            window._errorsCleaned = true;
+            fetch(CONFIG.BACKEND_URL + '/documents/clear-errors', { method: 'DELETE' })
+              .then(r => r.json()).then(d => { if (d.deleted > 0) { console.log('Cleared', d.deleted, 'old error documents'); loadDocuments(); } })
+              .catch(() => {});
+          }
+          return true;
         }
-        return true;
+      }
+    } catch(e) {
+      if (attempt === 0) {
+        setBanner('checking', 'Waking up server… one moment');
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
       }
     }
-  } catch(e) {}
+    break;
+  }
   backendOnline = false;
   ragReady = false;
-  setBanner('offline', '● Backend offline — start server to enable AI analysis');
+  setBanner('offline', '● Backend offline — click retry to reconnect');
   document.getElementById('bannerAction').style.display = '';
   document.getElementById('dropZone').style.display = 'none';
   document.getElementById('offlinePanel').style.display = '';
@@ -7918,6 +7929,8 @@ function initApp() {
   checkAppFolioStatus();
   setInterval(checkBackend, 30000);
   setInterval(checkIntegrationStatus, 10000);
+  // Keep-alive ping every 4 min to prevent Railway from sleeping the service
+  setInterval(() => fetch(CONFIG.BACKEND_URL + '/health', { signal: AbortSignal.timeout(5000) }).catch(() => {}), 240000);
 
   // Handle OAuth redirect params
   const urlParams = new URLSearchParams(window.location.search);
