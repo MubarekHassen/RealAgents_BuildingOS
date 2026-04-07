@@ -33,6 +33,14 @@ from pydantic import BaseModel, Field
 load_dotenv(override=True)
 
 
+# ── Helper: safely extract text from Anthropic content blocks ──
+def _get_text(block) -> str:
+    """Extract text from an Anthropic content block (handles both object and dict)."""
+    if isinstance(block, dict):
+        return block.get("text", "")
+    return getattr(block, "text", "")
+
+
 # ── API Key authentication ──
 API_KEY = os.getenv("BUILDINGOS_API_KEY", "")
 
@@ -99,7 +107,7 @@ app = FastAPI(title="BuildingOS API", version="1.0.0")
 # ── CORS — restrict to known origins in production ──
 ALLOWED_ORIGINS = os.getenv(
     "CORS_ORIGINS",
-    "https://buildos.it,https://www.buildos.it,https://real-agents-building-os.vercel.app,http://localhost:8000,http://localhost:3000,http://127.0.0.1:8000"
+    "https://buildos.it,https://www.buildos.it,https://real-agents-building-os.vercel.app,https://mvp-mvp1.vercel.app,http://localhost:8000,http://localhost:3000,http://127.0.0.1:8000"
 ).split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -427,7 +435,7 @@ def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_
         logger.error("Unexpected error calling Claude: %s: %s", type(exc).__name__, exc)
         raise HTTPException(status_code=500, detail=f"Unexpected error: {type(exc).__name__}: {str(exc)}")
 
-    raw_text = response.content[0].text
+    raw_text = _get_text(response.content[0])
     logger.info("Claude response length: %s chars", len(raw_text))
 
     try:
@@ -1168,7 +1176,7 @@ def answer_question_from_matches(
         max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw_text = response.content[0].text
+    raw_text = _get_text(response.content[0])
     try:
         parsed = extract_json_from_response(raw_text)
     except ValueError:
@@ -1223,7 +1231,7 @@ def answer_building_question(
         max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw_text = response.content[0].text
+    raw_text = _get_text(response.content[0])
     try:
         parsed = extract_json_from_response(raw_text)
     except ValueError:
@@ -1273,7 +1281,7 @@ def answer_documents_question(
         max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw_text = response.content[0].text
+    raw_text = _get_text(response.content[0])
     try:
         parsed = extract_json_from_response(raw_text)
     except ValueError:
@@ -1390,7 +1398,7 @@ def test_api_key():
             max_tokens=10,
             messages=[{"role": "user", "content": "Say OK"}],
         )
-        return {"valid": True, "response": response.content[0].text, "key_prefix": key[:20] + "..."}
+        return {"valid": True, "response": _get_text(response.content[0]), "key_prefix": key[:20] + "..."}
     except anthropic.AuthenticationError as e:
         return {"valid": False, "error": f"AuthenticationError: {str(e)}", "key_prefix": key[:20] + "..."}
     except anthropic.PermissionDeniedError as e:
@@ -1867,7 +1875,7 @@ async def analyze_google_sheets(file_ids: List[str]):
                 )
                 intelligence = {
                     "_meta": {"filename": filename, "source": "google_sheets", "sheet_file_id": file_id},
-                    "summary": msg.content[0].text if msg.content else "",
+                    "summary": _get_text(msg.content[0]) if msg.content else "",
                 }
                 results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
 
@@ -2021,7 +2029,7 @@ async def analyze_onedrive_files(file_ids: List[str]):
                     model="claude-haiku-4-5-20251001", max_tokens=8192,
                     messages=[{"role": "user", "content": [doc_content, {"type": "text", "text": ANALYSIS_PROMPT}]}],
                 )
-                intelligence = extract_json_from_response(response.content[0].text)
+                intelligence = extract_json_from_response(_get_text(response.content[0]))
                 intelligence["_meta"] = {
                     "filename": filename, "file_size_kb": round(len(file_bytes) / 1024, 1),
                     "content_type": mime_type, "model": "claude-haiku-4-5-20251001",
