@@ -1836,7 +1836,18 @@ function saveDocsForBuilding(bid, docs) {
   });
   try { localStorage.setItem('bos_docs_' + bid, JSON.stringify(lite)); } catch(e) { console.warn('Storage limit reached'); }
 }
-function loadDocsForBuilding(bid) { try { return JSON.parse(localStorage.getItem('bos_docs_' + bid)) || []; } catch(e){ return []; } }
+function loadDocsForBuilding(bid) {
+  try {
+    const docs = JSON.parse(localStorage.getItem('bos_docs_' + bid)) || [];
+    // Auto-clear stale error entries from localStorage on load
+    const cleaned = docs.filter(d => d.status !== 'error');
+    if (cleaned.length !== docs.length) {
+      console.log(`Cleared ${docs.length - cleaned.length} stale error entries from local cache`);
+      try { localStorage.setItem('bos_docs_' + bid, JSON.stringify(cleaned)); } catch(e) {}
+    }
+    return cleaned;
+  } catch(e){ return []; }
+}
 
 // ─── Building access / sharing ──────────────────────────────
 // Each building has: owner (userId), access: [{userId, role:'viewer'|'editor'|'admin', grantedBy, grantedAt}]
@@ -2213,14 +2224,24 @@ async function syncIndexedDocuments() {
     analyzedDocs.forEach(doc => {
       const indexed = docsByName.get(doc.name);
       if (!indexed) return;
-      if (doc.documentId !== indexed.id || doc.qaStatus !== indexed.status) {
+      const needsUpdate = doc.documentId !== indexed.id
+        || doc.qaStatus !== indexed.status
+        || (doc.status === 'error' && indexed.status === 'ready');
+      if (needsUpdate) {
         doc.documentId = indexed.id;
         doc.qaStatus = indexed.status;
         doc.chunkCount = indexed.chunk_count || 0;
+        // Clear stale errors if backend shows document is ready
+        if (indexed.status === 'ready') {
+          doc.status = 'analyzed';
+          doc.errorMsg = null;
+          doc.data = doc.data || indexed.analysis_json || null;
+        }
         changed = true;
       }
     });
     if (changed && activeBuildingId) saveDocsForBuilding(activeBuildingId, analyzedDocs);
+    if (changed) renderDocLibrary();
   } catch(_) {}
 }
 
