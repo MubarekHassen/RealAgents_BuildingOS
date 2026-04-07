@@ -1081,7 +1081,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
             </div>
 
             <!-- Cloud Source Cards Row -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px" id="cloudSourceCards">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px" id="cloudSourceCards">
               <!-- Google Drive Card -->
               <div id="gdriveCard" onclick="handleCloudCardClick('gdrive')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px 14px;background:#fff;cursor:pointer;transition:all .2s;position:relative;overflow:hidden" onmouseover="this.style.borderColor='#818cf8';this.style.boxShadow='0 4px 16px rgba(99,102,241,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -1116,6 +1116,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
                   </div>
                 </div>
                 <div id="appfolioCardStatus" style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fffbeb;color:#d97706;text-align:center">Click to connect</div>
+              </div>
+
+              <!-- Yardi Card -->
+              <div id="yardiCard" onclick="handleYardiClick()" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px 14px;background:#fff;cursor:pointer;transition:all .2s;position:relative;overflow:hidden" onmouseover="this.style.borderColor='#6366f1';this.style.boxShadow='0 4px 16px rgba(99,102,241,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#003865,#0067b1);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:11px;font-weight:700;letter-spacing:0.5px">Y</div>
+                  <div>
+                    <div style="font-size:13px;font-weight:700;color:#1e1b4b">Yardi</div>
+                    <div style="font-size:10px;color:#6b7280">Assets, maintenance</div>
+                  </div>
+                </div>
+                <div id="yardiCardStatus" style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0f4ff;color:#003865;text-align:center">Coming soon</div>
               </div>
             </div>
 
@@ -1200,11 +1212,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
         </div>
         <div class="doc-detail" id="docDetail" style="display:none">
           <div class="doc-detail-header">
-            <div class="dd-title" id="detailTitle"></div>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+              <button onclick="closeDocDetail()" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px;color:#64748b;display:flex;align-items:center;justify-content:center;flex-shrink:0" title="Back to upload">←</button>
+              <div class="dd-title" id="detailTitle"></div>
+            </div>
             <div class="dd-badges" id="detailBadges"></div>
+            <div id="detailTags" style="margin-top:8px"></div>
           </div>
           <div class="doc-detail-tabs">
-            <div class="dtab active" onclick="switchTab('highlight',this)">Highlights</div>
+            <div class="dtab active" onclick="switchTab('highlight',this)">Summary</div>
+            <div class="dtab" onclick="switchTab('viewer',this)">View Document</div>
             <div class="dtab" onclick="switchTab('qa',this)">Ask Document</div>
             <div class="dtab" onclick="switchTab('assets',this)">Assets</div>
             <div class="dtab" onclick="switchTab('capital',this)">Capital</div>
@@ -1213,6 +1230,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
           </div>
           <div class="doc-detail-body">
             <div id="dtab-highlight"></div>
+            <div id="dtab-viewer" style="display:none"></div>
             <div id="dtab-qa" style="display:none"></div>
             <div id="dtab-assets" style="display:none"></div>
             <div id="dtab-capital" style="display:none"></div>
@@ -4198,10 +4216,8 @@ function renderUploadInsights() {
   // Count document types
   const typeMap = {};
   analyzedDocs.forEach(d => {
-    if (d.data?.document_type) {
-      const type = d.data.document_type.replace(/_/g, ' ');
-      typeMap[type] = (typeMap[type] || 0) + 1;
-    }
+    const type = (d.data?.document_type || d.tags?.[0] || 'general').replace(/_/g, ' ');
+    typeMap[type] = (typeMap[type] || 0) + 1;
   });
   const typeList = Object.entries(typeMap).map(([t, c]) => `${t} (${c})`).join(', ') || 'None yet';
 
@@ -4320,6 +4336,7 @@ function renderDocLibrary() {
         <div class="doc-card-info">
           <div class="doc-card-name">${escapeHtml(d.name)}</div>
           <div class="doc-card-meta">${d.date || ''}${qaMeta ? ' · ' + qaMeta : ''}</div>
+          ${d.tags && d.tags.length ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${d.tags.map(t => `<span style="font-size:9px;padding:1px 6px;border-radius:99px;background:#eef2ff;color:#4338ca">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
           ${errorMeta}
         </div>
         <button class="doc-card-delete" onclick="deleteDocumentAt(${i}, event)" title="Remove document">✕</button>
@@ -4363,16 +4380,50 @@ async function deleteDocumentAt(i, event) {
     alert(e.message || 'Could not remove document.');
   }
 }
+function addDocTag(docIdx, tag) {
+  const doc = analyzedDocs[docIdx];
+  if (!doc) return;
+  if (!doc.tags) doc.tags = [];
+  if (!doc.tags.includes(tag)) {
+    doc.tags.push(tag);
+    saveDocsForBuilding(activeBuildingId, analyzedDocs);
+    renderDocDetail(doc);
+    renderDocLibrary();
+  }
+}
+function removeDocTag(docIdx, tag) {
+  const doc = analyzedDocs[docIdx];
+  if (!doc || !doc.tags) return;
+  doc.tags = doc.tags.filter(t => t !== tag);
+  saveDocsForBuilding(activeBuildingId, analyzedDocs);
+  renderDocDetail(doc);
+  renderDocLibrary();
+}
 function selectDoc(i) {
   currentDocIndex = i;
   renderDocLibrary();
   const doc = analyzedDocs[i];
+  // Hide upload zone, show detail full-width
+  document.getElementById('uploadInsights').style.display = 'none';
+  document.querySelector('.upload-zone-wrap').style.display = 'none';
+  const chatWrap = document.getElementById('uploadChatPanelWrap');
+  if (chatWrap) chatWrap.style.display = 'none';
   document.getElementById('docDetail').style.display = doc?.data ? 'flex' : 'none';
   document.getElementById('docDetailEmpty').style.display = doc?.data ? 'none' : '';
   if (doc?.data) renderDocDetail(doc);
 }
+function closeDocDetail() {
+  currentDocIndex = -1;
+  renderDocLibrary();
+  document.getElementById('uploadInsights').style.display = '';
+  document.querySelector('.upload-zone-wrap').style.display = '';
+  const chatWrap = document.getElementById('uploadChatPanelWrap');
+  if (chatWrap) chatWrap.style.display = '';
+  document.getElementById('docDetail').style.display = 'none';
+  document.getElementById('docDetailEmpty').style.display = '';
+}
 function switchTab(name, el) {
-  ['highlight','qa','assets','capital','compliance','energy','space'].forEach(t => { document.getElementById('dtab-'+t).style.display = t===name?'':'none'; });
+  ['highlight','viewer','qa','assets','capital','compliance','energy','space'].forEach(t => { document.getElementById('dtab-'+t).style.display = t===name?'':'none'; });
   document.querySelectorAll('.dtab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
 }
@@ -4453,7 +4504,26 @@ function renderDocDetail(doc) {
   document.getElementById('detailTitle').textContent = doc.name;
   const typeLabel = (d.document_type||'general').replace(/_/g,' ');
   document.getElementById('detailBadges').innerHTML =
-    `<span class="badge-sm badge-green">✓ Real AI</span><span class="badge-sm badge-blue">${typeLabel}</span>${doc.documentId ? `<span class="badge-sm" style="background:${doc.qaStatus==='ready'?'#ecfdf5':'#fffbeb'};color:${doc.qaStatus==='ready'?'#166534':'#92400e'}">${doc.qaStatus==='ready'?'Analyzed':'Analyzing'}</span>` : ''}${doc.elapsed?`<span class="badge-sm" style="background:#f3f4f6;color:#374151">${doc.elapsed}</span>`:''}`;
+    `<span class="badge-sm badge-blue">${typeLabel}</span>${doc.documentId ? `<span class="badge-sm" style="background:${doc.qaStatus==='ready'?'#ecfdf5':'#fffbeb'};color:${doc.qaStatus==='ready'?'#166534':'#92400e'}">${doc.qaStatus==='ready'?'Analyzed':'Analyzing'}</span>` : ''}${doc.elapsed?`<span class="badge-sm" style="background:#f3f4f6;color:#374151">${doc.elapsed}</span>`:''}`;
+
+  // Render tags
+  const tagsContainer = document.getElementById('detailTags');
+  if (tagsContainer) {
+    const tags = doc.tags || [];
+    const presetTags = ['PCA', 'Lease', 'Floor Plan', 'Spec', 'O&M Manual', 'Inspection', 'Financial', 'Insurance', 'Permit', 'As-Built'];
+    tagsContainer.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        ${tags.map(t => `<span style="font-size:11px;padding:3px 10px;border-radius:99px;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;cursor:pointer;display:flex;align-items:center;gap:4px" onclick="removeDocTag(${currentDocIndex},'${escapeHtml(t)}')">${escapeHtml(t)} <span style="font-size:9px;opacity:0.6">✕</span></span>`).join('')}
+        <div style="position:relative;display:inline-block">
+          <button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'flex':'none'" style="font-size:11px;padding:3px 10px;border-radius:99px;background:#f8fafc;color:#6b7280;border:1.5px dashed #d1d5db;cursor:pointer;font-weight:500">+ Tag</button>
+          <div style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:8px;z-index:100;flex-wrap:wrap;gap:4px;width:280px">
+            ${presetTags.filter(t => !tags.includes(t)).map(t => `<span onclick="addDocTag(${currentDocIndex},'${t}');this.closest('[style*=position]').querySelector('div').style.display='none'" style="font-size:11px;padding:3px 9px;border-radius:99px;background:#f1f5f9;color:#475569;cursor:pointer;border:1px solid #e2e8f0;transition:all .12s" onmouseover="this.style.background='#eef2ff';this.style.borderColor='#c7d2fe'" onmouseout="this.style.background='#f1f5f9';this.style.borderColor='#e2e8f0'">${t}</span>`).join('')}
+            <input type="text" placeholder="Custom tag..." onkeydown="if(event.key==='Enter'&&this.value.trim()){addDocTag(${currentDocIndex},this.value.trim());this.value='';this.closest('[style*=position]').querySelector('div').style.display='none'}" style="width:100%;margin-top:4px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;outline:none">
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   const assets=d.assets||{}, compliance=d.compliance||{}, capital=d.capital||{}, energy=d.energy||{}, missing=d.missing_data||[], bp=d.building_profile||{}, dm=d.deferred_maintenance||{};
   const bpBits=[bp.address,bp.year_built?'Built '+bp.year_built:null,bp.gross_sf?fmtSF(bp.gross_sf):null,bp.building_use].filter(Boolean);
@@ -4497,6 +4567,30 @@ function renderDocDetail(doc) {
     ?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px"><div class="stat-mini"><div class="stat-mini-val">${space.grossSF?.toLocaleString()??'—'}</div><div class="stat-mini-label">Gross SF</div></div><div class="stat-mini"><div class="stat-mini-val">${space.rooms??'—'}</div><div class="stat-mini-label">Rooms</div></div><div class="stat-mini"><div class="stat-mini-val">${space.ntr??'—'}%</div><div class="stat-mini-label">Net/Gross</div></div></div>
     ${(space.opportunities||[]).map(o=>`<div class="list-item"><div class="list-item-title">${o}</div></div>`).join('')}`
     :notFound('space data','Upload architectural floor plans or a space program document');
+
+  // Render document viewer
+  const viewerTab = document.getElementById('dtab-viewer');
+  if (viewerTab) {
+    const docUrl = doc.documentId ? CONFIG.BACKEND_URL + `/documents/${doc.documentId}/preview` : null;
+    viewerTab.innerHTML = `
+      <div style="text-align:center;padding:20px">
+        <div style="font-size:13px;color:#6b7280;margin-bottom:12px">
+          <strong>${escapeHtml(doc.name)}</strong> · ${d.document_type?.replace(/_/g,' ') || 'Document'}
+        </div>
+        ${doc.mimeType === 'application/pdf' || doc.name?.toLowerCase().endsWith('.pdf')
+          ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;height:600px">
+               <iframe src="${docUrl || '#'}" style="width:100%;height:100%;border:none" ${!docUrl ? 'srcdoc="<div style=padding:40px;text-align:center;color:#94a3b8;font-family:system-ui>PDF preview not available. The document has been analyzed and indexed.</div>"' : ''}></iframe>
+             </div>`
+          : `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:40px;color:#64748b">
+               <div style="font-size:40px;margin-bottom:12px">📄</div>
+               <div style="font-size:14px;font-weight:600;margin-bottom:4px">Document Analyzed</div>
+               <div style="font-size:12px">This document has been fully analyzed and indexed. All extracted data is available in the other tabs.</div>
+               <div style="font-size:11px;color:#94a3b8;margin-top:8px">Original file: ${escapeHtml(doc.name)}</div>
+             </div>`
+        }
+      </div>
+    `;
+  }
 }
 
 // ─── BUILDING PROFILE ─────────────────────────────────────────
@@ -5900,6 +5994,10 @@ function handleAppFolioClick() {
     document.getElementById('appfolioConnectSection').style.display = 'block';
     document.getElementById('appfolioActions').style.display = 'none';
   }
+}
+
+function handleYardiClick() {
+  alert('Yardi integration coming soon. Contact support@buildingos.com to request early access.');
 }
 
 async function connectAppFolio() {
