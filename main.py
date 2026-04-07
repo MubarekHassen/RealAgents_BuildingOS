@@ -24,13 +24,31 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 
 import anthropic
 import httpx
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form, Depends, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 load_dotenv(override=True)
+
+
+# ── API Key authentication ──
+API_KEY = os.getenv("BUILDINGOS_API_KEY", "")
+
+
+async def verify_api_key(request: Request, authorization: Optional[str] = Header(None)):
+    """Verify API key from Authorization header (Bearer token) or x-api-key header.
+    If BUILDINGOS_API_KEY is not set, authentication is disabled (dev mode)."""
+    if not API_KEY:
+        return  # No key configured = dev mode, skip auth
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    if not token:
+        token = request.headers.get("x-api-key")
+    if token != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 from document_qa import (
     chunk_text,
@@ -78,10 +96,14 @@ _oauth_states: dict = {}  # state -> provider mapping for CSRF protection
 
 app = FastAPI(title="BuildingOS API", version="1.0.0")
 
-# Allow requests from the HTML file (file://) and any local dev server
+# ── CORS — restrict to known origins in production ──
+ALLOWED_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "https://buildos.it,https://www.buildos.it,https://real-agents-building-os.vercel.app,http://localhost:8000,http://localhost:3000,http://127.0.0.1:8000"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -351,8 +373,9 @@ def ensure_supported_upload(content_type: str, file_bytes: bytes) -> tuple[str, 
             status_code=400,
             detail=f"Unsupported file type: {normalized}. Supported: PDF, PNG, JPG, WEBP.",
         )
-    if len(file_bytes) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large. Maximum size is 50MB.")
+    max_upload_mb = int(os.getenv("MAX_UPLOAD_MB", "500"))
+    if len(file_bytes) > max_upload_mb * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {max_upload_mb}MB.")
     return normalized, message_type
 
 
@@ -1323,16 +1346,28 @@ def serve_frontend():
 
 @app.get("/health")
 def health():
-    """Health check — also confirms the API key is configured."""
+    """Health check — confirms API keys and Supabase connectivity."""
     key = os.getenv("ANTHROPIC_API_KEY", "")
     rag_config = load_rag_config()
+    supabase_ok = False
+    supabase_error = None
+    if is_supabase_configured(rag_config):
+        try:
+            client = get_supabase_client(rag_config)
+            client.table("documents").select("id").limit(1).execute()
+            supabase_ok = True
+        except Exception as e:
+            supabase_error = str(e)[:200]
     return {
-        "status": "ok",
+        "status": "ok" if supabase_ok else "degraded",
         "api_key_configured": bool(key and key.startswith("sk-ant-")),
-        "api_key_prefix": key[:20] + "..." if key else "(empty)",
         "supabase_configured": is_supabase_configured(rag_config),
+        "supabase_connected": supabase_ok,
+        "supabase_error": supabase_error,
         "embeddings_configured": is_embeddings_configured(rag_config),
         "rag_ready": is_rag_ready(rag_config),
+        "auth_enabled": bool(API_KEY),
+        "max_upload_mb": int(os.getenv("MAX_UPLOAD_MB", "500")),
     }
 
 
@@ -2017,7 +2052,7 @@ def get_document_status(document_id: str):
     return {"document": serialize_document_record(row)}
 
 
-@app.delete("/documents/{document_id}")
+@app.delete("/documents/{document_id}", dependencies=[Depends(verify_api_key)])
 def delete_document(document_id: str):
     require_rag_configuration()
     rag_config = load_rag_config()
@@ -2030,7 +2065,7 @@ def delete_document(document_id: str):
     return {"deleted": True, "document_id": document_id}
 
 
-@app.post("/documents/upload")
+@app.post("/documents/upload", dependencies=[Depends(verify_api_key)])
 async def upload_document(
     file: UploadFile = File(...),
     building_id: Optional[str] = Form(default=None),
@@ -2059,7 +2094,7 @@ async def upload_document(
     )
 
 
-@app.post("/documents/import-shared-link")
+@app.post("/documents/import-shared-link", dependencies=[Depends(verify_api_key)])
 async def import_shared_link(body: SharedLinkImportRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -2129,7 +2164,7 @@ async def import_shared_link(body: SharedLinkImportRequest):
     )
 
 
-@app.post("/documents/{document_id}/ask")
+@app.post("/documents/{document_id}/ask", dependencies=[Depends(verify_api_key)])
 def ask_document_question(document_id: str, body: DocumentQuestionRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -2181,7 +2216,7 @@ def ask_document_question(document_id: str, body: DocumentQuestionRequest):
     }
 
 
-@app.post("/documents/{document_id}/ask-stream")
+@app.post("/documents/{document_id}/ask-stream", dependencies=[Depends(verify_api_key)])
 def ask_document_question_stream(document_id: str, body: DocumentQuestionRequest):
     """Streaming variant — returns Server-Sent Events with incremental answer tokens."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
