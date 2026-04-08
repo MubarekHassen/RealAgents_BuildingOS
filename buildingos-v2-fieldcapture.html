@@ -874,13 +874,13 @@
                         <div class="dashboard-title">Completion Overview</div>
                         <div class="dashboard-content">
                             <div class="card" style="text-align: center;">
-                                <div class="progress-circle" id="completionCircle" style="--progress-angle: 248deg;">
+                                <div class="progress-circle" id="completionCircle" style="--progress-angle: 0deg;">
                                     <div style="text-align: center;">
-                                        <div class="progress-text" id="completionText">62</div>
-                                        <div style="font-size: 12px; color: #64748b;">of 75 units</div>
+                                        <div class="progress-text" id="completionText">0</div>
+                                        <div style="font-size: 12px; color: #64748b;" id="completionTotal">of 0 units</div>
                                     </div>
                                 </div>
-                                <div style="color: #059669; font-weight: 600; font-size: 14px;">82% Complete</div>
+                                <div style="color: #059669; font-weight: 600; font-size: 14px;" id="completionPercent">0% Complete</div>
                             </div>
                         </div>
                     </div>
@@ -1473,44 +1473,43 @@
                     app.completeness = await compResp.json();
                 }
 
-                // Load all assets
+                // Load all assets in bulk (single API call instead of per-unit)
                 app.assets = [];
                 app.activities = [];
-                for (const unit of app.units.slice(0, 200)) {
-                    try {
-                        const aResp = await fetch(`${API}/v2/buildings/${app.activeBuilding}/units/${unit.id}/assets`);
-                        if (aResp.ok) {
-                            const assetsData = await aResp.json();
-                            const unitAssets = assetsData.assets || assetsData || [];
-                            unitAssets.forEach(a => {
-                                app.assets.push({
-                                    id: a.id,
-                                    unitId: unit.id,
-                                    type: a.asset_type_id,
-                                    typeName: a.asset_type_name || '',
-                                    make: a.make || '',
-                                    model: a.model_name || '',
-                                    modelNumber: a.model_number || '',
-                                    year: a.model_year || '',
-                                    serial: a.serial_number || '',
-                                    description: a.description || '',
-                                    condition: a.condition_rating || '',
-                                    notes: a.inspection_notes || '',
-                                    inspectedBy: a.inspected_by || '',
-                                    aiExtracted: a.ai_extracted || false,
-                                    verified: a.manually_verified || false,
-                                    createdAt: a.created_at || new Date().toISOString()
-                                });
-                                app.activities.push({
-                                    unit: unit.name,
-                                    type: a.asset_type_name || a.asset_type_id,
-                                    user: a.inspected_by || app.user.name,
-                                    time: a.created_at || new Date().toISOString()
-                                });
+                try {
+                    const bulkResp = await fetch(`${API}/v2/buildings/${app.activeBuilding}/assets`);
+                    if (bulkResp.ok) {
+                        const bulkData = await bulkResp.json();
+                        const allAssets = bulkData.assets || [];
+                        allAssets.forEach(a => {
+                            const unit = app.units.find(u => u.id === a.unit_id);
+                            app.assets.push({
+                                id: a.id,
+                                unitId: a.unit_id,
+                                type: a.asset_type_id,
+                                typeName: a.asset_type_name || '',
+                                make: a.make || '',
+                                model: a.model_name || '',
+                                modelNumber: a.model_number || '',
+                                year: a.model_year || '',
+                                serial: a.serial_number || '',
+                                description: a.description || '',
+                                condition: a.condition_rating || '',
+                                notes: a.inspection_notes || '',
+                                inspectedBy: a.inspected_by || '',
+                                aiExtracted: a.ai_extracted || false,
+                                verified: a.manually_verified || false,
+                                createdAt: a.created_at || new Date().toISOString()
                             });
-                        }
-                    } catch(e) { /* skip unit on error */ }
-                }
+                            app.activities.push({
+                                unit: unit ? unit.name : 'Unknown',
+                                type: a.asset_type_name || a.asset_type_id,
+                                user: a.inspected_by || app.user?.name || 'Unknown',
+                                time: a.created_at || new Date().toISOString()
+                            });
+                        });
+                    }
+                } catch(e) { console.error('Bulk assets load error:', e); }
                 app.activities.sort((a, b) => new Date(b.time) - new Date(a.time));
                 app.activities = app.activities.slice(0, 20);
 
@@ -1542,6 +1541,8 @@
 
             document.getElementById('completionCircle').style.setProperty('--progress-angle', angle + 'deg');
             document.getElementById('completionText').textContent = complete;
+            document.getElementById('completionTotal').textContent = 'of ' + total + ' units';
+            document.getElementById('completionPercent').textContent = (total > 0 ? percentage : 0) + '% Complete';
 
             // Match assets by asset type — use assetTypes array for lookup
             const hvacType = app.assetTypes.find(t => t.name.toLowerCase().includes('hvac'));

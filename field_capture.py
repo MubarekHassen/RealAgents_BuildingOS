@@ -646,6 +646,20 @@ async def list_unit_assets(building_id: str, unit_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/buildings/{building_id}/assets")
+async def list_building_assets(building_id: str):
+    """List ALL captured assets for a building (bulk load, avoids N+1 per-unit calls)."""
+    try:
+        result = await sb_query(
+            "fc_unit_assets",
+            filters=f"?building_id=eq.{building_id}&is_current=eq.true&order=created_at.desc"
+        )
+        return {"assets": result or []}
+    except Exception as e:
+        logger.error(f"List building assets error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.patch("/buildings/{building_id}/assets/{asset_id}")
 async def update_asset(building_id: str, asset_id: str, payload: AssetUpdatePayload):
     """Update/correct an asset's fields (manual verification)."""
