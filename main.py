@@ -1427,7 +1427,7 @@ def serve_frontend():
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
-@app.get("/v2", response_class=HTMLResponse)
+@app.get("/v2/app", response_class=HTMLResponse)
 def serve_v2_frontend():
     """Serve the BuildingOS v2 Field Capture app (mobile-first)."""
     html_path = Path(__file__).parent / "buildingos-v2-fieldcapture.html"
