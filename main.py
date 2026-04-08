@@ -2381,6 +2381,31 @@ def get_document_status(document_id: str):
     return {"document": doc}
 
 
+@app.get("/documents/{document_id}/preview", dependencies=[Depends(verify_api_key)])
+def get_document_preview_url(document_id: str):
+    """Return a signed URL for viewing/downloading the original file."""
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+    response = client.table("documents").select("storage_path, filename, mime_type").eq("id", document_id).limit(1).execute()
+    row = (response.data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    storage_path = row.get("storage_path")
+    if not storage_path:
+        raise HTTPException(status_code=404, detail="Original file not available.")
+    try:
+        bucket = rag_config.supabase_bucket or "documents"
+        signed = client.storage.from_(bucket).create_signed_url(storage_path, 3600)  # 1 hour
+        url = signed.get("signedURL") or signed.get("signedUrl") or signed.get("data", {}).get("signedUrl")
+        if not url:
+            raise HTTPException(status_code=500, detail="Could not generate preview URL.")
+        return {"url": url, "filename": row.get("filename"), "mime_type": row.get("mime_type")}
+    except Exception as exc:
+        logger.error("Failed to create signed URL: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Preview not available: {str(exc)}")
+
+
 @app.delete("/documents/{document_id}", dependencies=[Depends(verify_api_key)])
 def delete_document(document_id: str):
     require_rag_configuration()

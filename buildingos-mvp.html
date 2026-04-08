@@ -300,26 +300,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 .sd-field-val{font-weight:600;color:#111827;text-align:right}
 .sd-actions{padding:14px 20px;border-top:1px solid #e5e7eb;flex-shrink:0}
 
-/* CAPITAL PAGE */
-.cap-page-body{flex:1;overflow-y:auto;padding:24px 30px}
+/* CAPITAL PAGE — Modern Design */
+.cap-page-body{flex:1;overflow-y:auto;padding:28px 32px;background:linear-gradient(160deg,#f0f2f8 0%,#e8eaf6 40%,#f5f3ff 100%)}
 .cap-summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
-.cap-sum-card{background:#fff;border-radius:12px;padding:16px 20px;border:1.5px solid #e8eaed;box-shadow:0 1px 3px rgba(0,0,0,0.03)}
-.cap-sum-val{font-size:22px;font-weight:800;color:#111827;letter-spacing:-0.02em}
+.cap-sum-card{background:rgba(255,255,255,0.85);backdrop-filter:blur(12px);border-radius:16px;padding:18px 22px;border:1px solid rgba(255,255,255,0.6);box-shadow:0 2px 8px rgba(0,0,0,0.04);transition:all 0.2s}
+.cap-sum-card:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(99,102,241,0.1)}
+.cap-sum-val{font-size:24px;font-weight:800;color:#111827;letter-spacing:-0.03em}
 .cap-sum-val.muted{color:#d1d5db}
-.cap-sum-label{font-size:11px;color:#6b7280;margin-top:2px}
-.cap-timeline{background:#fff;border-radius:14px;border:1.5px solid #e8eaed;padding:22px;margin-bottom:22px;box-shadow:0 1px 3px rgba(0,0,0,0.03)}
-.cap-timeline-title{font-size:13px;font-weight:700;margin-bottom:18px}
-.cap-year-bars{display:flex;gap:10px;align-items:flex-end;height:110px;margin-bottom:8px}
-.cap-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end}
-.cap-bar{width:100%;background:linear-gradient(to top,#6366f1,#818cf8);border-radius:5px 5px 0 0;min-height:3px;cursor:pointer}
-.cap-bar:hover{opacity:0.85}
-.cap-bar-val{font-size:10px;font-weight:700;color:#6366f1;white-space:nowrap}
-.cap-bar-yr{font-size:10px;color:#6b7280}
+.cap-sum-label{font-size:11px;font-weight:600;color:#6b7280;margin-top:3px}
+.cap-timeline{background:rgba(255,255,255,0.9);backdrop-filter:blur(12px);border-radius:18px;border:1px solid rgba(255,255,255,0.6);padding:24px;margin-bottom:22px;box-shadow:0 4px 16px rgba(0,0,0,0.04)}
+.cap-timeline-title{font-size:14px;font-weight:700;margin-bottom:20px;color:#111827}
+.cap-year-bars{display:flex;gap:12px;align-items:flex-end;height:120px;margin-bottom:10px}
+.cap-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.cap-bar{width:100%;background:linear-gradient(to top,#4f46e5,#818cf8);border-radius:8px 8px 2px 2px;min-height:4px;cursor:pointer;transition:all 0.2s}
+.cap-bar:hover{opacity:0.85;transform:scaleY(1.03)}
+.cap-bar-val{font-size:11px;font-weight:700;color:#4f46e5;white-space:nowrap}
+.cap-bar-yr{font-size:11px;color:#6b7280;font-weight:600}
 .cap-bar-urgent{background:linear-gradient(to top,#dc2626,#f87171)}
-.cap-items-section{background:#fff;border-radius:14px;border:1.5px solid #e8eaed;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.03)}
-.cap-items-header{padding:14px 20px;border-bottom:1px solid #e8eaed;display:flex;align-items:center;justify-content:space-between}
-.cap-items-title{font-size:13px;font-weight:700;color:#111827}
-.cap-empty{text-align:center;padding:50px 24px;color:#9ca3af}
+.cap-filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.cap-filter-btn{padding:7px 16px;border-radius:99px;border:1.5px solid rgba(0,0,0,0.08);background:rgba(255,255,255,0.85);font-size:12px;font-weight:600;cursor:pointer;color:#6b7280;transition:all 0.15s;backdrop-filter:blur(6px)}
+.cap-filter-btn:hover{border-color:#c7d2fe;background:rgba(255,255,255,0.95)}
+.cap-filter-btn.active{border-color:#6366f1;background:linear-gradient(135deg,#eef2ff,#e0e7ff);color:#4338ca;box-shadow:0 2px 8px rgba(99,102,241,0.15)}
+.cap-filter-select{padding:7px 12px;border:1.5px solid rgba(0,0,0,0.08);border-radius:12px;font-size:12px;font-weight:600;color:#374151;background:rgba(255,255,255,0.9);outline:none;cursor:pointer;font-family:inherit;backdrop-filter:blur(6px)}
+.cap-filter-select:focus{border-color:#6366f1}
+.cap-items-section{background:rgba(255,255,255,0.9);backdrop-filter:blur(12px);border-radius:18px;border:1px solid rgba(255,255,255,0.6);overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.04)}
+.cap-items-header{padding:16px 22px;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:space-between;background:rgba(248,250,252,0.5)}
+.cap-items-title{font-size:14px;font-weight:700;color:#111827}
+.cap-empty{text-align:center;padding:56px 24px;color:#9ca3af}
 
 /* OVERLAY & MODALS */
 /* LOGIN / WELCOME SCREEN */
@@ -575,49 +582,49 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 .eq-cond-btn.active{border-color:#6366f1;background:#eef2ff;color:#4f46e5}
 .eq-modal-foot{padding:14px 26px;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#fafafa;border-radius:0 0 20px 20px}
 
-/* EQUIPMENT REGISTER PAGE */
-.eq-register-scroll{flex:1;overflow-y:auto;padding:24px 30px}
-.eq-summary-bar{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
-.eq-sum-card{background:#fff;border-radius:12px;padding:15px 18px;border:1.5px solid #e8eaed;text-align:center;transition:all 0.18s ease;box-shadow:0 1px 3px rgba(0,0,0,0.03)}
-.eq-sum-card:hover{border-color:#c7d2fe;background:#fafafe;box-shadow:0 4px 12px rgba(99,102,241,0.08)}
-.eq-sum-card.eq-sum-total{background:linear-gradient(135deg,#1e1b4b,#312e81);border-color:transparent;box-shadow:0 4px 16px rgba(30,27,75,0.2)}
+/* EQUIPMENT REGISTER PAGE — Modern Design */
+.eq-register-scroll{flex:1;overflow-y:auto;padding:28px 32px;background:linear-gradient(160deg,#f0f2f8 0%,#e8eaf6 40%,#f5f3ff 100%)}
+.eq-summary-bar{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:22px}
+.eq-sum-card{background:rgba(255,255,255,0.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:16px;padding:18px 20px;border:1px solid rgba(255,255,255,0.6);text-align:center;transition:all 0.2s ease;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+.eq-sum-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(99,102,241,0.12);border-color:rgba(99,102,241,0.2)}
+.eq-sum-card.eq-sum-total{background:linear-gradient(135deg,#1e1b4b 0%,#3730a3 50%,#4f46e5 100%);border-color:transparent;box-shadow:0 6px 20px rgba(30,27,75,0.25)}
 .eq-sum-card.eq-sum-total .eq-sum-val{color:#fff}
-.eq-sum-card.eq-sum-total .eq-sum-label{color:rgba(255,255,255,0.55)}
-.eq-sum-val{font-size:24px;font-weight:800;color:#111827;letter-spacing:-0.03em}
-.eq-sum-label{font-size:10px;font-weight:600;color:#9ca3af;margin-top:3px;text-transform:uppercase;letter-spacing:0.05em}
-.eq-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.eq-sum-card.eq-sum-total .eq-sum-label{color:rgba(255,255,255,0.6)}
+.eq-sum-val{font-size:26px;font-weight:800;color:#111827;letter-spacing:-0.03em}
+.eq-sum-label{font-size:10px;font-weight:700;color:#9ca3af;margin-top:4px;text-transform:uppercase;letter-spacing:0.06em}
+.eq-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
 .eq-search-wrap{position:relative;flex:1;min-width:180px}
 .eq-search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none}
-.eq-search{width:100%;padding:8px 12px 8px 34px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;outline:none;font-family:inherit;transition:border-color 0.15s}
-.eq-search:focus{border-color:#6366f1}
-.eq-select{padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:12px;font-weight:600;color:#374151;background:#fff;outline:none;cursor:pointer;font-family:inherit;min-width:120px}
-.eq-select:focus{border-color:#6366f1}
+.eq-search{width:100%;padding:9px 12px 9px 34px;border:1.5px solid rgba(0,0,0,0.08);border-radius:12px;font-size:13px;outline:none;font-family:inherit;transition:all 0.15s;background:rgba(255,255,255,0.9);backdrop-filter:blur(8px)}
+.eq-search:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,0.1)}
+.eq-select{padding:9px 12px;border:1.5px solid rgba(0,0,0,0.08);border-radius:12px;font-size:12px;font-weight:600;color:#374151;background:rgba(255,255,255,0.9);outline:none;cursor:pointer;font-family:inherit;min-width:120px;backdrop-filter:blur(8px)}
+.eq-select:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,0.1)}
 .eq-filter-bar{display:flex;gap:6px;flex-wrap:wrap}
-.eq-filter-btn{padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:#6b7280;transition:all 0.12s}
-.eq-filter-btn:hover{border-color:#c7d2fe;background:#fafafe}
-.eq-filter-btn.active{border-color:#6366f1;background:#eef2ff;color:#4f46e5}
+.eq-filter-btn{padding:7px 16px;border-radius:99px;border:1.5px solid rgba(0,0,0,0.08);background:rgba(255,255,255,0.85);font-size:12px;font-weight:600;cursor:pointer;color:#6b7280;transition:all 0.15s;backdrop-filter:blur(6px)}
+.eq-filter-btn:hover{border-color:#c7d2fe;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(99,102,241,0.08)}
+.eq-filter-btn.active{border-color:#6366f1;background:linear-gradient(135deg,#eef2ff,#e0e7ff);color:#4338ca;box-shadow:0 2px 8px rgba(99,102,241,0.15)}
 .eq-filter-warn{color:#dc2626}
-.eq-filter-warn.active{border-color:#dc2626;background:#fef2f2;color:#991b1b}
-.eq-results-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#f9fafb;border-radius:8px;margin-bottom:12px;font-size:12px;color:#6b7280}
+.eq-filter-warn.active{border-color:#dc2626;background:linear-gradient(135deg,#fef2f2,#fee2e2);color:#991b1b}
+.eq-results-bar{display:flex;align-items:center;justify-content:space-between;padding:9px 16px;background:rgba(255,255,255,0.7);border-radius:10px;margin-bottom:14px;font-size:12px;color:#6b7280;backdrop-filter:blur(6px)}
 .eq-clear-btn{background:none;border:none;color:#6366f1;font-size:12px;font-weight:600;cursor:pointer;padding:2px 8px}
 .eq-clear-btn:hover{text-decoration:underline}
-.eq-table-wrap{background:#fff;border-radius:14px;border:1.5px solid #e8eaed;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.03)}
+.eq-table-wrap{background:rgba(255,255,255,0.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:16px;border:1px solid rgba(255,255,255,0.6);overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.04)}
 .eq-table{width:100%;border-collapse:collapse;table-layout:fixed}
-.eq-table th{text-align:left;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;padding:10px 14px;border-bottom:1.5px solid #f0f0f0;white-space:nowrap;background:#fafafa;overflow:hidden;text-overflow:ellipsis}
-.eq-table td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f5f5f5;vertical-align:top;overflow:hidden;text-overflow:ellipsis}
+.eq-table th{text-align:left;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;padding:12px 16px;border-bottom:1px solid rgba(0,0,0,0.06);white-space:nowrap;background:rgba(248,250,252,0.8);overflow:hidden;text-overflow:ellipsis}
+.eq-table td{padding:12px 16px;font-size:13px;border-bottom:1px solid rgba(0,0,0,0.04);vertical-align:top;overflow:hidden;text-overflow:ellipsis}
 .eq-table tr:last-child td{border-bottom:none}
-.eq-table tr{cursor:pointer;transition:background 0.1s}
-.eq-table tr:hover td{background:#f8f7ff}
-.eq-status-pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.eq-table tr{cursor:pointer;transition:all 0.12s}
+.eq-table tr:hover td{background:rgba(99,102,241,0.04)}
+.eq-status-pill{display:inline-block;padding:4px 12px;border-radius:99px;font-size:11px;font-weight:700}
 .eq-status-new{background:#dcfce7;color:#166534}
 .eq-status-good{background:#f0fdf4;color:#16a34a}
 .eq-status-fair{background:#fef9c3;color:#854d0e}
 .eq-status-poor{background:#fee2e2;color:#991b1b}
 .eq-status-eol{background:#fce7f3;color:#9d174d}
 .eq-status-unknown{background:#f3f4f6;color:#6b7280}
-.eq-empty{text-align:center;padding:48px 20px;color:#9ca3af}
-.eq-edit-btn{opacity:0;background:none;border:none;cursor:pointer;font-size:13px;color:#6366f1;padding:3px 6px;border-radius:6px;transition:all 0.1s}
-.eq-edit-btn:hover{background:#eef2ff}
+.eq-empty{text-align:center;padding:56px 20px;color:#9ca3af}
+.eq-edit-btn{opacity:0;background:none;border:none;cursor:pointer;font-size:13px;color:#6366f1;padding:4px 8px;border-radius:8px;transition:all 0.12s}
+.eq-edit-btn:hover{background:rgba(99,102,241,0.1)}
 .eq-table tr:hover .eq-edit-btn{opacity:1}
 .eq-mfr-model{font-size:12px;color:#374151;line-height:1.4}
 .eq-mfr-model small{color:#9ca3af;display:block;font-size:11px}
@@ -1127,7 +1134,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
         <div class="page-sub" id="dashSub">Upload your first document to start building intelligence</div>
       </div>
       <div class="page-header-actions">
-        <button class="btn btn-secondary" onclick="showBuildingSetup()">⚙ Setup</button>
+        <button class="btn btn-secondary" onclick="showBuildingSetup(activeBuildingId)">⚙ Setup</button>
         <button class="btn btn-primary" onclick="showPage('upload')">＋ Upload Document</button>
       </div>
     </div>
@@ -1213,6 +1220,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
     <div class="cap-page-body">
       <div class="cap-summary-row" id="capSummaryRow"></div>
       <div id="capTimeline"></div>
+      <!-- Capital Plan Filters -->
+      <div class="cap-filter-bar" id="capFilterBar">
+        <button class="cap-filter-btn active" onclick="filterCapital('all',this)">All Items</button>
+        <button class="cap-filter-btn" onclick="filterCapital('HIGH',this)" style="color:#dc2626">High Priority</button>
+        <button class="cap-filter-btn" onclick="filterCapital('MEDIUM',this)" style="color:#d97706">Medium</button>
+        <button class="cap-filter-btn" onclick="filterCapital('LOW',this)">Low</button>
+        <select class="cap-filter-select" id="capYearFilter" onchange="capFilterYear=this.value;renderCapitalPlan()">
+          <option value="">All Years</option>
+          <option value="Yr 1">Year 1</option>
+          <option value="Yr 2">Year 2</option>
+          <option value="Yr 3">Year 3</option>
+          <option value="Yr 4">Year 4</option>
+          <option value="Yr 5">Year 5</option>
+        </select>
+        <select class="cap-filter-select" id="capSystemFilter" onchange="capFilterSystem=this.value;renderCapitalPlan()">
+          <option value="">All Systems</option>
+          <option value="HVAC">HVAC</option>
+          <option value="Electrical">Electrical</option>
+          <option value="Plumbing">Plumbing</option>
+          <option value="Roofing">Roofing</option>
+          <option value="Envelope">Envelope</option>
+          <option value="Structure">Structure</option>
+          <option value="Life Safety">Life Safety</option>
+          <option value="Elevators">Elevators</option>
+          <option value="Site">Site</option>
+          <option value="Interior">Interior</option>
+        </select>
+      </div>
       <div id="capItemsSection"></div>
       <div id="capEmpty" class="cap-empty" style="display:none">
         <div style="font-size:40px;margin-bottom:10px">📅</div>
@@ -1446,7 +1481,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <div class="page-sub" id="eqPageSub">All equipment across this building</div>
     </div>
     <div class="page-header-actions">
-      <button class="btn btn-secondary btn-sm" onclick="exportEquipmentCSV()">↓ Export CSV</button>
       <button class="btn btn-secondary btn-sm" onclick="addEquipmentManually()">＋ Add Manually</button>
       <button class="btn btn-primary" onclick="showPage('upload')">＋ Add Documents</button>
     </div>
@@ -2217,6 +2251,9 @@ let editingBuildingId = null; // null = create new
 let mergedProfile = {};
 let allDeferredItems = [];
 let allCapitalItems = [];
+let capFilterPriority = 'all';
+let capFilterYear = '';
+let capFilterSystem = '';
 let allAssetItems = { total:0, hvac:0, electrical:0, plumbing:0, mechanical:0, items:[] };
 let availableOutputs = new Set();
 
@@ -2917,8 +2954,15 @@ function showBuildingSetup(bldId) {
   editingBuildingId = bldId || null;
   obStep = 0;
   const bld = bldId ? buildings.find(b => b.id === bldId) : null;
-  document.getElementById('obBuildingName').value = bld?.name || '';
-  document.getElementById('obBuildingAddr').value = bld?.address || '';
+  // For existing buildings, use merged profile data as fallback for name/address
+  const mp = (bldId && bldId === activeBuildingId) ? mergedProfile : {};
+  document.getElementById('obBuildingName').value = bld?.name || mp.name || '';
+  document.getElementById('obBuildingAddr').value = bld?.address || (mp.address ? [mp.address, mp.city, mp.state].filter(Boolean).join(', ') : '');
+  // Update title for edit vs new
+  if (bld) {
+    document.getElementById('obTitle').textContent = 'Edit Property Settings';
+    document.getElementById('obSub').textContent = 'Update your building details. Existing documents and data are preserved.';
+  }
   renderObStep();
   document.getElementById('buildingOverlay').classList.add('visible');
 }
@@ -3048,8 +3092,12 @@ function obNext() {
       // Switch to the new building
       switchBuilding(editingBuildingId);
       _isNewBuildingCreation = false;
+      showPage('upload');
+    } else {
+      // Editing existing — refresh current view with updated data
+      updateSidebar();
+      renderDashboard();
     }
-    showPage('upload');
   }
 }
 function obBack() { if (obStep > 0) { obStep--; renderObStep(); } }
@@ -4238,6 +4286,15 @@ function saveDMEdit(idx) {
 }
 
 // ─── CAPITAL PLAN ────────────────────────────────────────────
+function filterCapital(priority, btn) {
+  capFilterPriority = priority;
+  if (btn) {
+    document.querySelectorAll('#capFilterBar .cap-filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  renderCapitalPlan();
+}
+
 function renderCapitalPlan() {
   // Helper to convert Yr N to MM/YYYY
   function getRecommendedByDate(yrStr) {
@@ -4287,6 +4344,24 @@ function renderCapitalPlan() {
     allItems.push({ system:d.system, item:d.item, yr:yrStr, recBy:getRecommendedByDate(yrStr), cost:fmt(d.cost_k), priority:d.priority<=2?'HIGH':d.priority<=3?'MEDIUM':'LOW', _source:d._source });
   });
 
+  // Apply filters
+  let filteredItems = allItems;
+  if (capFilterPriority && capFilterPriority !== 'all') {
+    filteredItems = filteredItems.filter(i => {
+      const p = i.priority || '';
+      return p.toUpperCase() === capFilterPriority.toUpperCase();
+    });
+  }
+  if (capFilterYear) {
+    filteredItems = filteredItems.filter(i => i.yr === capFilterYear);
+  }
+  if (capFilterSystem) {
+    filteredItems = filteredItems.filter(i => {
+      const sys = (i.system || '').toLowerCase();
+      return sys.includes(capFilterSystem.toLowerCase());
+    });
+  }
+
   document.getElementById('capSummaryRow').innerHTML = `
     <div class="cap-sum-card"><div class="cap-sum-val ${totalCost?'':'muted'}">${totalCost?fmt(totalCost):'—'}</div><div class="cap-sum-label">Total 5-Year Capital</div></div>
     <div class="cap-sum-card"><div class="cap-sum-val ${yr1?'':'muted'}">${yr1?fmt(yr1):'—'}</div><div class="cap-sum-label">Year 1 Needs</div></div>
@@ -4307,7 +4382,7 @@ function renderCapitalPlan() {
 
   // Proper table layout for capital items instead of flex rows
   document.getElementById('capItemsSection').innerHTML = `<div class="cap-items-section">
-    <div class="cap-items-header"><div class="cap-items-title">Capital Items (${allItems.length})</div></div>
+    <div class="cap-items-header"><div class="cap-items-title">Capital Items (${filteredItems.length}${filteredItems.length!==allItems.length?' of '+allItems.length:''})</div></div>
     <div style="overflow-x:auto">
       <table class="dm-table" style="min-width:600px">
         <thead><tr>
@@ -4319,7 +4394,7 @@ function renderCapitalPlan() {
           <th style="width:70px">Source</th>
         </tr></thead>
         <tbody>
-          ${allItems.slice(0,50).map((c,i) => {
+          ${filteredItems.slice(0,50).map((c,i) => {
             const update = getCapUpdate(i);
             const displayPriority = update?.priority || c.priority || '—';
             const priorityColor = displayPriority==='HIGH'?'#fee2e2':displayPriority==='MEDIUM'?'#fef9c3':displayPriority==='COMPLETE'?'#dcfce7':'#f3f4f6';
@@ -4858,28 +4933,48 @@ function renderDocDetail(doc) {
     ${(space.opportunities||[]).map(o=>`<div class="list-item"><div class="list-item-title">${o}</div></div>`).join('')}`
     :notFound('space data','Upload architectural floor plans or a space program document');
 
-  // Render document viewer
+  // Render document viewer — fetch signed URL for original file
   const viewerTab = document.getElementById('dtab-viewer');
   if (viewerTab) {
-    const docUrl = doc.documentId ? CONFIG.BACKEND_URL + `/documents/${doc.documentId}/preview` : null;
+    const isPdf = doc.mimeType === 'application/pdf' || doc.name?.toLowerCase().endsWith('.pdf');
     viewerTab.innerHTML = `
-      <div style="text-align:center;padding:20px">
-        <div style="font-size:13px;color:#6b7280;margin-bottom:12px">
+      <div style="text-align:center;padding:20px" id="viewerContent">
+        <div style="font-size:13px;color:#6b7280;margin-bottom:16px">
           <strong>${escapeHtml(doc.name)}</strong> · ${d.document_type?.replace(/_/g,' ') || 'Document'}
         </div>
-        ${doc.mimeType === 'application/pdf' || doc.name?.toLowerCase().endsWith('.pdf')
-          ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;height:600px">
-               <iframe src="${docUrl || '#'}" style="width:100%;height:100%;border:none" ${!docUrl ? 'srcdoc="<div style=padding:40px;text-align:center;color:#94a3b8;font-family:system-ui>PDF preview not available. The document has been analyzed and indexed.</div>"' : ''}></iframe>
-             </div>`
-          : `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:40px;color:#64748b">
-               <div style="font-size:40px;margin-bottom:12px">📄</div>
-               <div style="font-size:14px;font-weight:600;margin-bottom:4px">Document Analyzed</div>
-               <div style="font-size:12px">This document has been fully analyzed and indexed. All extracted data is available in the other tabs.</div>
-               <div style="font-size:11px;color:#94a3b8;margin-top:8px">Original file: ${escapeHtml(doc.name)}</div>
-             </div>`
-        }
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:40px;color:#64748b">
+          <div style="font-size:36px;margin-bottom:10px">${isPdf ? '📑' : '📄'}</div>
+          <div style="font-size:13px;margin-bottom:16px">Loading original file link...</div>
+        </div>
       </div>
     `;
+    if (doc.documentId && backendOnline) {
+      fetch(CONFIG.BACKEND_URL + '/documents/' + encodeURIComponent(doc.documentId) + '/preview')
+        .then(function(r) { return r.ok ? r.json() : Promise.reject('unavailable'); })
+        .then(function(data) {
+          var url = data.url;
+          var fname = data.filename || doc.name;
+          var mime = data.mime_type || '';
+          var showInline = mime === 'application/pdf' || fname.toLowerCase().endsWith('.pdf');
+          viewerTab.innerHTML = '<div style="text-align:center;padding:20px">'
+            + '<div style="font-size:13px;color:#6b7280;margin-bottom:16px"><strong>' + escapeHtml(fname) + '</strong> · ' + (d.document_type ? d.document_type.replace(/_/g,' ') : 'Document') + '</div>'
+            + (showInline
+              ? '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;height:600px;margin-bottom:12px"><iframe src="' + url + '" style="width:100%;height:100%;border:none"></iframe></div>'
+              : '')
+            + '<a href="' + url + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:#6366f1;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">Open Original File ↗</a>'
+            + '<div style="font-size:11px;color:#94a3b8;margin-top:10px">Link expires in 1 hour</div>'
+            + '</div>';
+        })
+        .catch(function() {
+          viewerTab.innerHTML = '<div style="text-align:center;padding:20px">'
+            + '<div style="font-size:13px;color:#6b7280;margin-bottom:16px"><strong>' + escapeHtml(doc.name) + '</strong></div>'
+            + '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:40px;color:#64748b">'
+            + '<div style="font-size:36px;margin-bottom:10px">📄</div>'
+            + '<div style="font-size:14px;font-weight:600;margin-bottom:4px">Document Analyzed</div>'
+            + '<div style="font-size:12px">This document has been fully analyzed and indexed. The original file preview is not available, but all extracted data is in the other tabs.</div>'
+            + '</div></div>';
+        });
+    }
   }
 }
 
@@ -5942,7 +6037,7 @@ function showEquipmentContextModal(items, startIndex, editMode) {
       <div class="eq-modal-foot">
         <div style="font-size:12px;color:#9ca3af">${editMode ? '' : `${idx+1} of ${items.length}`}</div>
         <div style="display:flex;gap:8px">
-          ${!editMode && idx > 0 ? `<button class="btn btn-secondary btn-sm" onclick="saveEqItem(${idx},false) || renderEqModal(${idx-1})">← Back</button>` : ''}
+          ${!editMode && idx > 0 ? `<button class="btn btn-secondary btn-sm" onclick="saveEqItem(${idx},false); var m=document.getElementById('eqContextModal'); if(m&&m._renderFn) m._renderFn(${idx-1})">← Back</button>` : ''}
           <button class="btn btn-secondary btn-sm" onclick="${editMode ? 'saveEqItem(-1,true)' : (idx < items.length-1 ? `saveEqItem(${idx},false)` : `saveEqItem(${idx},true)`)}" style="color:#9ca3af">
             ${editMode ? 'Cancel' : idx < items.length-1 ? 'Skip' : 'Skip & Finish'}
           </button>
@@ -5953,9 +6048,10 @@ function showEquipmentContextModal(items, startIndex, editMode) {
       </div>
     </div>`;
 
-    // Store current index + items on modal for callbacks
+    // Store current index + items + render fn on modal for callbacks
     modal._eqItems = items;
     modal._eqIdx = idx;
+    modal._renderFn = render;
 
     // Auto-suggest maintenance cadence after render
     setTimeout(() => suggestMaintCadence(item), 50);
@@ -7151,7 +7247,10 @@ function renderSettingsIntegrations() {
       color:'#4285F4', functional:true, connectFn:'connectGoogleDrive' },
     { id:'google_sheets', name:'Google Sheets', desc:'Import data tables and equipment lists from spreadsheets',
       logos:['https://upload.wikimedia.org/wikipedia/commons/3/30/Google_Sheets_logo_%282014-2020%29.svg','https://www.google.com/s2/favicons?domain=sheets.google.com&sz=128'],
-      color:'#0F9D58', functional:false },
+      color:'#0F9D58', functional:true, connectFn:'connectGoogleDrive' },
+    { id:'onedrive', name:'OneDrive', desc:'Import documents and files from Microsoft OneDrive and SharePoint',
+      logos:['https://upload.wikimedia.org/wikipedia/commons/3/3c/Microsoft_Office_OneDrive_%282019%E2%80%93present%29.svg','https://www.google.com/s2/favicons?domain=onedrive.live.com&sz=128'],
+      color:'#0078D4', functional:true, connectFn:'connectOneDrive' },
     { id:'excel', name:'Microsoft Excel', desc:'Upload Excel workbooks with building data and schedules',
       logos:["data:image/png;base64,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"],
       color:'#217346', functional:false },
@@ -7197,6 +7296,24 @@ function renderSettingsIntegrations() {
           gs.textContent = 'Connected'; gs.style.color = '#16a34a';
           gb.textContent = 'Browse Files'; gb.className = 'btn btn-sm btn-primary'; gb.onclick = showGDriveModal;
         } else { gs.textContent = 'Not connected'; gs.style.color = '#9ca3af'; }
+      }
+      // Google Sheets uses the same Google auth
+      const ss = document.getElementById('settingsInt_google_sheets');
+      const sb = document.getElementById('settingsIntBtn_google_sheets');
+      if (ss && sb) {
+        if (status.google_drive?.connected) {
+          ss.textContent = 'Connected'; ss.style.color = '#16a34a';
+          sb.textContent = 'Browse Sheets'; sb.className = 'btn btn-sm btn-primary'; sb.onclick = showGSheetsModal;
+        } else { ss.textContent = 'Not connected'; ss.style.color = '#9ca3af'; }
+      }
+      // OneDrive status
+      const os = document.getElementById('settingsInt_onedrive');
+      const ob = document.getElementById('settingsIntBtn_onedrive');
+      if (os && ob) {
+        if (status.onedrive?.connected) {
+          os.textContent = 'Connected'; os.style.color = '#16a34a';
+          ob.textContent = 'Browse Files'; ob.className = 'btn btn-sm btn-primary'; ob.onclick = showOneDriveModal;
+        } else { os.textContent = 'Not connected'; os.style.color = '#9ca3af'; }
       }
     }).catch(() => {});
     // Check AppFolio status
