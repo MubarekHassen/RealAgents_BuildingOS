@@ -3054,6 +3054,11 @@ function obNext() {
     if (editingBuildingId) {
       const bld = buildings.find(b => b.id === editingBuildingId);
       if (bld) { bld.name = name; bld.address = addr; }
+      // Sync updated name/address into building profile
+      fullBuildingProfile = loadBuildingProfile(editingBuildingId);
+      if (name) fullBuildingProfile.name = name;
+      if (addr) fullBuildingProfile.address = addr;
+      saveBuildingProfile(editingBuildingId, fullBuildingProfile);
       _isNewBuildingCreation = false;
     } else {
       const newBld = { id: uid(), name, address: addr, docsOwned: [], createdAt: new Date().toISOString(), _owner: _activeUserId, _access: [] };
@@ -3068,6 +3073,11 @@ function obNext() {
       analyzedDocs = [];
       saveDocsForBuilding(newBld.id, []);
       loadDMUpdates();
+      // Seed building profile with name/address from creation
+      fullBuildingProfile = loadBuildingProfile(newBld.id);
+      if (name) fullBuildingProfile.name = name;
+      if (addr) fullBuildingProfile.address = addr;
+      saveBuildingProfile(newBld.id, fullBuildingProfile);
     }
     saveBuildings(buildings);
 
@@ -5140,6 +5150,35 @@ function showBuildingProfileModal() {
   const existing = document.getElementById('bpModal');
   if (existing) existing.remove();
   bpActiveTab = 'basics';
+
+  // Sync building-level data (name, address) into fullBuildingProfile
+  const bld = activeBuilding();
+  if (bld) {
+    if (!fullBuildingProfile.name && bld.name) fullBuildingProfile.name = bld.name;
+    if (!fullBuildingProfile.address && bld.address) fullBuildingProfile.address = bld.address;
+  }
+
+  // Sync ALL mergedProfile fields (not just the 5 done in renderDashboard)
+  if (mergedProfile) {
+    const syncFields = ['name','address','city','state','year_built','year_renovated','gross_sf','net_sf',
+      'stories','basement_levels','building_use','building_use_detail','construction_type','structural_system',
+      'foundation_type','exterior_cladding','roof_type','window_type','ceiling_height_ft','occupancy_pct',
+      'parking_spaces','parking_type','loading_docks','elevators','stairwells','sprinklered',
+      'accessibility','zoning','lot_sf'];
+    syncFields.forEach(f => {
+      if ((fullBuildingProfile[f] === undefined || fullBuildingProfile[f] === null || fullBuildingProfile[f] === '') && mergedProfile[f] != null) {
+        fullBuildingProfile[f] = mergedProfile[f];
+        fullBuildingProfile[f + '_ai'] = true;
+      }
+    });
+    if (!fullBuildingProfile.room_types?.length && mergedProfile.room_types?.length) fullBuildingProfile.room_types = mergedProfile.room_types;
+    if (!fullBuildingProfile.floor_breakdown?.length && mergedProfile.floor_breakdown?.length) fullBuildingProfile.floor_breakdown = mergedProfile.floor_breakdown;
+    if (!fullBuildingProfile.amenities?.length && mergedProfile.amenities?.length) fullBuildingProfile.amenities = mergedProfile.amenities;
+  }
+
+  // Persist the merged result
+  if (activeBuildingId) saveBuildingProfile(activeBuildingId, fullBuildingProfile);
+
   renderBuildingProfileModalFull();
 }
 
