@@ -3533,10 +3533,10 @@ async function _pollAsyncImport(entries) {
       const docMap = new Map((payload.documents || []).map(d => [d.id, d]));
       let changed = false;
       remaining = 0;
-      entries.forEach(entry => {
-        if (!entry.documentId) return;
+      for (const entry of entries) {
+        if (!entry.documentId) continue;
         const serverDoc = docMap.get(entry.documentId);
-        if (!serverDoc) return;
+        if (!serverDoc) continue;
         if (serverDoc.status === 'ready' && entry.status !== 'analyzed') {
           entry.status = 'analyzed';
           entry.qaStatus = 'ready';
@@ -3571,7 +3571,7 @@ async function _pollAsyncImport(entries) {
         } else if (serverDoc.status !== 'ready' && serverDoc.status !== 'error') {
           remaining++;
         }
-      });
+      }
       if (changed) {
         mergeAllData();
         renderDocLibrary();
