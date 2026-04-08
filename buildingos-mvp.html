@@ -2471,6 +2471,8 @@ async function syncIndexedDocuments() {
     const payload = await res.json();
     const docsByName = new Map((payload.documents || []).map(doc => [doc.filename, doc]));
     let changed = false;
+    // Collect docs that need their analysis fetched
+    const needsAnalysis = [];
     analyzedDocs.forEach(doc => {
       const indexed = docsByName.get(doc.name);
       if (!indexed) return;
@@ -2481,17 +2483,41 @@ async function syncIndexedDocuments() {
         doc.documentId = indexed.id;
         doc.qaStatus = indexed.status;
         doc.chunkCount = indexed.chunk_count || 0;
-        // Clear stale errors if backend shows document is ready
         if (indexed.status === 'ready') {
           doc.status = 'analyzed';
           doc.errorMsg = null;
-          doc.data = doc.data || indexed.analysis_json || null;
         }
         changed = true;
       }
+      // If doc is analyzed but has no data, we need to fetch analysis from backend
+      if (indexed.status === 'ready' && !doc.data && indexed.id) {
+        needsAnalysis.push(doc);
+      }
     });
-    if (changed && activeBuildingId) saveDocsForBuilding(activeBuildingId, analyzedDocs);
-    if (changed) renderDocLibrary();
+    // Fetch analysis_json for docs that are missing it (list endpoint doesn't include it)
+    if (needsAnalysis.length > 0) {
+      const fetches = needsAnalysis.map(async (doc) => {
+        try {
+          const r = await fetch(CONFIG.BACKEND_URL + `/documents/${encodeURIComponent(doc.documentId)}/status`);
+          if (!r.ok) return;
+          const p = await r.json();
+          const detail = p.document || {};
+          if (detail.analysis_json) {
+            doc.data = detail.analysis_json;
+            changed = true;
+          }
+        } catch(_) {}
+      });
+      await Promise.all(fetches);
+    }
+    if (changed) {
+      mergeAllData();
+      mergeEquipmentFromDocs();
+      updateSidebar();
+      renderDashboard();
+      if (activeBuildingId) saveDocsForBuilding(activeBuildingId, analyzedDocs);
+      renderDocLibrary();
+    }
   } catch(_) {}
 }
 
@@ -2883,6 +2909,8 @@ function switchBuilding(id) {
   updateSidebar();
   renderDashboard();
   document.getElementById('sbBuildingWrap').classList.remove('open');
+  // Fetch any missing analysis data from backend
+  syncIndexedDocuments();
 }
 
 function showBuildingSetup(bldId) {
@@ -8205,6 +8233,8 @@ function initApp() {
   updateSidebar();
   renderDashboard();
   checkBackend();
+  // Fetch analysis data from backend for any docs missing it, then rebuild intelligence
+  syncIndexedDocuments();
   checkIntegrationStatus();
   checkAppFolioStatus();
   setInterval(checkBackend, 30000);
