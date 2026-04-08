@@ -2310,9 +2310,18 @@ function mergeAllData() {
       allAssetItems.electrical += d.assets.electrical || 0;
       allAssetItems.plumbing   += d.assets.plumbing || 0;
       allAssetItems.mechanical += d.assets.mechanical || 0;
-      if (d.assets.items?.length) d.assets.items.forEach(a => allAssetItems.items.push({ ...a, _source: doc.name }));
+      if (d.assets.items?.length) d.assets.items.forEach(a => {
+          const qty = parseInt(a.qty) || 1;
+          for (let q = 0; q < qty; q++) {
+            allAssetItems.items.push({ ...a, _source: doc.name, _qIdx: q });
+          }
+        });
     }
-    allAssetItems.total = allAssetItems.hvac + allAssetItems.electrical + allAssetItems.plumbing + allAssetItems.mechanical;
+    // Use actual items count as the authoritative total (category sums may undercount)
+    allAssetItems.total = Math.max(
+      allAssetItems.hvac + allAssetItems.electrical + allAssetItems.plumbing + allAssetItems.mechanical,
+      allAssetItems.items.length
+    );
   });
 
   allDeferredItems.sort((a,b) => (a.priority||5) - (b.priority||5));
@@ -5469,7 +5478,9 @@ function mergeEquipmentFromDocs() {
   
   allAssetItems.items.forEach((a, idx) => {
     // Create a unique key based on source + name + model to prevent duplicates
-    const dedupeKey = `${a._source || ''}::${a.name || ''}::${a.model || ''}`;
+    // When model is blank/null, append index so distinct items aren't collapsed
+    const modelPart = (a.model && a.model.trim()) ? a.model.trim() : `_idx${idx}`;
+    const dedupeKey = `${a._source || ''}::${a.name || ''}::${modelPart}`;
     if (seenKeys.has(dedupeKey)) return; // Skip duplicates
     seenKeys.add(dedupeKey);
     

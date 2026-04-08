@@ -143,6 +143,7 @@ CRITICAL RULES — READ CAREFULLY:
 - For monetary values in "cost" string fields, use format like "$280K" or "$1.4M" — only if the document states or clearly implies these costs.
 - For monetary totals (yr1, yr3, yr5, totalRequired, cost_k), use integers representing thousands of dollars — only from document data.
 - In "missing_data", list every category that could NOT be populated and what type of document the user should upload to get that data.
+- EQUIPMENT EXTRACTION IS CRITICAL: List EVERY individual piece of equipment, asset, or system component found in the document — do NOT group, summarize, or skip items. If 15 RTU units are mentioned, list all 15 separately. If a schedule lists 40 pieces of equipment, include all 40 in the assets.items array. The assets list must be EXHAUSTIVE. Include equipment from schedules, tables, narratives, appendices, deficiency lists, and photo logs.
 
 DOCUMENT-TYPE SPECIFIC GUIDANCE:
 - PCA / Property Condition Assessment: This is the richest source. Extract building_profile (address, year built, SF, use), ALL deferred maintenance items with condition ratings and costs, capital needs by year, and all systems assessed.
@@ -219,13 +220,13 @@ Return this exact JSON structure:
     ]
   },
   "assets": {
-    "total": <integer>,
+    "total": <integer count of ALL individual equipment items listed below>,
     "hvac": <integer>,
     "electrical": <integer>,
     "plumbing": <integer>,
     "mechanical": <integer>,
     "items": [
-      {"name": "<asset name>", "mfr": "<manufacturer>", "model": "<model number>", "age": "<age or 'Unknown'>", "status": "Operational | Monitor | End-of-Life"}
+      {"name": "<asset name>", "mfr": "<manufacturer or null>", "model": "<model number or null>", "age": "<age or 'Unknown'>", "status": "Operational | Monitor | End-of-Life", "location": "<location/floor/zone if mentioned or null>", "qty": <integer quantity if stated, default 1>}
     ]
   },
   "capital": {
@@ -409,7 +410,7 @@ def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=8192,
+            max_tokens=16384,
             messages=[
                 {
                     "role": "user",
