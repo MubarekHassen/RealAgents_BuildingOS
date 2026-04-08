@@ -3540,6 +3540,18 @@ async function _pollAsyncImport(entries) {
             match.chunkCount = serverDoc.chunk_count || 0;
             match.name = serverDoc.filename || match.name;
           }
+          // Fetch full analysis for this document so intelligence can be aggregated
+          try {
+            const detailRes = await fetch(CONFIG.BACKEND_URL + `/documents/${encodeURIComponent(entry.documentId)}/status`);
+            if (detailRes.ok) {
+              const detailPayload = await detailRes.json();
+              const detail = detailPayload.document || {};
+              if (detail.analysis_json) {
+                entry.data = detail.analysis_json;
+                if (match) match.data = detail.analysis_json;
+              }
+            }
+          } catch(_e) { console.warn('Failed to fetch analysis for', entry.documentId); }
           changed = true;
         } else if (serverDoc.status === 'error' && entry.status !== 'error') {
           entry.status = 'error';
@@ -3552,6 +3564,7 @@ async function _pollAsyncImport(entries) {
         }
       });
       if (changed) {
+        mergeAllData();
         renderDocLibrary();
         updateSidebar();
         renderDashboard();
@@ -3562,6 +3575,11 @@ async function _pollAsyncImport(entries) {
           setImportLinkStatus('info', `⏳ ${done}/${total} files imported... ${remaining} still processing.`);
         } else {
           setImportLinkStatus('success', `✓ ${done}/${total} files imported successfully!`);
+          // All docs done — show initial pass if 2+ analyzed
+          const analyzedEntries = entries.filter(e => e.status === 'analyzed' && e.data);
+          if (analyzedEntries.length >= 2) {
+            setTimeout(() => showInitialPass(analyzedEntries), 600);
+          }
         }
       }
     } catch(_) {}
@@ -6743,19 +6761,22 @@ async function importFromIntegration(provider, fileIds, fileNames) {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_ids: [fileIds[i]] })
+        body: JSON.stringify({ file_ids: [fileIds[i]], building_id: activeBuildingId })
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const results = await res.json();
-      if (results.length > 0) {
-        const r = results[0];
+      const payload = await res.json();
+      const resultsArr = payload.results || payload;
+      if (Array.isArray(resultsArr) && resultsArr.length > 0) {
+        const r = resultsArr[0];
         if (r.error) throw new Error(r.error);
+        const analysisData = r.data || {};
         const docEntry = {
           id: Date.now() + i,
           name: fileNames[i],
           status: 'analyzed',
           date: new Date().toISOString().split('T')[0],
-          data: r,
+          data: analysisData,
+          documentId: r.document_id || null,
           elapsed: ((Date.now() - t0) / 1000).toFixed(1) + 's'
         };
         analyzedDocs.unshift(docEntry);
@@ -6777,8 +6798,32 @@ async function importFromIntegration(provider, fileIds, fileNames) {
 
   if (queueResults.length >= 2) {
     setTimeout(() => showInitialPass(queueResults), 600);
+    // Queue equipment modal after initial pass
+    setTimeout(() => {
+      const allNew = queueResults.flatMap(doc => {
+        const assets = doc.data?.assets?.items || [];
+        return assets.map((a, i) => ({
+          _eqId: (doc.name||'') + '::' + (a.name||'') + '::' + i,
+          _source: doc.name,
+          _confirmed: false,
+          name: a.name||'',
+          system: guessSystem(a),
+          manufacturer: a.mfr||'',
+          model: a.model||'',
+          age: a.age||'',
+          status: a.status||'',
+          location:'', floor:'', zone:'', installStatus:'',
+          condition: mapCondition(a.status),
+          notes:'', serialNo:'', warrantyExp:'', lastMaintenance:'', nextMaintenance:''
+        })).filter(item => !equipmentRegister.find(e => e._eqId === item._eqId));
+      });
+      if (allNew.length) showEquipmentContextModal(allNew, 0, false);
+    }, 8000);
   } else if (queueResults.length === 1) {
-    setTimeout(() => showDocumentHighlight(queueResults[0]), 300);
+    setTimeout(() => {
+      showDocumentHighlight(queueResults[0]);
+      maybeShowEquipmentModal(queueResults[0]);
+    }, 300);
   }
   fileQueue = [];
   setTimeout(() => { document.getElementById('processingQueue').style.display = 'none'; }, 3500);

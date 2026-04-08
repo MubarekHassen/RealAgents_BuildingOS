@@ -1721,7 +1721,7 @@ def list_google_drive_files(query: str = "", folder_id: Optional[str] = None):
 
 
 @app.post("/integrations/google-drive/analyze")
-async def analyze_google_drive_files(file_ids: List[str]):
+async def analyze_google_drive_files(file_ids: List[str], building_id: Optional[str] = None):
     """Download files from Google Drive, analyze with Claude, and store in Supabase."""
     if "google" not in _tokens:
         raise HTTPException(401, "Google Drive not connected")
@@ -1782,10 +1782,13 @@ async def analyze_google_drive_files(file_ids: List[str]):
                     file_bytes=file_bytes,
                     filename=filename,
                     content_type=mime_type,
-                    building_id=None,
+                    building_id=building_id,
                     source_meta={"source": "google_drive", "drive_file_id": file_id},
                 )
-                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": result})
+                # Return analysis at top level so frontend can use it directly
+                analysis = result.get("analysis", {})
+                doc_record = result.get("document", {})
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": analysis, "document_id": doc_record.get("id")})
             else:
                 # Fallback: direct Claude analysis without storage
                 intelligence = analyze_file_bytes(file_bytes, filename, mime_type, api_key)
