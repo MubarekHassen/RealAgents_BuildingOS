@@ -58,6 +58,8 @@ async def verify_api_key(request: Request, authorization: Optional[str] = Header
     if token != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
+from field_capture import router as field_capture_router
+
 from document_qa import (
     chunk_text,
     create_document_record,
@@ -103,6 +105,9 @@ _tokens: dict = {}
 _oauth_states: dict = {}  # state -> provider mapping for CSRF protection
 
 app = FastAPI(title="BuildingOS API", version="1.0.0")
+
+# ── Include v2 Field Capture router ──
+app.include_router(field_capture_router)
 
 # ── CORS — restrict to known origins in production ──
 ALLOWED_ORIGINS = os.getenv(
@@ -1419,6 +1424,15 @@ def serve_frontend():
     html_path = Path(__file__).parent / "buildingos-mvp.html"
     if not html_path.exists():
         return HTMLResponse("<h1>buildingos-mvp.html not found</h1>", status_code=404)
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
+@app.get("/v2", response_class=HTMLResponse)
+def serve_v2_frontend():
+    """Serve the BuildingOS v2 Field Capture app (mobile-first)."""
+    html_path = Path(__file__).parent / "buildingos-v2-fieldcapture.html"
+    if not html_path.exists():
+        return HTMLResponse("<h1>BuildingOS v2 not found</h1>", status_code=404)
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
