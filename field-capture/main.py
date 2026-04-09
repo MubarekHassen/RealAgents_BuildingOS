@@ -547,6 +547,13 @@ async def list_user_buildings(user_id: str):
     return {"buildings": buildings}
 
 
+@app.delete("/api/buildings/{building_id}/members/{user_id}")
+async def remove_building_member(building_id: str, user_id: str):
+    """Remove a user from a building."""
+    await sb_delete("fc_building_members", f"?user_id=eq.{user_id}&building_id=eq.{building_id}")
+    return {"removed": True}
+
+
 # ─── Walk Sessions ───────────────────────────────────────────────────────────
 
 @app.post("/api/buildings/{building_id}/walks")
