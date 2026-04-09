@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1e293b">
+    <title>BuildingOS Field Capture</title>
+    <link rel="manifest" href="data:application/json,{}">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+            min-height: 100dvh;
+            overflow-x: hidden;
+        }
+
+        /* ── Layout ─────────────────────────── */
+        .app-header {
+            background: #1e293b;
+            color: white;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .app-header h1 { font-size: 16px; font-weight: 600; flex: 1; }
+        .header-back { font-size: 20px; cursor: pointer; padding: 4px 8px; }
+        .header-action { font-size: 13px; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; cursor: pointer; border: none; color: white; }
+
+        .screen { display: none; min-height: calc(100dvh - 48px); }
+        .screen.active { display: block; }
+        .screen-pad { padding: 16px; }
+
+        /* ── Cards ──────────────────────────── */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .card-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+        .card-sub { font-size: 13px; color: #64748b; }
+
+        /* ── Buttons ────────────────────────── */
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .btn-primary { background: #4f46e5; color: white; }
+        .btn-primary:active { background: #4338ca; }
+        .btn-success { background: #059669; color: white; }
+        .btn-success:active { background: #047857; }
+        .btn-outline { background: white; color: #4f46e5; border: 2px solid #4f46e5; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-secondary { background: #e2e8f0; color: #475569; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── Inputs ─────────────────────────── */
+        .input-group { margin-bottom: 16px; }
+        .input-group label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #475569; }
+        .input-group input, .input-group select, .input-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 15px;
+            background: white;
+            -webkit-appearance: none;
+        }
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
+            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+        }
+
+        /* ── Unit list ──────────────────────── */
+        .unit-card {
+            background: white;
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            transition: background 0.1s;
+        }
+        .unit-card:active { background: #f8fafc; }
+        .unit-status {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-partial { background: #dbeafe; color: #1e40af; }
+        .status-complete { background: #d1fae5; color: #065f46; }
+        .unit-info { flex: 1; }
+        .unit-name { font-weight: 600; font-size: 15px; }
+        .unit-meta { font-size: 12px; color: #94a3b8; }
+        .unit-arrow { color: #cbd5e1; font-size: 18px; }
+
+        /* ── Equipment checklist ────────────── */
+        .equip-item {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+        .equip-item:active { background: #f8fafc; }
+        .equip-icon { font-size: 28px; width: 44px; text-align: center; }
+        .equip-info { flex: 1; }
+        .equip-name { font-weight: 600; font-size: 15px; }
+        .equip-status { font-size: 12px; margin-top: 2px; }
+        .equip-status.done { color: #059669; }
+        .equip-status.pending { color: #f59e0b; }
+        .equip-capture-btn {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .equip-done-badge {
+            background: #d1fae5;
+            color: #065f46;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* ── Camera ─────────────────────────── */
+        .camera-area {
+            background: #1e293b;
+            border-radius: 12px;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            margin-bottom: 16px;
+            overflow: hidden;
+            position: relative;
+        }
+        .camera-area img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+        }
+        .camera-placeholder {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .camera-placeholder .icon { font-size: 48px; margin-bottom: 12px; }
+        .camera-placeholder p { font-size: 14px; color: #94a3b8; }
+
+        /* ── AI Results ─────────────────────── */
+        .ai-result {
+            background: #f0fdf4;
+            border: 1.5px solid #bbf7d0;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+        .ai-result-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            color: #065f46;
+        }
+        .ai-field { margin-bottom: 8px; }
+        .ai-field label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .ai-field .value { font-size: 14px; font-weight: 500; }
+
+        .confidence-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .conf-high { background: #d1fae5; color: #065f46; }
+        .conf-medium { background: #fef3c7; color: #92400e; }
+        .conf-low { background: #fee2e2; color: #991b1b; }
+
+        /* ── Progress ring ──────────────────── */
+        .progress-bar {
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+        .progress-fill { height: 100%; background: #4f46e5; border-radius: 3px; transition: width 0.3s; }
+
+        /* ── Loading ────────────────────────── */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2.5px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            color: white;
+            gap: 16px;
+        }
+        .loading-overlay .spinner { width: 40px; height: 40px; border-width: 3px; }
+        .loading-overlay p { font-size: 15px; }
+
+        /* ── Toast ──────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            z-index: 300;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .toast.show { opacity: 1; }
+
+        /* ── Section titles ─────────────────── */
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 20px 0 10px;
+        }
+
+        /* ── Invite code big display ───────── */
+        .invite-code-display {
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: 6px;
+            text-align: center;
+            color: #4f46e5;
+            padding: 20px;
+            background: #eef2ff;
+            border-radius: 12px;
+            font-family: monospace;
+        }
+
+        /* Hide file input */
+        .hidden-input { display: none; }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- HEADER                                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="app-header" id="appHeader">
+    <div class="header-back" id="headerBack" onclick="goBack()" style="display:none;">&#8592;</div>
+    <h1 id="headerTitle">BuildingOS Field Capture</h1>
+    <button class="header-action" id="headerAction" style="display:none;"></button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Welcome / Login                                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="screen active" id="screenLogin">
+    <div class="screen-pad" style="display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 48px);">
+        <div style="text-align:center;margin-bottom:32px;">
+            <div style="font-size:48px;margin-bottom:8px;">&#9881;&#65039;</div>
+            <h2 style="font-size:22px;margin-bottom:4px;">BuildingOS</h2>
+            <p style="color:#64748b;font-size:14px;">Field Capture</p>
+        </div>
+
+        <div class="card">
+            <div class="input-group">
+                <label>Full Name</label>
+                <input type="text" id="loginName" placeholder="Eric Johnson" autocomplete="name">
+            </div>
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="loginEmail" placeholder="eric@company.com" autocomplete="email">
+            </div>
+            <button class="btn btn-primary" onclick="handleLogin()">Continue</button>
+        </div>
+
+        <div style="text-align:center;margin-top:16px;">
+            <p style="font-size:13px;color:#94a3b8;">Have an invite code?</p>
+            <div class="input-group" style="margin-top:8px;">
+                <input type="text" id="loginInviteCode" placeholder="Enter 6-character code" maxlength="6"
+                       style="text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase;">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Building List (field user's buildings)                          -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="screen" id="screenBuildings">
+    <div class="screen-pad">
+        <h2 style="margin-bottom:16px;">Your Buildings</h2>
+        <div id="buildingList"></div>
+
+        <div class="section-title" style="margin-top:24px;">Join Another Building</div>
+        <div class="card">
+            <div class="input-group" style="margin-bottom:8px;">
+                <input type="text" id="joinCode" placeholder="Enter invite code" maxlength="6"
+                       style="text-align:center;font-size:18px;letter-spacing:3px;text-transform:uppercase;">
+            </div>
+            <button class="btn btn-outline" onclick="joinBuilding()">Join Building</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Building Dashboard                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="screen" id="screenDashboard">
+    <div class="screen-pad">
+        <div id="dashboardBuildingName" style="font-size:18px;font-weight:700;margin-bottom:4px;"></div>
+        <div id="dashboardBuildingAddr" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
+
+        <!-- Progress overview -->
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span class="card-title">Capture Progress</span>
+                <span id="dashPct" style="font-weight:700;color:#4f46e5;">0%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="dashBar" style="width:0%"></div></div>
+            <div style="display:flex;gap:16px;margin-top:12px;font-size:13px;color:#64748b;">
+                <span><strong id="dashComplete">0</strong> complete</span>
+                <span><strong id="dashPartial">0</strong> partial</span>
+                <span><strong id="dashPending">0</strong> pending</span>
+            </div>
+        </div>
+
+        <!-- Equipment type progress -->
+        <div class="section-title">Equipment Types</div>
+        <div id="dashTypeProgress"></div>
+
+        <!-- Actions -->
+        <div style="margin-top:20px;">
+            <button class="btn btn-success" onclick="startWalk()" style="font-size:17px;padding:16px;">
+                &#128694; Start Walk
+            </button>
+            <button class="btn btn-outline" onclick="exportCSV()">Export CSV</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Unit List (during walk)                                         -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="screen" id="screenUnits">
+    <div class="screen-pad">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div>
+                <div style="font-weight:700;font-size:16px;" id="walkTitle">Walk in Progress</div>
+                <div style="font-size:12px;color:#64748b;" id="walkSubtitle"></div>
+            </div>
+            <button class="btn-outline" style="width:auto;padding:6px 14px;font-size:12px;border-radius:6px;border:1.5px solid #ef4444;color:#ef4444;background:white;cursor:pointer;" onclick="endWalk()">End Walk</button>
+        </div>
+
+        <input type="text" id="unitSearch" placeholder="Search units..." oninput="renderUnits()"
+               style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:12px;">
+
+        <div id="unitList"></div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Unit Detail (equipment checklist for one unit)                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="screen" id="screenUnitDetail">
+    <div class="screen-pad">
+        <div id="unitDetailName" style="font-size:18px;font-weight:700;margin-bottom:4px;"></div>
+        <div id="unitDetailMeta" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
+
+        <div class="section-title">Equipment to Capture</div>
+        <div id="equipChecklist"></div>
+
+        <div style="margin-top:20px;">
+            <button class="btn btn-secondary" onclick="skipUnit()">Skip Unit (Access Issue)</button>
+            <button class="btn btn-success" id="btnCompleteUnit" onclick="completeUnit()" disabled>
+                &#10003; Mark Unit Complete
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Capture (photo + AI extraction)                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="screen" id="screenCapture">
+    <div class="screen-pad">
+        <div id="captureEquipName" style="font-size:16px;font-weight:700;margin-bottom:2px;"></div>
+        <div id="captureUnitName" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
+
+        <!-- Step 1: Take Photo -->
+        <div id="captureStep1">
+            <div class="camera-area" id="cameraArea">
+                <div class="camera-placeholder" id="cameraPlaceholder">
+                    <div class="icon">&#128247;</div>
+                    <p>Tap to photograph equipment tag</p>
+                </div>
+                <img id="photoPreview" style="display:none;">
+            </div>
+
+            <input type="file" accept="image/*" capture="environment" id="photoInput" class="hidden-input" onchange="onPhotoSelected(event)">
+
+            <button class="btn btn-primary" onclick="document.getElementById('photoInput').click()">
+                &#128247; Take Photo of Tag
+            </button>
+            <button class="btn btn-secondary" onclick="tagNotReadable()">
+                Tag Not Readable / No Tag
+            </button>
+        </div>
+
+        <!-- Step 2: AI Processing -->
+        <div id="captureStep2" style="display:none;">
+            <div style="text-align:center;padding:40px 0;">
+                <div class="spinner" style="width:40px;height:40px;border-color:rgba(79,70,229,0.2);border-top-color:#4f46e5;margin:0 auto 16px;"></div>
+                <p style="font-size:15px;font-weight:600;">Analyzing equipment tag...</p>
+                <p style="font-size:13px;color:#64748b;margin-top:4px;">AI is reading make, model, serial number</p>
+            </div>
+        </div>
+
+        <!-- Step 3: Review & Confirm -->
+        <div id="captureStep3" style="display:none;">
+            <div class="ai-result" id="aiResultBox">
+                <div class="ai-result-header">
+                    <span>&#10003; AI Extracted Data</span>
+                    <span class="confidence-badge" id="aiConfBadge"></span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="input-group">
+                    <label>Make / Manufacturer</label>
+                    <input type="text" id="fieldMake">
+                </div>
+                <div class="input-group">
+                    <label>Model Name</label>
+                    <input type="text" id="fieldModelName">
+                </div>
+                <div class="input-group">
+                    <label>Model Number</label>
+                    <input type="text" id="fieldModelNumber">
+                </div>
+                <div class="input-group">
+                    <label>Serial Number</label>
+                    <input type="text" id="fieldSerial">
+                </div>
+                <div class="input-group">
+                    <label>Year</label>
+                    <input type="text" id="fieldYear" inputmode="numeric">
+                </div>
+                <div class="input-group">
+                    <label>Condition</label>
+                    <select id="fieldCondition">
+                        <option value="">Select...</option>
+                        <option value="excellent">Excellent</option>
+                        <option value="good">Good</option>
+                        <option value="fair">Fair</option>
+                        <option value="poor">Poor</option>
+                        <option value="non_functional">Non-functional</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Notes</label>
+                    <textarea id="fieldNotes" rows="2" placeholder="Any additional notes..."></textarea>
+                </div>
+            </div>
+
+            <button class="btn btn-success" onclick="saveCapture()">&#10003; Save & Continue</button>
+            <button class="btn btn-secondary" onclick="retakePhoto()">Retake Photo</button>
+        </div>
+    </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay" style="display:none;">
+    <div class="spinner"></div>
+    <p id="loadingText">Loading...</p>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- JavaScript                                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+    const API = window.location.origin;
+
+    // ─── App State ──────────────────────────
+    const state = {
+        user: null,
+        buildings: [],
+        currentBuilding: null,
+        currentBuildingName: '',
+        currentBuildingAddr: '',
+        units: [],
+        equipTypes: [],
+        captures: [],
+        walkSession: null,
+        currentUnit: null,
+        currentEquipType: null,
+        capturePhoto: null,
+        lastCaptureId: null,
+        progress: null,
+    };
+
+    // ─── Navigation ─────────────────────────
+    let screenStack = ['screenLogin'];
+
+    function showScreen(id, opts = {}) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+
+        const back = document.getElementById('headerBack');
+        const title = document.getElementById('headerTitle');
+
+        if (id === 'screenLogin') {
+            back.style.display = 'none';
+            title.textContent = 'BuildingOS Field Capture';
+        } else if (id === 'screenBuildings') {
+            back.style.display = 'none';
+            title.textContent = 'Your Buildings';
+        } else {
+            back.style.display = 'block';
+        }
+
+        if (opts.title) title.textContent = opts.title;
+        if (!opts.noStack && screenStack[screenStack.length - 1] !== id) {
+            screenStack.push(id);
+        }
+        window.scrollTo(0, 0);
+    }
+
+    function goBack() {
+        if (screenStack.length > 1) {
+            screenStack.pop();
+            const prev = screenStack[screenStack.length - 1];
+            showScreen(prev, { noStack: true });
+        }
+    }
+
+    // ─── Auth ───────────────────────────────
+    async function handleLogin() {
+        const name = document.getElementById('loginName').value.trim();
+        const email = document.getElementById('loginEmail').value.trim();
+        const code = document.getElementById('loginInviteCode').value.trim().toUpperCase();
+
+        if (!name || !email) {
+            toast('Please enter your name and email');
+            return;
+        }
+
+        showLoading('Signing in...');
+        try {
+            const r = await api('/api/auth/register', { name, email });
+            state.user = r.user;
+            localStorage.setItem('fc_user', JSON.stringify(r.user));
+
+            if (code) {
+                try {
+                    await api(`/api/join/${code}`, { user_id: state.user.id });
+                    toast('Joined building successfully!');
+                } catch (e) {
+                    toast('Invalid invite code, but account created');
+                }
+            }
+
+            await loadBuildings();
+            hideLoading();
+
+            if (state.buildings.length === 1) {
+                selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
+            } else {
+                showScreen('screenBuildings');
+            }
+        } catch (e) {
+            hideLoading();
+            toast('Error: ' + e.message);
+        }
+    }
+
+    // ─── Buildings ──────────────────────────
+    async function loadBuildings() {
+        if (!state.user) return;
+        const r = await api(`/api/users/${state.user.id}/buildings`);
+        state.buildings = r.buildings || [];
+        renderBuildings();
+    }
+
+    function renderBuildings() {
+        const el = document.getElementById('buildingList');
+        if (!state.buildings.length) {
+            el.innerHTML = '<div class="card"><p style="text-align:center;color:#94a3b8;">No buildings yet. Enter an invite code below.</p></div>';
+            return;
+        }
+        el.innerHTML = state.buildings.map(b => {
+            const pct = b.captures_total > 0 ? Math.round(b.captures_done / b.captures_total * 100) : 0;
+            return `
+                <div class="card" onclick="selectBuilding('${b.building_id}', '${(b.building_name || '').replace(/'/g, "\\'")}', '${(b.building_address || '').replace(/'/g, "\\'")}')">
+                    <div class="card-title">${b.building_name || 'Building'}</div>
+                    <div class="card-sub">${b.building_address || ''}</div>
+                    <div style="margin-top:8px;display:flex;gap:12px;font-size:12px;color:#64748b;">
+                        <span>${b.unit_count} units</span>
+                        <span>${b.equipment_type_count} equipment types</span>
+                        <span>${pct}% captured</span>
+                    </div>
+                    <div class="progress-bar" style="margin-top:6px;"><div class="progress-fill" style="width:${pct}%"></div></div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function selectBuilding(buildingId, name, address) {
+        state.currentBuilding = buildingId;
+        state.currentBuildingName = name || '';
+        state.currentBuildingAddr = address || '';
+
+        showLoading('Loading building...');
+        try {
+            const [unitsR, typesR, progressR] = await Promise.all([
+                api(`/api/buildings/${buildingId}/units`),
+                api(`/api/buildings/${buildingId}/equipment-types`),
+                api(`/api/buildings/${buildingId}/progress`),
+            ]);
+            state.units = unitsR.units || [];
+            state.equipTypes = typesR.equipment_types || [];
+            state.progress = progressR;
+
+            renderDashboard();
+            hideLoading();
+            showScreen('screenDashboard', { title: name || 'Building' });
+        } catch (e) {
+            hideLoading();
+            toast('Error loading building: ' + e.message);
+        }
+    }
+
+    async function joinBuilding() {
+        const code = document.getElementById('joinCode').value.trim().toUpperCase();
+        if (!code) { toast('Enter an invite code'); return; }
+
+        showLoading('Joining...');
+        try {
+            const r = await api(`/api/join/${code}`, { user_id: state.user.id });
+            toast('Joined ' + (r.building_name || 'building') + '!');
+            await loadBuildings();
+            hideLoading();
+            if (r.building_id) {
+                selectBuilding(r.building_id, r.building_name, r.building_address);
+            }
+        } catch (e) {
+            hideLoading();
+            toast(e.message);
+        }
+    }
+
+    // ─── Dashboard ──────────────────────────
+    function renderDashboard() {
+        const p = state.progress || {};
+        document.getElementById('dashboardBuildingName').textContent = state.currentBuildingName;
+        document.getElementById('dashboardBuildingAddr').textContent = state.currentBuildingAddr;
+        document.getElementById('dashPct').textContent = (p.completion_pct || 0) + '%';
+        document.getElementById('dashBar').style.width = (p.completion_pct || 0) + '%';
+        document.getElementById('dashComplete').textContent = p.units_complete || 0;
+        document.getElementById('dashPartial').textContent = p.units_partial || 0;
+        document.getElementById('dashPending').textContent = p.units_pending || 0;
+
+        const typeEl = document.getElementById('dashTypeProgress');
+        typeEl.innerHTML = (p.type_progress || []).map(t => `
+            <div class="card" style="padding:12px 16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>${t.icon || '🔧'} ${t.name}</span>
+                    <span style="font-weight:600;font-size:13px;">${t.captured}/${t.total}</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${t.pct}%;background:${t.pct >= 100 ? '#059669' : '#4f46e5'}"></div></div>
+            </div>
+        `).join('');
+    }
+
+    // ─── Walk Session ───────────────────────
+    async function startWalk() {
+        showLoading('Starting walk...');
+        try {
+            const r = await api(`/api/buildings/${state.currentBuilding}/walks`, {
+                user_id: state.user.id,
+                user_name: state.user.name,
+            });
+            state.walkSession = r.walk;
+
+            // Reload captures for this building
+            const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
+            state.captures = capsR.captures || [];
+
+            hideLoading();
+            renderUnits();
+            showScreen('screenUnits', { title: 'Walk: ' + state.currentBuildingName });
+        } catch (e) {
+            hideLoading();
+            toast('Error: ' + e.message);
+        }
+    }
+
+    async function endWalk() {
+        if (!confirm('End this walk session?')) return;
+        if (state.walkSession) {
+            await api(`/api/walks/${state.walkSession.id}`, { status: 'completed' }).catch(() => {});
+        }
+        state.walkSession = null;
+
+        // Refresh progress
+        const progressR = await api(`/api/buildings/${state.currentBuilding}/progress`).catch(() => ({}));
+        state.progress = progressR;
+        renderDashboard();
+        screenStack = ['screenBuildings', 'screenDashboard'];
+        showScreen('screenDashboard', { title: state.currentBuildingName, noStack: true });
+    }
+
+    // ─── Unit List ──────────────────────────
+    function renderUnits() {
+        const search = (document.getElementById('unitSearch').value || '').toLowerCase();
+        const filtered = state.units.filter(u => u.unit_name.toLowerCase().includes(search));
+
+        document.getElementById('walkSubtitle').textContent =
+            state.units.filter(u => u.is_complete).length + ' of ' + state.units.length + ' units complete';
+
+        document.getElementById('unitList').innerHTML = filtered.map(u => {
+            const done = u.captures_done || 0;
+            const total = u.captures_total || 0;
+            const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
+            const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
+
+            return `
+                <div class="unit-card" onclick="openUnit('${u.id}')">
+                    <div class="unit-status ${statusClass}">${label}</div>
+                    <div class="unit-info">
+                        <div class="unit-name">${u.unit_name}</div>
+                        <div class="unit-meta">${u.floor ? 'Floor ' + u.floor + ' · ' : ''}${u.unit_type || ''}</div>
+                    </div>
+                    <div class="unit-arrow">&#8250;</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // ─── Unit Detail ────────────────────────
+    async function openUnit(unitId) {
+        const unit = state.units.find(u => u.id === unitId);
+        if (!unit) return;
+        state.currentUnit = unit;
+
+        // Create a visit record
+        if (state.walkSession) {
+            try {
+                const v = await api(`/api/buildings/${state.currentBuilding}/units/${unitId}/visit`, {
+                    walk_session_id: state.walkSession.id,
+                    user_id: state.user.id,
+                });
+                state.currentVisit = v.visit;
+            } catch (e) { state.currentVisit = null; }
+        }
+
+        document.getElementById('unitDetailName').textContent = unit.unit_name;
+        document.getElementById('unitDetailMeta').textContent =
+            [unit.floor ? 'Floor ' + unit.floor : '', unit.sqft ? unit.sqft + ' sq ft' : ''].filter(Boolean).join(' · ');
+
+        // Get captures for this unit
+        const unitCaptures = state.captures.filter(c => c.unit_id === unitId);
+
+        const checklist = state.equipTypes.map(et => {
+            const capture = unitCaptures.find(c => c.equipment_type_id === et.id);
+            const isDone = !!capture;
+
+            return `
+                <div class="equip-item" onclick="${isDone ? '' : `startCapture('${et.id}')`}">
+                    <div class="equip-icon">${et.icon || '🔧'}</div>
+                    <div class="equip-info">
+                        <div class="equip-name">${et.name}</div>
+                        <div class="equip-status ${isDone ? 'done' : 'pending'}">
+                            ${isDone ? '&#10003; ' + (capture.make || 'Captured') + (capture.model_name ? ' ' + capture.model_name : '') : 'Not yet captured'}
+                        </div>
+                    </div>
+                    ${isDone
+                        ? '<span class="equip-done-badge">Done</span>'
+                        : `<button class="equip-capture-btn" onclick="event.stopPropagation();startCapture('${et.id}')">Capture</button>`
+                    }
+                </div>
+            `;
+        }).join('');
+
+        document.getElementById('equipChecklist').innerHTML = checklist;
+
+        // Enable complete button if all equipment captured
+        const allDone = state.equipTypes.every(et => unitCaptures.some(c => c.equipment_type_id === et.id));
+        document.getElementById('btnCompleteUnit').disabled = !allDone;
+
+        showScreen('screenUnitDetail', { title: unit.unit_name });
+    }
+
+    function completeUnit() {
+        if (state.currentVisit) {
+            api(`/api/visits/${state.currentVisit.id}`, { status: 'completed' }).catch(() => {});
+        }
+        toast(state.currentUnit.unit_name + ' completed!');
+        // Update local state
+        const u = state.units.find(u => u.id === state.currentUnit.id);
+        if (u) { u.is_complete = true; u.captures_done = u.captures_total; }
+        renderUnits();
+        goBack();
+    }
+
+    function skipUnit() {
+        const note = prompt('Reason for skipping (e.g., "locked", "no access"):');
+        if (note === null) return;
+        if (state.currentVisit) {
+            api(`/api/visits/${state.currentVisit.id}`, { status: 'access_issue', access_note: note }).catch(() => {});
+        }
+        toast('Unit skipped');
+        goBack();
+    }
+
+    // ─── Capture Flow ───────────────────────
+    function startCapture(equipTypeId) {
+        const et = state.equipTypes.find(t => t.id === equipTypeId);
+        if (!et) return;
+        state.currentEquipType = et;
+        state.capturePhoto = null;
+
+        document.getElementById('captureEquipName').textContent = (et.icon || '🔧') + ' ' + et.name;
+        document.getElementById('captureUnitName').textContent = 'Unit: ' + state.currentUnit.unit_name;
+
+        // Reset UI
+        document.getElementById('captureStep1').style.display = 'block';
+        document.getElementById('captureStep2').style.display = 'none';
+        document.getElementById('captureStep3').style.display = 'none';
+        document.getElementById('photoPreview').style.display = 'none';
+        document.getElementById('cameraPlaceholder').style.display = 'block';
+        document.getElementById('photoInput').value = '';
+
+        showScreen('screenCapture', { title: 'Capture: ' + et.name });
+    }
+
+    function onPhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        state.capturePhoto = file;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            document.getElementById('photoPreview').src = e.target.result;
+            document.getElementById('photoPreview').style.display = 'block';
+            document.getElementById('cameraPlaceholder').style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+
+        // Auto-submit to AI
+        processPhoto(file);
+    }
+
+    async function processPhoto(file) {
+        // Show step 2 (processing)
+        document.getElementById('captureStep1').style.display = 'none';
+        document.getElementById('captureStep2').style.display = 'block';
+
+        const formData = new FormData();
+        formData.append('photo', file);
+        formData.append('equipment_type_id', state.currentEquipType.id);
+        formData.append('user_id', state.user.id);
+        formData.append('user_name', state.user.name);
+        if (state.walkSession) formData.append('walk_session_id', state.walkSession.id);
+        if (state.currentVisit) formData.append('unit_visit_id', state.currentVisit.id);
+
+        try {
+            const r = await fetch(`${API}/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/capture`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!r.ok) throw new Error('Capture failed');
+            const data = await r.json();
+            state.lastCaptureId = data.capture?.id;
+
+            // Populate review form
+            const c = data.capture || {};
+            document.getElementById('fieldMake').value = c.make || '';
+            document.getElementById('fieldModelName').value = c.model_name || '';
+            document.getElementById('fieldModelNumber').value = c.model_number || '';
+            document.getElementById('fieldSerial').value = c.serial_number || '';
+            document.getElementById('fieldYear').value = c.manufacture_year || '';
+            document.getElementById('fieldCondition').value = c.condition_rating || '';
+            document.getElementById('fieldNotes').value = c.condition_notes || '';
+
+            // Confidence badge
+            const conf = c.ai_confidence || 'low';
+            const badge = document.getElementById('aiConfBadge');
+            badge.textContent = conf;
+            badge.className = 'confidence-badge conf-' + conf;
+
+            // Show/hide AI result box
+            if (data.ai_extracted) {
+                document.getElementById('aiResultBox').style.display = 'block';
+            } else {
+                document.getElementById('aiResultBox').style.display = 'none';
+            }
+
+            // Show step 3
+            document.getElementById('captureStep2').style.display = 'none';
+            document.getElementById('captureStep3').style.display = 'block';
+
+        } catch (e) {
+            toast('AI extraction failed. Enter data manually.');
+            document.getElementById('captureStep2').style.display = 'none';
+            document.getElementById('captureStep3').style.display = 'block';
+            document.getElementById('aiResultBox').style.display = 'none';
+        }
+    }
+
+    function tagNotReadable() {
+        // Skip photo, go straight to manual entry
+        state.capturePhoto = null;
+        document.getElementById('captureStep1').style.display = 'none';
+        document.getElementById('captureStep3').style.display = 'block';
+        document.getElementById('aiResultBox').style.display = 'none';
+
+        // Clear fields
+        ['fieldMake', 'fieldModelName', 'fieldModelNumber', 'fieldSerial', 'fieldYear', 'fieldNotes'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+        document.getElementById('fieldCondition').value = '';
+        state.lastCaptureId = null;
+    }
+
+    function retakePhoto() {
+        document.getElementById('captureStep3').style.display = 'none';
+        document.getElementById('captureStep1').style.display = 'block';
+        document.getElementById('photoPreview').style.display = 'none';
+        document.getElementById('cameraPlaceholder').style.display = 'block';
+        document.getElementById('photoInput').value = '';
+    }
+
+    async function saveCapture() {
+        showLoading('Saving...');
+
+        const captureData = {
+            make: document.getElementById('fieldMake').value,
+            model_name: document.getElementById('fieldModelName').value,
+            model_number: document.getElementById('fieldModelNumber').value,
+            serial_number: document.getElementById('fieldSerial').value,
+            manufacture_year: document.getElementById('fieldYear').value,
+            condition_rating: document.getElementById('fieldCondition').value,
+            condition_notes: document.getElementById('fieldNotes').value,
+            manually_verified: true,
+            verified_by: state.user.id,
+        };
+
+        try {
+            if (state.lastCaptureId) {
+                // Update existing capture with corrections
+                await api(`/api/captures/${state.lastCaptureId}`, captureData);
+            } else {
+                // Manual capture (no photo)
+                await api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/manual-capture`, {
+                    ...captureData,
+                    equipment_type_id: state.currentEquipType.id,
+                    user_id: state.user.id,
+                    user_name: state.user.name,
+                    walk_session_id: state.walkSession?.id,
+                    unit_visit_id: state.currentVisit?.id,
+                });
+            }
+
+            // Update local captures list
+            const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
+            state.captures = capsR.captures || [];
+
+            hideLoading();
+            toast('Saved!');
+
+            // Go back to unit detail and refresh it
+            goBack();
+            openUnit(state.currentUnit.id);
+
+        } catch (e) {
+            hideLoading();
+            toast('Error saving: ' + e.message);
+        }
+    }
+
+    // ─── Export ──────────────────────────────
+    function exportCSV() {
+        window.open(`${API}/api/buildings/${state.currentBuilding}/export/csv`, '_blank');
+    }
+
+    // ─── API helper ─────────────────────────
+    async function api(path, body = null) {
+        const opts = { headers: { 'Content-Type': 'application/json' } };
+        if (body) {
+            opts.method = 'POST';
+            opts.body = JSON.stringify(body);
+        }
+        const r = await fetch(API + path, opts);
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({ detail: r.statusText }));
+            throw new Error(err.detail || 'Request failed');
+        }
+        return r.json();
+    }
+
+    // ─── UI Helpers ─────────────────────────
+    function showLoading(text) {
+        document.getElementById('loadingText').textContent = text || 'Loading...';
+        document.getElementById('loadingOverlay').style.display = 'flex';
+    }
+    function hideLoading() {
+        document.getElementById('loadingOverlay').style.display = 'none';
+    }
+    function toast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // ─── Init ───────────────────────────────
+    (function init() {
+        const saved = localStorage.getItem('fc_user');
+        if (saved) {
+            try {
+                state.user = JSON.parse(saved);
+                document.getElementById('loginName').value = state.user.name || '';
+                document.getElementById('loginEmail').value = state.user.email || '';
+                // Auto-load buildings
+                loadBuildings().then(() => {
+                    if (state.buildings.length > 0) {
+                        showScreen('screenBuildings');
+                    }
+                }).catch(() => {});
+            } catch (e) { localStorage.removeItem('fc_user'); }
+        }
+    })();
+</script>
+</body>
+</html>

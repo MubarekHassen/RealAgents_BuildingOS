@@ -5142,6 +5142,7 @@ const BP_TABS = [
   { id:'spaces',   label:'Spaces',      icon:'📐' },
   { id:'systems',  label:'Systems',     icon:'⚙️' },
   { id:'site',     label:'Site',        icon:'🗺️' },
+  { id:'fieldcapture', label:'Field Capture', icon:'📱' },
 ];
 
 let bpActiveTab = 'basics';
@@ -5320,6 +5321,65 @@ function renderBuildingProfileModalFull() {
     </div>
   </div>`;
 
+  // ─── Field Capture Tab ───
+  const fcInvites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
+  const fcConfig = JSON.parse(localStorage.getItem('bos_fc_config_' + activeBuildingId) || '{}');
+  const fcEquipTypes = fcConfig.equipment_types || ['HVAC System', 'Water Heater', 'Electrical Panel'];
+  const fcUnitCount = fcConfig.unit_count || bp.units || '';
+  const AVAILABLE_EQUIP_TYPES = ['HVAC System','Water Heater','Electrical Panel','Boiler','Chiller','Cooling Tower','Air Handler','Rooftop Unit','Split System','Fire Alarm Panel','Fire Suppression','Elevator','Generator','Solar Panel','EV Charger'];
+
+  const fieldcapture = `<div class="bp-section ${bpActiveTab==='fieldcapture'?'active':''}" id="bps-fieldcapture">
+    <div class="bp-section-title">📱 Field Capture Setup</div>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 12px">Set up field data collection for this building. Configure equipment types, specify units, then generate an invite code for your field technician.</p>
+
+    <div class="bp-section-title" style="margin-top:16px">🔧 Equipment Types to Capture</div>
+    <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">Select which equipment types the field tech should photograph and document in each unit.</p>
+    <div id="fc-equip-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+      ${AVAILABLE_EQUIP_TYPES.map(t => `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 8px;border-radius:8px;border:1.5px solid ${fcEquipTypes.includes(t)?'#2563eb':'#e5e7eb'};background:${fcEquipTypes.includes(t)?'#eff6ff':'#fff'}">
+        <input type="checkbox" class="fc-equip-check" value="${t}" ${fcEquipTypes.includes(t)?'checked':''} onchange="fcToggleEquipType(this)" style="accent-color:#2563eb"> ${t}
+      </label>`).join('')}
+    </div>
+
+    <div class="bp-section-title" style="margin-top:16px">🏠 Units Configuration</div>
+    <div class="bp-grid" style="grid-template-columns:1fr 1fr;gap:12px">
+      <div class="bp-field"><label>Number of Units</label>
+        <input id="fc-unit-count" type="number" placeholder="e.g. 75" value="${fcUnitCount}">
+      </div>
+      <div class="bp-field"><label>Unit Naming Pattern</label>
+        <select id="fc-unit-pattern" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:8px;font-size:13px;outline:none">
+          <option value="numeric" ${fcConfig.unit_pattern==='numeric'?'selected':''}>Numeric (101, 102, ...)</option>
+          <option value="floor-unit" ${fcConfig.unit_pattern==='floor-unit'?'selected':''}>Floor-Unit (1-01, 1-02, ...)</option>
+          <option value="letter" ${fcConfig.unit_pattern==='letter'?'selected':''}>Letter (A, B, C, ...)</option>
+          <option value="custom" ${fcConfig.unit_pattern==='custom'?'selected':''}>Custom (enter manually)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="bp-section-title" style="margin-top:20px">🔗 Invite Codes</div>
+    <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">Generate an invite code to share with your field technician. They'll use this code to join this building in the Field Capture app.</p>
+    <button onclick="fcGenerateInviteCode()" class="btn btn-primary btn-sm" style="margin-bottom:12px">
+      ➕ Generate Invite Code
+    </button>
+    <div id="fc-invites-list">
+      ${fcInvites.length === 0 ? '<p style="font-size:13px;color:#9ca3af;text-align:center;padding:16px 0">No invite codes generated yet.</p>' :
+        fcInvites.map(inv => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:10px;margin-bottom:8px;background:#f9fafb">
+          <div>
+            <span style="font-family:monospace;font-size:18px;font-weight:700;letter-spacing:2px;color:#2563eb">${inv.code}</span>
+            <span style="font-size:11px;color:#9ca3af;margin-left:8px">${inv.uses||0}/${inv.max_uses||10} uses</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:#6b7280">${new Date(inv.created_at).toLocaleDateString()}</span>
+            <button onclick="fcCopyInviteCode('${inv.code}')" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Copy</button>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    ${fcInvites.length > 0 ? `<div style="margin-top:12px;padding:12px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:10px">
+      <p style="font-size:12px;color:#1e40af;margin:0"><strong>Share with your field tech:</strong></p>
+      <p style="font-size:12px;color:#1e40af;margin:4px 0 0">1. Open the Field Capture app<br>2. Enter their name and email<br>3. Paste the invite code: <strong style="font-family:monospace;letter-spacing:1px">${fcInvites[fcInvites.length-1].code}</strong></p>
+    </div>` : ''}
+  </div>`;
+
   modal.innerHTML = `<div class="bp-modal">
     <div class="bp-modal-head">
       <h2>🏢 Building Profile</h2>
@@ -5327,7 +5387,7 @@ function renderBuildingProfileModalFull() {
       <div class="bp-tabs">${tabs}</div>
     </div>
     <div class="bp-modal-body">
-      ${basics}${physical}${spaces}${systems}${site}
+      ${basics}${physical}${spaces}${systems}${site}${fieldcapture}
     </div>
     <div class="bp-modal-foot">
       <div class="bp-completeness">
@@ -5442,6 +5502,9 @@ function saveBuildingProfileFromModal() {
     }
   }
 
+  // Save field capture config if on that tab
+  if (typeof fcSaveConfig === 'function') fcSaveConfig();
+
   document.getElementById('bpModal').remove();
   renderDashboard();
 }
@@ -5466,6 +5529,128 @@ function maybeShowProfileCompletion(docEntry) {
       setTimeout(() => showBuildingProfileModal(), 1500);
     }
   }
+}
+
+// ─── FIELD CAPTURE INTEGRATION ────────────────────────────────
+const FIELD_CAPTURE_API = ''; // Will be set to Railway URL after deployment
+
+function fcToggleEquipType(checkbox) {
+  const label = checkbox.closest('label');
+  if (checkbox.checked) {
+    label.style.borderColor = '#2563eb';
+    label.style.background = '#eff6ff';
+  } else {
+    label.style.borderColor = '#e5e7eb';
+    label.style.background = '#fff';
+  }
+  // Save config
+  fcSaveConfig();
+}
+
+function fcSaveConfig() {
+  if (!activeBuildingId) return;
+  const checks = document.querySelectorAll('.fc-equip-check:checked');
+  const types = Array.from(checks).map(c => c.value);
+  const unitCount = document.getElementById('fc-unit-count')?.value || '';
+  const unitPattern = document.getElementById('fc-unit-pattern')?.value || 'numeric';
+  const config = { equipment_types: types, unit_count: unitCount, unit_pattern: unitPattern };
+  localStorage.setItem('bos_fc_config_' + activeBuildingId, JSON.stringify(config));
+}
+
+function fcGenerateInviteCode() {
+  if (!activeBuildingId) { alert('No building selected'); return; }
+
+  // Save current config first
+  fcSaveConfig();
+
+  const bld = activeBuilding();
+  const config = JSON.parse(localStorage.getItem('bos_fc_config_' + activeBuildingId) || '{}');
+
+  // Generate a 6-char alphanumeric code
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1 to avoid confusion
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+
+  const invite = {
+    code: code,
+    building_id: activeBuildingId,
+    building_name: bld?.name || 'Unknown',
+    building_address: bld?.address || '',
+    created_by: localStorage.getItem('bos_user_name') || 'Office User',
+    max_uses: 10,
+    uses: 0,
+    equipment_types: config.equipment_types || [],
+    unit_count: config.unit_count || 0,
+    unit_pattern: config.unit_pattern || 'numeric',
+    is_active: true,
+    created_at: new Date().toISOString()
+  };
+
+  // Save locally
+  const invites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
+  invites.push(invite);
+  localStorage.setItem('bos_fc_invites_' + activeBuildingId, JSON.stringify(invites));
+
+  // If Field Capture API is configured, push to server
+  if (FIELD_CAPTURE_API) {
+    fcPushSetupToServer(invite, config);
+  }
+
+  // Re-render the modal
+  renderBuildingProfileModalFull();
+  bpSwitchTab('fieldcapture');
+
+  // Show toast
+  showToast && showToast(`Invite code generated: ${code}`, 'success');
+}
+
+async function fcPushSetupToServer(invite, config) {
+  try {
+    // Generate unit list based on pattern
+    const unitCount = parseInt(config.unit_count) || 0;
+    const units = [];
+    for (let i = 1; i <= unitCount; i++) {
+      let name;
+      switch (config.unit_pattern) {
+        case 'floor-unit': name = `${Math.ceil(i/10)}-${String(i%10||10).padStart(2,'0')}`; break;
+        case 'letter': name = String.fromCharCode(64 + i); break;
+        default: name = String(100 + i); // numeric: 101, 102, ...
+      }
+      units.push({ unit_name: name, floor: String(Math.ceil(i/10)), unit_type: 'residential' });
+    }
+
+    const resp = await fetch(`${FIELD_CAPTURE_API}/api/buildings/${invite.building_id}/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        building_name: invite.building_name,
+        building_address: invite.building_address,
+        units: units,
+        equipment_types: (config.equipment_types || []).map(t => ({ name: t })),
+        invite_code: invite.code,
+        created_by: invite.created_by
+      })
+    });
+    if (!resp.ok) console.error('Field Capture setup push failed:', await resp.text());
+    else console.log('Field Capture setup pushed successfully');
+  } catch(e) {
+    console.error('Field Capture API error:', e);
+  }
+}
+
+function fcCopyInviteCode(code) {
+  navigator.clipboard.writeText(code).then(() => {
+    showToast && showToast(`Copied: ${code}`, 'success');
+  }).catch(() => {
+    // Fallback
+    const el = document.createElement('textarea');
+    el.value = code;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast && showToast(`Copied: ${code}`, 'success');
+  });
 }
 
 // ─── EQUIPMENT REGISTER ───────────────────────────────────────
