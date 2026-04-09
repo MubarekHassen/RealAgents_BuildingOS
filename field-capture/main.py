@@ -561,6 +561,7 @@ async def start_walk(building_id: str, request: Request):
     return {"walk": walk[0]}
 
 
+@app.post("/api/walks/{walk_id}")
 @app.patch("/api/walks/{walk_id}")
 async def update_walk(walk_id: str, request: Request):
     """Update walk session (complete, pause, add notes)."""
@@ -596,6 +597,7 @@ async def visit_unit(building_id: str, unit_id: str, request: Request):
     return {"visit": visit[0]}
 
 
+@app.post("/api/visits/{visit_id}")
 @app.patch("/api/visits/{visit_id}")
 async def update_visit(visit_id: str, request: Request):
     """Update unit visit (complete, skip, access issue)."""
@@ -762,6 +764,7 @@ async def capture_equipment(
     }
 
 
+@app.post("/api/captures/{capture_id}")
 @app.patch("/api/captures/{capture_id}")
 async def update_capture(capture_id: str, request: Request):
     """Update/correct a capture (manual verification after AI extraction)."""
