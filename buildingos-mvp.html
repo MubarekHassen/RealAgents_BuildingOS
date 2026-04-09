@@ -5530,6 +5530,8 @@ function renderBuildingsOverview() {
     </div>`;
 }
 
+let _bpExpandedBuildings = new Set();
+
 function renderBuildingProfilePage() {
   const bp = fullBuildingProfile || {};
   const bld = activeBuilding();
@@ -5539,146 +5541,288 @@ function renderBuildingProfilePage() {
   const sub = document.getElementById('bpPageSub');
   if (sub) sub.textContent = bp.address || bld?.address || 'Manage your property\'s buildings and spaces';
 
-  // Property overview card
   const name = bp.name || bld?.name || 'Untitled Property';
   const addr = bp.address || bld?.address || '';
-  const use = bp.building_use || 'Multifamily';
+  const use = bp.building_use || '—';
   const grossSF = bp.gross_sf ? Number(bp.gross_sf).toLocaleString() : '—';
-  const stories = bp.stories || '—';
   const yearBuilt = bp.year_built || '—';
   const unitsList = bp.units_list || [];
 
-  // Group units by building (prefix before the dash)
+  // Group units by building prefix
   const buildings = {};
   const bDetails = bp.building_details || [];
-  for (const u of unitsList) {
+  for (let i = 0; i < unitsList.length; i++) {
+    const u = unitsList[i];
     const uname = u.name || '';
-    const prefix = uname.split('-')[0] || 'Other';
+    const prefix = uname.includes('-') ? uname.split('-')[0] : 'Main';
     if (!buildings[prefix]) buildings[prefix] = { units: [], totalSF: 0, address: u.building_address || '' };
-    buildings[prefix].units.push(u);
+    buildings[prefix].units.push({ ...u, _idx: i });
     buildings[prefix].totalSF += parseInt(u.sqft) || 0;
     if (u.building_address && !buildings[prefix].address) buildings[prefix].address = u.building_address;
   }
-  // Fill addresses from building_details if available
   for (const d of bDetails) {
     if (d.label && buildings[d.label] && d.address) buildings[d.label].address = d.address;
   }
   const buildingKeys = Object.keys(buildings).sort();
   const totalUnits = unitsList.length;
+  const STATUSES = ['Occupied','Vacant','Renovation','Model','Down'];
 
-  let html = `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:20px;">
-      <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;">Buildings</div>
-        <div style="font-size:28px;font-weight:700;color:#111827;">${buildingKeys.length || '—'}</div>
-      </div>
-      <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;">Total Spaces</div>
-        <div style="font-size:28px;font-weight:700;color:#111827;">${totalUnits || '—'}</div>
-      </div>
-      <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;">Gross SF</div>
-        <div style="font-size:28px;font-weight:700;color:#111827;">${grossSF}</div>
-      </div>
-      <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;">Type</div>
-        <div style="font-size:28px;font-weight:700;color:#111827;">${use}</div>
-      </div>
-    </div>`;
+  // ─── Stats Row ───
+  let html = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;">
+    ${[
+      { label:'Buildings', val: buildingKeys.length || '—', color:'#4f46e5' },
+      { label:'Total Units', val: totalUnits || '—', color:'#059669' },
+      { label:'Gross SF', val: grossSF, color:'#d97706' },
+      { label:'Type', val: use, color:'#7c3aed' },
+    ].map(s => `<div style="background:#fff;border-radius:14px;padding:18px 16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);border:1px solid #f3f4f6;">
+      <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;font-weight:600;letter-spacing:0.5px;">${s.label}</div>
+      <div style="font-size:26px;font-weight:800;color:${s.color};margin-top:4px;">${s.val}</div>
+    </div>`).join('')}
+  </div>`;
 
-  // Buildings grid
+  // ─── Action Bar ───
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div style="font-size:16px;font-weight:700;color:#111827;">Buildings & Units</div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="bpPageAddBuilding()" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Building
+      </button>
+      <button onclick="showPage('upload')" style="background:#f9fafb;color:#374151;border:1.5px solid #e5e7eb;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;">Upload Spreadsheet</button>
+    </div>
+  </div>`;
+
+  // ─── Buildings ───
   if (buildingKeys.length > 0) {
-    html += `<div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:12px;">Buildings & Spaces</div>`;
-    html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:24px;">`;
     for (const prefix of buildingKeys) {
       const b = buildings[prefix];
       const bAddr = b.address || '';
+      const expanded = _bpExpandedBuildings.has(prefix);
       const avgSF = b.units.length ? Math.round(b.totalSF / b.units.length) : 0;
-      const bedCounts = b.units.map(u => parseInt(u.beds) || 0);
-      const bedRange = bedCounts.length ? (Math.min(...bedCounts) === Math.max(...bedCounts) ? Math.min(...bedCounts) + 'bd' : Math.min(...bedCounts) + '-' + Math.max(...bedCounts) + 'bd') : '';
 
-      html += `
-        <div style="background:#fff;border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1.5px solid #e5e7eb;cursor:pointer;transition:border-color 0.15s;"
-             onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#e5e7eb'"
-             onclick="toggleBuildingUnits('${prefix}')">
-          <div style="display:flex;justify-content:space-between;align-items:start;">
+      html += `<div style="background:#fff;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06);border:1px solid #e5e7eb;margin-bottom:12px;overflow:hidden;" id="bpBldgCard-${prefix}">
+        <!-- Building Header -->
+        <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background 0.1s;" onclick="bpToggleBuilding('${prefix}')" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:10px;background:${expanded?'#4f46e5':'#eef2ff'};color:${expanded?'#fff':'#4f46e5'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;transition:all 0.2s;">${prefix.length <= 5 ? prefix : prefix.substring(0,4)}</div>
             <div>
               <div style="font-weight:700;font-size:15px;color:#111827;">Building ${prefix}</div>
-              ${bAddr ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">${bAddr}</div>` : ''}
+              <div style="font-size:12px;color:#6b7280;display:flex;gap:8px;align-items:center;margin-top:1px;">
+                ${bAddr ? `<span>${bAddr}</span>` : `<span style="color:#d1d5db;font-style:italic;">No address</span>`}
+              </div>
             </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;">
             <div style="text-align:right;">
-              <div style="font-size:20px;font-weight:700;color:#4f46e5;">${b.units.length}</div>
-              <div style="font-size:10px;color:#6b7280;">spaces</div>
+              <div style="font-size:18px;font-weight:700;color:#4f46e5;">${b.units.length}</div>
+              <div style="font-size:10px;color:#9ca3af;">units</div>
+            </div>
+            <div style="font-size:10px;color:#9ca3af;">~${avgSF.toLocaleString()} SF</div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" style="transition:transform 0.2s;transform:rotate(${expanded?'180':'0'}deg);"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+        </div>
+
+        <!-- Expanded: editable building details + unit table -->
+        <div id="bpBldg-${prefix}" style="display:${expanded?'block':'none'};">
+          <!-- Building edit row -->
+          <div style="padding:0 20px 12px;display:flex;gap:8px;align-items:center;border-top:1px solid #f3f4f6;padding-top:12px;">
+            <input id="bpBldgAddr-${prefix}" value="${bAddr}" placeholder="Building address..." style="flex:1;border:1.5px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;transition:border-color 0.15s;" onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e5e7eb';bpSaveInline()">
+            <button onclick="bpPageAddUnit('${prefix}')" style="background:#eef2ff;color:#4f46e5;border:1.5px solid #c7d2fe;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">+ Add Unit</button>
+            <button onclick="bpPageRemoveBuilding('${prefix}')" style="background:#fff;color:#ef4444;border:1.5px solid #fecaca;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;" title="Remove building">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            </button>
+          </div>
+
+          <!-- Unit table -->
+          <div style="padding:0 20px 16px;">
+            <div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 0.7fr 1.2fr auto;gap:0;font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.3px;padding:0 4px 6px;">
+              <div>Unit</div><div>SF</div><div>Beds</div><div>Baths</div><div>Status</div><div></div>
+            </div>
+            <div id="bpBldgUnits-${prefix}">
+              ${b.units.map(u => _bpUnitRow(u, prefix)).join('')}
             </div>
           </div>
-          <div style="display:flex;gap:12px;margin-top:10px;font-size:12px;color:#6b7280;">
-            <span>~${avgSF.toLocaleString()} SF avg</span>
-            ${bedRange ? `<span>${bedRange}</span>` : ''}
-            <span>${b.totalSF.toLocaleString()} SF total</span>
-          </div>
-          <div id="bpBldg-${prefix}" style="display:none;margin-top:12px;border-top:1px solid #f3f4f6;padding-top:10px;">
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;">
-              ${b.units.map(u => `
-                <div style="background:#f9fafb;border-radius:8px;padding:8px 10px;font-size:12px;">
-                  <div style="font-weight:600;color:#111827;">${u.name}</div>
-                  <div style="color:#6b7280;font-size:11px;">${u.sqft || '?'} SF · ${u.beds || '?'}bd/${u.baths || '?'}ba</div>
-                  ${u.status ? `<div style="font-size:10px;color:${u.status==='Occupied'?'#059669':'#d97706'};margin-top:2px;">${u.status}</div>` : ''}
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        </div>`;
-    }
-    html += `</div>`;
-  } else {
-    html += `
-      <div style="background:#fff;border-radius:12px;padding:40px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-        <div style="font-size:36px;margin-bottom:10px;">🏠</div>
-        <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:6px;">No buildings configured yet</div>
-        <div style="font-size:12px;color:#9ca3af;margin-bottom:16px;max-width:360px;margin:0 auto 16px;">Upload a unit directory spreadsheet or edit the Building Profile to add buildings and spaces.</div>
-        <div style="display:flex;gap:10px;justify-content:center;">
-          <button class="btn btn-secondary btn-sm" onclick="showBuildingProfileModal()">Edit Profile</button>
-          <button class="btn btn-primary btn-sm" onclick="showPage('upload')">Upload Document</button>
         </div>
       </div>`;
+    }
+  } else {
+    html += `<div style="background:#fff;border-radius:14px;padding:48px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.06);border:1px solid #e5e7eb;">
+      <div style="width:56px;height:56px;border-radius:14px;background:#eef2ff;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:28px;">🏠</div>
+      <div style="font-size:15px;font-weight:700;color:#111827;margin-bottom:6px;">No buildings yet</div>
+      <div style="font-size:13px;color:#9ca3af;margin-bottom:20px;max-width:360px;margin-left:auto;margin-right:auto;">Upload a unit directory spreadsheet to auto-populate, or add buildings manually.</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button onclick="bpPageAddBuilding()" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;">Add Building</button>
+        <button onclick="showPage('upload')" style="background:#f9fafb;color:#374151;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;">Upload Spreadsheet</button>
+      </div>
+    </div>`;
   }
 
-  // Property details summary
-  html += `
-    <div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:12px;">Property Details</div>
-    <div style="background:#fff;border-radius:12px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.06);display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:13px;">
-      <div><span style="color:#6b7280;">Year Built:</span> <strong>${yearBuilt}</strong></div>
-      <div><span style="color:#6b7280;">Stories:</span> <strong>${stories}</strong></div>
-      <div><span style="color:#6b7280;">Construction:</span> <strong>${bp.construction_type || '—'}</strong></div>
-      <div><span style="color:#6b7280;">Roof:</span> <strong>${bp.roof_type || '—'}</strong></div>
-      <div><span style="color:#6b7280;">Exterior:</span> <strong>${bp.exterior_cladding || '—'}</strong></div>
-      <div><span style="color:#6b7280;">Parking:</span> <strong>${bp.parking_spaces ? bp.parking_spaces + ' spaces' : '—'}</strong></div>
-      <div><span style="color:#6b7280;">Sprinklered:</span> <strong>${bp.sprinklered || '—'}</strong></div>
-      <div><span style="color:#6b7280;">Accessibility:</span> <strong>${bp.accessibility || '—'}</strong></div>
-      <div><span style="color:#6b7280;">Zoning:</span> <strong>${bp.zoning || '—'}</strong></div>
-    </div>`;
+  // ─── Property Details (editable) ───
+  html += `<div style="margin-top:24px;font-size:16px;font-weight:700;color:#111827;margin-bottom:12px;">Property Details</div>
+  <div style="background:#fff;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.06);border:1px solid #e5e7eb;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+      ${[
+        { id:'year_built', label:'Year Built', val: bp.year_built||'', ph:'e.g. 1998', type:'number' },
+        { id:'stories', label:'Stories', val: bp.stories||'', ph:'e.g. 3', type:'number' },
+        { id:'construction_type', label:'Construction', val: bp.construction_type||'', ph:'e.g. Wood Frame' },
+        { id:'roof_type', label:'Roof', val: bp.roof_type||'', ph:'e.g. Flat TPO' },
+        { id:'exterior_cladding', label:'Exterior', val: bp.exterior_cladding||'', ph:'e.g. Brick' },
+        { id:'parking_spaces', label:'Parking Spaces', val: bp.parking_spaces||'', ph:'e.g. 50', type:'number' },
+        { id:'zoning', label:'Zoning', val: bp.zoning||'', ph:'e.g. R-3 Residential' },
+      ].map(f => `<div>
+        <div style="font-size:11px;color:#6b7280;font-weight:600;margin-bottom:4px;">${f.label}</div>
+        <input id="bpProp-${f.id}" value="${f.val}" placeholder="${f.ph}" ${f.type?'type="'+f.type+'"':''} style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;transition:border-color 0.15s;" onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e5e7eb';bpSaveInline()">
+      </div>`).join('')}
+    </div>
+  </div>`;
 
-  // Field Capture status
+  // ─── FC Status ───
   const fcInvites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
   if (fcInvites.length > 0) {
     const code = fcInvites[0].code;
-    html += `
-      <div style="font-size:14px;font-weight:700;color:#111827;margin:20px 0 12px;">Field Capture</div>
-      <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-size:13px;font-weight:600;color:#15803d;">📱 Active invite code</div>
-          <div style="font-family:monospace;font-size:22px;font-weight:700;color:#1e40af;letter-spacing:3px;margin-top:4px;">${code}</div>
-        </div>
-        <button onclick="fcCopyInviteCode('${code}')" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;">📋 Copy</button>
-      </div>`;
+    html += `<div style="margin-top:24px;font-size:16px;font-weight:700;color:#111827;margin-bottom:12px;">Field Capture</div>
+    <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border:1.5px solid #bbf7d0;border-radius:14px;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#15803d;">📱 Active invite code${fcInvites.length > 1 ? ' (' + fcInvites.length + ' buildings)' : ''}</div>
+        <div style="font-family:monospace;font-size:24px;font-weight:800;color:#1e40af;letter-spacing:4px;margin-top:4px;">${code}</div>
+      </div>
+      <button onclick="fcCopyInviteCode('${code}')" style="background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(37,99,235,0.25);">📋 Copy</button>
+    </div>`;
   }
 
   el.innerHTML = html;
 }
 
-function toggleBuildingUnits(prefix) {
+function _bpUnitRow(u, prefix) {
+  const STATUSES = ['Occupied','Vacant','Renovation','Model','Down'];
+  const idx = u._idx;
+  return `<div class="bp-page-unit" data-idx="${idx}" style="display:grid;grid-template-columns:2fr 1fr 0.7fr 0.7fr 1.2fr auto;gap:6px;margin-bottom:4px;align-items:center;">
+    <input value="${u.name||''}" data-field="name" placeholder="Unit name" style="border:1.5px solid #f3f4f6;border-radius:6px;padding:7px 10px;font-size:13px;font-weight:500;outline:none;transition:border-color 0.15s;background:#fafafa;" onfocus="this.style.borderColor='#4f46e5';this.style.background='#fff'" onblur="this.style.borderColor='#f3f4f6';this.style.background='#fafafa';bpSaveInline()">
+    <input value="${u.sqft||''}" data-field="sqft" type="number" placeholder="SF" style="border:1.5px solid #f3f4f6;border-radius:6px;padding:7px 8px;font-size:13px;outline:none;transition:border-color 0.15s;background:#fafafa;" onfocus="this.style.borderColor='#4f46e5';this.style.background='#fff'" onblur="this.style.borderColor='#f3f4f6';this.style.background='#fafafa';bpSaveInline()">
+    <input value="${u.beds!=null?u.beds:''}" data-field="beds" type="number" min="0" placeholder="—" style="border:1.5px solid #f3f4f6;border-radius:6px;padding:7px 8px;font-size:13px;outline:none;transition:border-color 0.15s;background:#fafafa;" onfocus="this.style.borderColor='#4f46e5';this.style.background='#fff'" onblur="this.style.borderColor='#f3f4f6';this.style.background='#fafafa';bpSaveInline()">
+    <input value="${u.baths!=null?u.baths:''}" data-field="baths" type="number" min="0" step="0.5" placeholder="—" style="border:1.5px solid #f3f4f6;border-radius:6px;padding:7px 8px;font-size:13px;outline:none;transition:border-color 0.15s;background:#fafafa;" onfocus="this.style.borderColor='#4f46e5';this.style.background='#fff'" onblur="this.style.borderColor='#f3f4f6';this.style.background='#fafafa';bpSaveInline()">
+    <select data-field="status" style="border:1.5px solid #f3f4f6;border-radius:6px;padding:7px 8px;font-size:12px;outline:none;background:#fafafa;cursor:pointer;transition:border-color 0.15s;" onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#f3f4f6';bpSaveInline()" onchange="bpSaveInline()">
+      <option value="">Status…</option>
+      ${STATUSES.map(s => `<option value="${s}" ${u.status===s?'selected':''}>${s}</option>`).join('')}
+    </select>
+    <button onclick="bpPageRemoveUnit(${idx},'${prefix}')" style="background:none;border:none;cursor:pointer;color:#d1d5db;padding:4px;transition:color 0.15s;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'" title="Remove unit">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>`;
+}
+
+function bpToggleBuilding(prefix) {
   const el = document.getElementById('bpBldg-' + prefix);
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (!el) return;
+  if (_bpExpandedBuildings.has(prefix)) {
+    _bpExpandedBuildings.delete(prefix);
+    el.style.display = 'none';
+  } else {
+    _bpExpandedBuildings.add(prefix);
+    el.style.display = 'block';
+  }
+  // Update chevron + icon color
+  renderBuildingProfilePage();
+}
+
+function bpSaveInline() {
+  const bp = fullBuildingProfile;
+  if (!bp || !activeBuildingId) return;
+
+  // Save property details
+  ['year_built','stories','construction_type','roof_type','exterior_cladding','parking_spaces','zoning'].forEach(field => {
+    const el = document.getElementById('bpProp-' + field);
+    if (el) bp[field] = el.value.trim() || null;
+  });
+
+  // Save building addresses
+  const bDetails = bp.building_details || [];
+  for (const d of bDetails) {
+    const addrEl = document.getElementById('bpBldgAddr-' + d.label);
+    if (addrEl) d.address = addrEl.value.trim();
+  }
+
+  // Save unit edits from inline rows
+  const rows = document.querySelectorAll('.bp-page-unit');
+  rows.forEach(row => {
+    const idx = parseInt(row.dataset.idx);
+    if (isNaN(idx) || !bp.units_list[idx]) return;
+    const u = bp.units_list[idx];
+    row.querySelectorAll('[data-field]').forEach(input => {
+      const field = input.dataset.field;
+      const val = input.tagName === 'SELECT' ? input.value : input.value.trim();
+      if (field === 'name') u.name = val;
+      else if (field === 'sqft') u.sqft = val ? parseInt(val) : null;
+      else if (field === 'beds') u.beds = val ? parseFloat(val) : null;
+      else if (field === 'baths') u.baths = val ? parseFloat(val) : null;
+      else if (field === 'status') u.status = val || null;
+    });
+    // Update building_address from building-level input
+    const prefix = (u.name || '').includes('-') ? u.name.split('-')[0] : 'Main';
+    const addrEl = document.getElementById('bpBldgAddr-' + prefix);
+    if (addrEl) u.building_address = addrEl.value.trim();
+  });
+
+  // Recalculate gross SF
+  const totalSF = (bp.units_list || []).reduce((s, u) => s + (parseInt(u.sqft) || 0), 0);
+  if (totalSF > 0) bp.gross_sf = totalSF;
+
+  saveBuildingProfile(activeBuildingId, fullBuildingProfile);
+}
+
+function bpPageAddBuilding() {
+  const label = prompt('Building name or number (e.g. "8560" or "Building C"):');
+  if (!label || !label.trim()) return;
+  const addr = prompt('Building address (optional):') || '';
+  const bp = fullBuildingProfile;
+  if (!bp.building_details) bp.building_details = [];
+  bp.building_details.push({ label: label.trim(), address: addr.trim(), unitCount: 0 });
+  if (!bp.units_list) bp.units_list = [];
+  // Add one placeholder unit
+  bp.units_list.push({ name: label.trim() + '-001', sqft: null, beds: null, baths: null, status: null, building_address: addr.trim() });
+  bp.num_buildings = (bp.building_details || []).length;
+  saveBuildingProfile(activeBuildingId, fullBuildingProfile);
+  _bpExpandedBuildings.add(label.trim());
+  renderBuildingProfilePage();
+}
+
+function bpPageAddUnit(prefix) {
+  const bp = fullBuildingProfile;
+  if (!bp.units_list) bp.units_list = [];
+  // Determine next unit number
+  const existing = bp.units_list.filter(u => (u.name || '').split('-')[0] === prefix);
+  const maxNum = existing.reduce((m, u) => {
+    const parts = (u.name || '').split('-');
+    const n = parseInt(parts[parts.length - 1]) || 0;
+    return Math.max(m, n);
+  }, 0);
+  const nextName = prefix + '-' + String(maxNum + 1).padStart(3, '0');
+  const bAddr = document.getElementById('bpBldgAddr-' + prefix)?.value || '';
+  bp.units_list.push({ name: nextName, sqft: null, beds: null, baths: null, status: null, building_address: bAddr });
+  saveBuildingProfile(activeBuildingId, fullBuildingProfile);
+  renderBuildingProfilePage();
+}
+
+function bpPageRemoveUnit(idx, prefix) {
+  const bp = fullBuildingProfile;
+  if (!bp.units_list || !bp.units_list[idx]) return;
+  const uName = bp.units_list[idx].name;
+  if (!confirm('Remove unit ' + uName + '?')) return;
+  bp.units_list.splice(idx, 1);
+  saveBuildingProfile(activeBuildingId, fullBuildingProfile);
+  renderBuildingProfilePage();
+}
+
+function bpPageRemoveBuilding(prefix) {
+  const bp = fullBuildingProfile;
+  const count = (bp.units_list || []).filter(u => (u.name || '').split('-')[0] === prefix).length;
+  if (!confirm('Remove building ' + prefix + ' and its ' + count + ' unit(s)?')) return;
+  bp.units_list = (bp.units_list || []).filter(u => (u.name || '').split('-')[0] !== prefix);
+  bp.building_details = (bp.building_details || []).filter(d => d.label !== prefix);
+  bp.num_buildings = (bp.building_details || []).length;
+  _bpExpandedBuildings.delete(prefix);
+  saveBuildingProfile(activeBuildingId, fullBuildingProfile);
+  renderBuildingProfilePage();
 }
 
 function showBuildingProfileModal() {
