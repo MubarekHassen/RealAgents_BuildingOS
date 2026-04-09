@@ -731,10 +731,12 @@
         try {
             const r = await api(`/api/join/${code}`, { user_id: state.user.id });
             toast('Joined ' + (r.building_name || 'building') + '!');
-            await loadBuildings();
             hideLoading();
+            // Go straight to this building's dashboard — no buildings list
             if (r.building_id) {
                 selectBuilding(r.building_id, r.building_name, r.building_address);
+                // Reset screen stack so back goes to buildings, not join screen
+                screenStack = ['screenBuildings'];
             }
         } catch (e) {
             hideLoading();
@@ -1189,7 +1191,12 @@
                 document.getElementById('loginEmail').value = state.user.email || '';
                 // Auto-load buildings
                 loadBuildings().then(() => {
-                    if (state.buildings.length > 0) {
+                    if (state.buildings.length === 1) {
+                        // Single building — go straight to it
+                        const b = state.buildings[0];
+                        selectBuilding(b.building_id, b.building_name, b.building_address);
+                        screenStack = ['screenBuildings'];
+                    } else if (state.buildings.length > 0) {
                         showScreen('screenBuildings');
                     }
                 }).catch(() => {});

@@ -5390,29 +5390,24 @@ function renderBuildingProfileModalFull() {
       </div>
     </div>
 
-    <div class="bp-section-title" style="margin-top:20px">🔗 Invite Codes</div>
-    <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">Generate an invite code to share with your field technician. They'll use this code to join this building in the Field Capture app.</p>
-    <button onclick="fcGenerateInviteCode()" class="btn btn-primary btn-sm" style="margin-bottom:12px">
-      ➕ Generate Invite Code
-    </button>
-    <div id="fc-invites-list">
-      ${fcInvites.length === 0 ? '<p style="font-size:13px;color:#9ca3af;text-align:center;padding:16px 0">No invite codes generated yet.</p>' :
-        fcInvites.map(inv => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:10px;margin-bottom:8px;background:#f9fafb">
-          <div>
-            <span style="font-family:monospace;font-size:18px;font-weight:700;letter-spacing:2px;color:#2563eb">${inv.code}</span>
-            <span style="font-size:11px;color:#9ca3af;margin-left:8px">${inv.uses||0}/${inv.max_uses||10} uses</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:11px;color:#6b7280">${new Date(inv.created_at).toLocaleDateString()}</span>
-            <button onclick="fcCopyInviteCode('${inv.code}')" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer">Copy</button>
-          </div>
-        </div>`).join('')}
-    </div>
-
-    ${fcInvites.length > 0 ? `<div style="margin-top:12px;padding:12px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:10px">
-      <p style="font-size:12px;color:#1e40af;margin:0"><strong>Share with your field tech:</strong></p>
-      <p style="font-size:12px;color:#1e40af;margin:4px 0 0">1. Open the Field Capture app<br>2. Enter their name and email<br>3. Paste the invite code: <strong style="font-family:monospace;letter-spacing:1px">${fcInvites[fcInvites.length-1].code}</strong></p>
-    </div>` : ''}
+    <div class="bp-section-title" style="margin-top:20px">🔗 Invite Code</div>
+    <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">Generate an invite code for your field technician. ${fcInvites.length > 0 ? 'Generating a new code replaces the previous one.' : ''}</p>
+    ${fcInvites.length > 0 ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:2px solid #2563eb;border-radius:12px;margin-bottom:12px;background:#f0f9ff;cursor:pointer" onclick="fcCopyInviteCode('${fcInvites[0].code}')">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:2px">Active Code</div>
+          <span style="font-family:monospace;font-size:24px;font-weight:800;letter-spacing:4px;color:#1e40af">${fcInvites[0].code}</span>
+        </div>
+        <button onclick="event.stopPropagation();fcCopyInviteCode('${fcInvites[0].code}')" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer">📋 Copy</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button onclick="fcGenerateInviteCode()" class="btn btn-secondary btn-sm" style="flex:1;">🔄 Generate New Code</button>
+      </div>
+    ` : `
+      <button onclick="fcGenerateInviteCode()" class="btn btn-primary btn-sm" style="margin-bottom:12px;width:100%;padding:14px;font-size:15px;">
+        🔗 Generate Invite Code
+      </button>
+    `}
   </div>`;
 
   modal.innerHTML = `<div class="bp-modal">
@@ -5681,22 +5676,60 @@ function fcGenerateInviteCode() {
     created_at: new Date().toISOString()
   };
 
-  // Save locally
-  const invites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
-  invites.push(invite);
-  localStorage.setItem('bos_fc_invites_' + activeBuildingId, JSON.stringify(invites));
+  // Replace old codes — only keep the latest one
+  localStorage.setItem('bos_fc_invites_' + activeBuildingId, JSON.stringify([invite]));
 
   // If Field Capture API is configured, push to server
   if (FIELD_CAPTURE_API) {
     fcPushSetupToServer(invite, config);
   }
 
-  // Re-render the modal
-  renderBuildingProfileModalFull();
-  bpSwitchTab('fieldcapture');
+  // Show the invite code on a dedicated screen (stays visible for copying)
+  fcShowInviteCodeScreen(invite);
+}
 
-  // Show toast
-  showToast && showToast(`Invite code generated: ${code}`, 'success');
+function fcShowInviteCodeScreen(invite) {
+  // Replace the modal content with a dedicated invite code display
+  const modal = document.getElementById('bpModal');
+  if (!modal) return;
+
+  const bld = activeBuilding();
+  const unitCount = (fullBuildingProfile.units_list || []).length;
+  const fieldCaptureUrl = FIELD_CAPTURE_API || 'https://buildingosinitial-production.up.railway.app';
+
+  modal.innerHTML = `<div class="bp-modal" style="max-width:480px;">
+    <div style="padding:32px 28px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:12px;">🔗</div>
+      <h2 style="font-size:20px;font-weight:700;margin:0 0 4px;">Invite Code Ready</h2>
+      <p style="font-size:13px;color:#6b7280;margin:0 0 24px;">Share this code with your field technician</p>
+
+      <div id="fc-code-display" style="background:#f0f9ff;border:2px dashed #2563eb;border-radius:16px;padding:24px;margin-bottom:20px;cursor:pointer;" onclick="fcCopyInviteCode('${invite.code}')">
+        <div style="font-family:monospace;font-size:36px;font-weight:800;letter-spacing:6px;color:#1e40af;">${invite.code}</div>
+        <div id="fc-copy-hint" style="font-size:12px;color:#2563eb;margin-top:8px;font-weight:600;">Tap to copy</div>
+      </div>
+
+      <div style="background:#f9fafb;border-radius:12px;padding:16px;text-align:left;margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px;">Building Details</div>
+        <div style="font-size:14px;font-weight:600;">${bld?.name || 'Building'}</div>
+        <div style="font-size:12px;color:#6b7280;">${bld?.address || ''}</div>
+        ${unitCount > 0 ? `<div style="font-size:12px;color:#6b7280;margin-top:4px;">${unitCount} units will be loaded</div>` : ''}
+      </div>
+
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;text-align:left;margin-bottom:24px;">
+        <div style="font-size:13px;color:#15803d;font-weight:600;margin-bottom:6px;">Instructions for technician:</div>
+        <div style="font-size:13px;color:#166534;line-height:1.6;">
+          1. Open <strong>${fieldCaptureUrl.replace('https://','')}</strong><br>
+          2. Register with name and email<br>
+          3. Enter code: <strong style="font-family:monospace;letter-spacing:1px;">${invite.code}</strong>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="document.getElementById('bpModal').remove()">Close</button>
+        <button class="btn btn-primary btn-sm" style="flex:1;" onclick="fcCopyInviteCode('${invite.code}')">📋 Copy Code</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 async function fcPushSetupToServer(invite, config) {
@@ -5746,17 +5779,26 @@ async function fcPushSetupToServer(invite, config) {
 }
 
 function fcCopyInviteCode(code) {
-  navigator.clipboard.writeText(code).then(() => {
+  const doCopy = () => {
+    // Visual feedback on the code display
+    const hint = document.getElementById('fc-copy-hint');
+    const display = document.getElementById('fc-code-display');
+    if (hint) { hint.textContent = '✓ Copied!'; hint.style.color = '#059669'; }
+    if (display) { display.style.borderColor = '#059669'; display.style.background = '#f0fdf4'; }
+    setTimeout(() => {
+      if (hint) { hint.textContent = 'Tap to copy'; hint.style.color = '#2563eb'; }
+      if (display) { display.style.borderColor = '#2563eb'; display.style.background = '#f0f9ff'; }
+    }, 2000);
     showToast && showToast(`Copied: ${code}`, 'success');
-  }).catch(() => {
-    // Fallback
+  };
+  navigator.clipboard.writeText(code).then(doCopy).catch(() => {
     const el = document.createElement('textarea');
     el.value = code;
     document.body.appendChild(el);
     el.select();
     document.execCommand('copy');
     document.body.removeChild(el);
-    showToast && showToast(`Copied: ${code}`, 'success');
+    doCopy();
   });
 }
 
