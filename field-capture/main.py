@@ -191,6 +191,11 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
         } for i, et in enumerate(equipment_types)]
         await sb_post("fc_equipment_types", type_rows)
 
+    # Deactivate all previous invite codes for this building
+    old_codes = await sb_get("fc_invite_codes", f"?building_id=eq.{building_id}&is_active=eq.true")
+    for oc in old_codes:
+        await sb_patch("fc_invite_codes", f"?id=eq.{oc['id']}", {"is_active": False})
+
     # Use invite code from main app if provided, otherwise generate one
     code = body.get("invite_code") or _generate_invite_code()
     invite = await sb_post("fc_invite_codes", {
@@ -244,6 +249,25 @@ async def validate_invite_code(code: str):
         "building_name": invite["building_name"],
         "building_address": invite.get("building_address", ""),
     }
+
+
+@app.delete("/api/invite-codes/{code}")
+async def delete_invite_code(code: str):
+    """Deactivate an invite code."""
+    rows = await sb_get("fc_invite_codes", f"?code=eq.{code}")
+    if not rows:
+        raise HTTPException(404, "Invite code not found")
+    await sb_patch("fc_invite_codes", f"?code=eq.{code}", {"is_active": False})
+    return {"deleted": True, "code": code}
+
+
+@app.delete("/api/buildings/{building_id}/invite-codes")
+async def delete_all_building_invite_codes(building_id: str):
+    """Deactivate all invite codes for a building."""
+    rows = await sb_get("fc_invite_codes", f"?building_id=eq.{building_id}&is_active=eq.true")
+    for r in rows:
+        await sb_patch("fc_invite_codes", f"?id=eq.{r['id']}", {"is_active": False})
+    return {"deleted": len(rows), "building_id": building_id}
 
 
 def _generate_invite_code() -> str:

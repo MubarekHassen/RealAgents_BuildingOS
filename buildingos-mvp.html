@@ -5357,17 +5357,50 @@ function renderBuildingProfileModalFull() {
   </div>`;
 
   // ─── Field Capture Tab ───
-  const fcInvites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
+  const fcInviteArr = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
+  const fcInvite = fcInviteArr.length > 0 ? fcInviteArr[0] : null;
   const fcConfig = JSON.parse(localStorage.getItem('bos_fc_config_' + activeBuildingId) || '{}');
   const fcEquipTypes = fcConfig.equipment_types || ['HVAC System', 'Water Heater', 'Electrical Panel'];
   const fcUnitCount = fcConfig.unit_count || bp.units || '';
   const AVAILABLE_EQUIP_TYPES = ['HVAC System','Water Heater','Electrical Panel','Boiler','Chiller','Cooling Tower','Air Handler','Rooftop Unit','Split System','Fire Alarm Panel','Fire Suppression','Elevator','Generator','Solar Panel','EV Charger'];
+  const fcProfileUnitCount = (bp.units_list || []).length;
 
   const fieldcapture = `<div class="bp-section ${bpActiveTab==='fieldcapture'?'active':''}" id="bps-fieldcapture">
     <div class="bp-section-title">📱 Field Capture Setup</div>
-    <p style="font-size:13px;color:#6b7280;margin:0 0 12px">Set up field data collection for this building. Configure equipment types, specify units, then generate an invite code for your field technician.</p>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 16px">Configure field data collection for this building, then share the invite code with your technician.</p>
 
-    <div class="bp-section-title" style="margin-top:16px">🔧 Equipment Types to Capture</div>
+    <!-- Invite Code Section — front and center -->
+    <div id="fc-invite-section" style="margin-bottom:20px;">
+      ${fcInvite ? `
+        <div style="border:2px solid #2563eb;border-radius:14px;overflow:hidden;background:#fff;">
+          <div style="background:#f0f9ff;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="fcCopyInviteCode('${fcInvite.code}')">
+            <div>
+              <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;">Active Invite Code</div>
+              <div style="font-family:monospace;font-size:28px;font-weight:800;letter-spacing:5px;color:#1e40af;">${fcInvite.code}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+              <span id="fc-copy-hint" style="font-size:11px;color:#2563eb;font-weight:600;">Tap to copy</span>
+            </div>
+          </div>
+          <div style="padding:12px 20px;display:flex;gap:8px;border-top:1px solid #e5e7eb;">
+            <button onclick="fcCopyInviteCode('${fcInvite.code}')" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;">📋 Copy Code</button>
+            <button onclick="fcGenerateInviteCode()" style="flex:1;background:#f9fafb;color:#374151;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;">🔄 Change</button>
+            <button onclick="fcDeleteInviteCode()" style="background:#f9fafb;color:#ef4444;border:1.5px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;">🗑️</button>
+          </div>
+        </div>
+        ${fcProfileUnitCount > 0 ? `<div style="font-size:12px;color:#059669;margin-top:6px;padding-left:4px;">${fcProfileUnitCount} units from building profile will be sent to technician</div>` : ''}
+      ` : `
+        <div style="text-align:center;padding:28px 20px;border:2px dashed #e5e7eb;border-radius:14px;background:#f9fafb;">
+          <div style="font-size:32px;margin-bottom:8px;">🔗</div>
+          <p style="font-size:14px;color:#6b7280;margin:0 0 14px;">No invite code yet. Generate one to share with your field technician.</p>
+          <button onclick="fcGenerateInviteCode()" class="btn btn-primary btn-sm" style="padding:12px 28px;font-size:15px;">
+            Generate Invite Code
+          </button>
+        </div>
+      `}
+    </div>
+
+    <div class="bp-section-title" style="margin-top:8px">🔧 Equipment Types to Capture</div>
     <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">Select which equipment types the field tech should photograph and document in each unit.</p>
     <div id="fc-equip-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
       ${AVAILABLE_EQUIP_TYPES.map(t => `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 8px;border-radius:8px;border:1.5px solid ${fcEquipTypes.includes(t)?'#2563eb':'#e5e7eb'};background:${fcEquipTypes.includes(t)?'#eff6ff':'#fff'}">
@@ -5376,37 +5409,24 @@ function renderBuildingProfileModalFull() {
     </div>
 
     <div class="bp-section-title" style="margin-top:16px">🏠 Units Configuration</div>
-    <div class="bp-grid" style="grid-template-columns:1fr 1fr;gap:12px">
-      <div class="bp-field"><label>Number of Units</label>
-        <input id="fc-unit-count" type="number" placeholder="e.g. 75" value="${fcUnitCount}">
-      </div>
-      <div class="bp-field"><label>Unit Naming Pattern</label>
-        <select id="fc-unit-pattern" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:8px;font-size:13px;outline:none">
-          <option value="numeric" ${fcConfig.unit_pattern==='numeric'?'selected':''}>Numeric (101, 102, ...)</option>
-          <option value="floor-unit" ${fcConfig.unit_pattern==='floor-unit'?'selected':''}>Floor-Unit (1-01, 1-02, ...)</option>
-          <option value="letter" ${fcConfig.unit_pattern==='letter'?'selected':''}>Letter (A, B, C, ...)</option>
-          <option value="custom" ${fcConfig.unit_pattern==='custom'?'selected':''}>Custom (enter manually)</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="bp-section-title" style="margin-top:20px">🔗 Invite Code</div>
-    <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">Generate an invite code for your field technician. ${fcInvites.length > 0 ? 'Generating a new code replaces the previous one.' : ''}</p>
-    ${fcInvites.length > 0 ? `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:2px solid #2563eb;border-radius:12px;margin-bottom:12px;background:#f0f9ff;cursor:pointer" onclick="fcCopyInviteCode('${fcInvites[0].code}')">
-        <div>
-          <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:2px">Active Code</div>
-          <span style="font-family:monospace;font-size:24px;font-weight:800;letter-spacing:4px;color:#1e40af">${fcInvites[0].code}</span>
-        </div>
-        <button onclick="event.stopPropagation();fcCopyInviteCode('${fcInvites[0].code}')" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer">📋 Copy</button>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button onclick="fcGenerateInviteCode()" class="btn btn-secondary btn-sm" style="flex:1;">🔄 Generate New Code</button>
+    ${fcProfileUnitCount > 0 ? `
+      <div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:10px;font-size:13px;color:#15803d;">
+        <strong>${fcProfileUnitCount} units</strong> loaded from the Units tab. These will be sent to the field technician automatically.
       </div>
     ` : `
-      <button onclick="fcGenerateInviteCode()" class="btn btn-primary btn-sm" style="margin-bottom:12px;width:100%;padding:14px;font-size:15px;">
-        🔗 Generate Invite Code
-      </button>
+      <div class="bp-grid" style="grid-template-columns:1fr 1fr;gap:12px">
+        <div class="bp-field"><label>Number of Units</label>
+          <input id="fc-unit-count" type="number" placeholder="e.g. 75" value="${fcUnitCount}">
+        </div>
+        <div class="bp-field"><label>Unit Naming Pattern</label>
+          <select id="fc-unit-pattern" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:8px;font-size:13px;outline:none">
+            <option value="numeric" ${fcConfig.unit_pattern==='numeric'?'selected':''}>Numeric (101, 102, ...)</option>
+            <option value="floor-unit" ${fcConfig.unit_pattern==='floor-unit'?'selected':''}>Floor-Unit (1-01, 1-02, ...)</option>
+            <option value="letter" ${fcConfig.unit_pattern==='letter'?'selected':''}>Letter (A, B, C, ...)</option>
+            <option value="custom" ${fcConfig.unit_pattern==='custom'?'selected':''}>Custom (enter manually)</option>
+          </select>
+        </div>
+      </div>
     `}
   </div>`;
 
@@ -5686,6 +5706,27 @@ function fcGenerateInviteCode() {
 
   // Show the invite code on a dedicated screen (stays visible for copying)
   fcShowInviteCodeScreen(invite);
+}
+
+async function fcDeleteInviteCode() {
+  if (!activeBuildingId) return;
+  const invites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
+  if (!invites.length) return;
+
+  // Delete from server
+  if (FIELD_CAPTURE_API) {
+    try {
+      await fetch(`${FIELD_CAPTURE_API}/api/buildings/${activeBuildingId}/invite-codes`, { method: 'DELETE' });
+    } catch(e) { console.error('Failed to delete invite codes on server:', e); }
+  }
+
+  // Clear locally
+  localStorage.setItem('bos_fc_invites_' + activeBuildingId, '[]');
+
+  // Re-render the modal to show the empty state
+  renderBuildingProfileModalFull();
+  bpSwitchTab('fieldcapture');
+  showToast && showToast('Invite code deleted', 'success');
 }
 
 function fcShowInviteCodeScreen(invite) {
