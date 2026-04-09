@@ -178,6 +178,23 @@
             max-height: 300px;
             border-radius: 8px;
         }
+        /* ── Annotation canvas ─────────────────── */
+        .annotation-wrap {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            touch-action: none;
+        }
+        .annotation-wrap canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            cursor: crosshair;
+        }
+        .photo-confirm-bar {
+            display: flex; gap: 8px; margin-top: 12px;
+        }
+        .photo-confirm-bar button { flex: 1; }
         .camera-placeholder {
             text-align: center;
             padding: 40px 20px;
@@ -434,6 +451,12 @@
         <div class="section-title">Equipment to Capture</div>
         <div id="equipChecklist"></div>
 
+        <!-- Photo Gallery for this unit -->
+        <div id="unitPhotoGallery" style="display:none;margin-top:16px;">
+            <div class="section-title">&#128248; Captured Photos</div>
+            <div id="unitPhotos" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;"></div>
+        </div>
+
         <div style="margin-top:20px;">
             <button class="btn btn-secondary" onclick="skipUnit()">Skip Space (Access Issue)</button>
             <button class="btn btn-success" id="btnCompleteUnit" onclick="completeUnit()" disabled>
@@ -458,7 +481,6 @@
                     <div class="icon">&#128247;</div>
                     <p>Tap to photograph equipment tag</p>
                 </div>
-                <img id="photoPreview" style="display:none;">
             </div>
 
             <input type="file" accept="image/*" capture="environment" id="photoInput" class="hidden-input" onchange="onPhotoSelected(event)">
@@ -471,6 +493,26 @@
             </button>
         </div>
 
+        <!-- Step 1.5: Confirm Photo + Annotate -->
+        <div id="captureStepConfirm" style="display:none;">
+            <div style="background:#f0f9ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+                <span style="font-size:14px;font-weight:600;color:#1e40af;">Is the photo clear enough?</span>
+                <p style="font-size:12px;color:#64748b;margin:4px 0 0;">Circle or highlight areas of interest if needed</p>
+            </div>
+            <div class="annotation-wrap" id="annotationWrap">
+                <img id="photoPreview" style="max-width:100%;border-radius:10px;display:block;">
+                <canvas id="annotationCanvas"></canvas>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end;">
+                <button onclick="clearAnnotation()" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;">Clear Drawings</button>
+                <button onclick="undoAnnotation()" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;">Undo</button>
+            </div>
+            <div class="photo-confirm-bar">
+                <button class="btn btn-secondary" onclick="retakePhoto()">&#128247; Retake</button>
+                <button class="btn btn-success" onclick="confirmPhoto()">&#10003; Looks Good — Analyze</button>
+            </div>
+        </div>
+
         <!-- Step 2: AI Processing -->
         <div id="captureStep2" style="display:none;">
             <div style="text-align:center;padding:40px 0;">
@@ -480,8 +522,13 @@
             </div>
         </div>
 
-        <!-- Step 3: Review & Confirm -->
+        <!-- Step 3: Verify AI + Add Details -->
         <div id="captureStep3" style="display:none;">
+            <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px;margin-bottom:14px;">
+                <div style="font-size:14px;font-weight:700;color:#92400e;">&#9888;&#65039; Please verify the information below</div>
+                <p style="font-size:12px;color:#a16207;margin:4px 0 0;">AI extracted this data from the photo. Correct anything that's wrong and add condition details.</p>
+            </div>
+
             <div class="ai-result" id="aiResultBox">
                 <div class="ai-result-header">
                     <span>&#10003; AI Extracted Data</span>
@@ -489,7 +536,13 @@
                 </div>
             </div>
 
+            <!-- Thumbnail of captured photo -->
+            <div id="captureThumbWrap" style="margin-bottom:14px;">
+                <img id="captureThumb" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid #e2e8f0;">
+            </div>
+
             <div class="card">
+                <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;">Equipment Details</div>
                 <div class="input-group">
                     <label>Make / Manufacturer</label>
                     <input type="text" id="fieldMake">
@@ -510,25 +563,29 @@
                     <label>Year</label>
                     <input type="text" id="fieldYear" inputmode="numeric">
                 </div>
+            </div>
+
+            <div class="card" style="border:1.5px solid #fde68a;background:#fffef5;">
+                <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:10px;">&#9888;&#65039; Condition Assessment <span style="color:#ef4444;font-size:11px;">(Required)</span></div>
                 <div class="input-group">
-                    <label>Condition</label>
-                    <select id="fieldCondition">
-                        <option value="">Select...</option>
-                        <option value="excellent">Excellent</option>
-                        <option value="good">Good</option>
-                        <option value="fair">Fair</option>
-                        <option value="poor">Poor</option>
-                        <option value="non_functional">Non-functional</option>
+                    <label>Overall Condition</label>
+                    <select id="fieldCondition" style="border-color:#fde68a;">
+                        <option value="">— Select condition —</option>
+                        <option value="excellent">&#127775; Excellent — Like new, no issues</option>
+                        <option value="good">&#9989; Good — Minor wear, fully functional</option>
+                        <option value="fair">&#9888;&#65039; Fair — Aging, may need attention soon</option>
+                        <option value="poor">&#9940; Poor — Significant issues, needs repair</option>
+                        <option value="non_functional">&#10060; Non-functional — Not operating</option>
                     </select>
                 </div>
                 <div class="input-group">
-                    <label>Notes</label>
-                    <textarea id="fieldNotes" rows="2" placeholder="Any additional notes..."></textarea>
+                    <label>Condition Details</label>
+                    <textarea id="fieldNotes" rows="3" placeholder="Describe what you see: rust, leaks, noise, damage, age signs, recent repairs..."></textarea>
                 </div>
             </div>
 
-            <button class="btn btn-success" onclick="saveCapture()">&#10003; Save & Continue</button>
-            <button class="btn btn-secondary" onclick="retakePhoto()">Retake Photo</button>
+            <button class="btn btn-success" onclick="saveCapture()" style="font-size:16px;padding:14px;">&#10003; Confirm & Save</button>
+            <button class="btn btn-secondary" onclick="retakePhoto()">&#128247; Retake Photo</button>
         </div>
     </div>
 </div>
@@ -908,6 +965,28 @@
 
         document.getElementById('equipChecklist').innerHTML = checklist;
 
+        // Photo gallery — show all captured photos for this unit
+        const photosWithData = unitCaptures.filter(c => c.photo_url);
+        const galleryEl = document.getElementById('unitPhotoGallery');
+        const photosEl = document.getElementById('unitPhotos');
+        if (photosWithData.length > 0) {
+            galleryEl.style.display = 'block';
+            photosEl.innerHTML = photosWithData.map(c => {
+                const etName = (state.equipTypes.find(t => t.id === c.equipment_type_id) || {}).name || 'Equipment';
+                const condBadge = c.condition_rating ? `<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:${c.condition_rating==='excellent'||c.condition_rating==='good'?'#dcfce7':'#fef3c7'};color:${c.condition_rating==='excellent'||c.condition_rating==='good'?'#166534':'#92400e'};">${c.condition_rating}</span>` : '';
+                return `<div style="border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;background:#fff;">
+                    <img src="${c.photo_url}" style="width:100%;height:80px;object-fit:cover;" onclick="window.open('${c.photo_url}','_blank')">
+                    <div style="padding:4px 6px;">
+                        <div style="font-size:10px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${etName}</div>
+                        <div style="font-size:9px;color:#64748b;">${c.make||''} ${c.model_name||''}</div>
+                        ${condBadge}
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            galleryEl.style.display = 'none';
+        }
+
         // Enable complete button if all equipment captured
         const allDone = state.equipTypes.every(et => unitCaptures.some(c => c.equipment_type_id === et.id));
         document.getElementById('btnCompleteUnit').disabled = !allDone;
@@ -949,14 +1028,21 @@
 
         // Reset UI
         document.getElementById('captureStep1').style.display = 'block';
+        document.getElementById('captureStepConfirm').style.display = 'none';
         document.getElementById('captureStep2').style.display = 'none';
         document.getElementById('captureStep3').style.display = 'none';
         document.getElementById('photoPreview').style.display = 'none';
         document.getElementById('cameraPlaceholder').style.display = 'block';
         document.getElementById('photoInput').value = '';
+        _annPaths = []; _annCurrent = [];
 
         showScreen('screenCapture', { title: 'Capture: ' + et.name });
     }
+
+    // ─── Annotation state ────────────────
+    let _annPaths = [];
+    let _annCurrent = [];
+    let _annDrawing = false;
 
     function onPhotoSelected(event) {
         const file = event.target.files[0];
@@ -965,19 +1051,87 @@
 
         const reader = new FileReader();
         reader.onload = (e) => {
-            document.getElementById('photoPreview').src = e.target.result;
-            document.getElementById('photoPreview').style.display = 'block';
-            document.getElementById('cameraPlaceholder').style.display = 'none';
+            const img = document.getElementById('photoPreview');
+            img.src = e.target.result;
+            img.style.display = 'block';
+            // Show confirm step instead of auto-submitting
+            document.getElementById('captureStep1').style.display = 'none';
+            document.getElementById('captureStepConfirm').style.display = 'block';
+            // Setup annotation canvas
+            img.onload = () => setupAnnotation(img);
         };
         reader.readAsDataURL(file);
+    }
 
-        // Auto-submit to AI
-        processPhoto(file);
+    function setupAnnotation(img) {
+        const canvas = document.getElementById('annotationCanvas');
+        const wrap = document.getElementById('annotationWrap');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.style.width = img.clientWidth + 'px';
+        canvas.style.height = img.clientHeight + 'px';
+        _annPaths = [];
+        _annCurrent = [];
+
+        const getPos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches ? e.touches[0] : e;
+            return {
+                x: (touch.clientX - rect.left) / rect.width * canvas.width,
+                y: (touch.clientY - rect.top) / rect.height * canvas.height
+            };
+        };
+
+        const startDraw = (e) => { e.preventDefault(); _annDrawing = true; _annCurrent = [getPos(e)]; };
+        const moveDraw = (e) => { if (!_annDrawing) return; e.preventDefault(); _annCurrent.push(getPos(e)); drawAnnotations(); };
+        const endDraw = (e) => { if (!_annDrawing) return; _annDrawing = false; if (_annCurrent.length > 1) _annPaths.push([..._annCurrent]); _annCurrent = []; drawAnnotations(); };
+
+        canvas.onmousedown = startDraw; canvas.onmousemove = moveDraw; canvas.onmouseup = endDraw;
+        canvas.ontouchstart = startDraw; canvas.ontouchmove = moveDraw; canvas.ontouchend = endDraw;
+    }
+
+    function drawAnnotations() {
+        const canvas = document.getElementById('annotationCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = Math.max(3, canvas.width / 100);
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        const allPaths = [..._annPaths, _annCurrent];
+        for (const path of allPaths) {
+            if (path.length < 2) continue;
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+            ctx.stroke();
+        }
+    }
+
+    function clearAnnotation() { _annPaths = []; _annCurrent = []; drawAnnotations(); }
+    function undoAnnotation() { _annPaths.pop(); drawAnnotations(); }
+
+    function confirmPhoto() {
+        // Merge annotation onto photo if annotations exist
+        if (_annPaths.length > 0) {
+            const img = document.getElementById('photoPreview');
+            const merged = document.createElement('canvas');
+            merged.width = img.naturalWidth; merged.height = img.naturalHeight;
+            const mCtx = merged.getContext('2d');
+            mCtx.drawImage(img, 0, 0);
+            mCtx.drawImage(document.getElementById('annotationCanvas'), 0, 0);
+            merged.toBlob((blob) => {
+                state.capturePhoto = new File([blob], 'annotated.jpg', { type: 'image/jpeg' });
+                processPhoto(state.capturePhoto);
+            }, 'image/jpeg', 0.9);
+        } else {
+            processPhoto(state.capturePhoto);
+        }
     }
 
     async function processPhoto(file) {
         // Show step 2 (processing)
         document.getElementById('captureStep1').style.display = 'none';
+        document.getElementById('captureStepConfirm').style.display = 'none';
         document.getElementById('captureStep2').style.display = 'block';
 
         const formData = new FormData();
@@ -1021,6 +1175,15 @@
                 document.getElementById('aiResultBox').style.display = 'none';
             }
 
+            // Show thumbnail of captured photo
+            const thumb = document.getElementById('captureThumb');
+            if (state.capturePhoto) {
+                const tr = new FileReader();
+                tr.onload = (ev) => { thumb.src = ev.target.result; };
+                tr.readAsDataURL(state.capturePhoto);
+                document.getElementById('captureThumbWrap').style.display = 'block';
+            }
+
             // Show step 3
             document.getElementById('captureStep2').style.display = 'none';
             document.getElementById('captureStep3').style.display = 'block';
@@ -1030,6 +1193,7 @@
             document.getElementById('captureStep2').style.display = 'none';
             document.getElementById('captureStep3').style.display = 'block';
             document.getElementById('aiResultBox').style.display = 'none';
+            document.getElementById('captureThumbWrap').style.display = 'none';
         }
     }
 
@@ -1050,13 +1214,24 @@
 
     function retakePhoto() {
         document.getElementById('captureStep3').style.display = 'none';
+        document.getElementById('captureStepConfirm').style.display = 'none';
         document.getElementById('captureStep1').style.display = 'block';
         document.getElementById('photoPreview').style.display = 'none';
         document.getElementById('cameraPlaceholder').style.display = 'block';
         document.getElementById('photoInput').value = '';
+        _annPaths = []; _annCurrent = [];
     }
 
     async function saveCapture() {
+        // Require condition
+        const cond = document.getElementById('fieldCondition').value;
+        if (!cond) {
+            document.getElementById('fieldCondition').style.borderColor = '#ef4444';
+            document.getElementById('fieldCondition').focus();
+            toast('Please select a condition rating');
+            return;
+        }
+
         showLoading('Saving...');
 
         const captureData = {

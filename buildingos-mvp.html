@@ -5715,6 +5715,26 @@ function renderBuildingProfilePage() {
     </div>
   </div>`;
 
+  // ─── Field Photos Gallery ───
+  const eqWithPhotos = (typeof equipmentRegister !== 'undefined' ? equipmentRegister : []).filter(e => e._photoUrl);
+  if (eqWithPhotos.length > 0) {
+    html += `<div style="margin-top:24px;font-size:15px;font-weight:700;color:#111827;margin-bottom:10px;">&#128248; Field Photos <span style="font-size:12px;font-weight:500;color:#6b7280;">(${eqWithPhotos.length})</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;">
+      ${eqWithPhotos.map(e => {
+        const condColors = {good:'#dcfce7',fair:'#fef3c7',poor:'#fee2e2',eol:'#fee2e2',unknown:'#f3f4f6'};
+        const condText = {good:'Good',fair:'Fair',poor:'Poor',eol:'EOL',unknown:'—'};
+        return `<div style="border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;background:#fff;cursor:pointer;" onclick="window.open('${e._photoUrl}','_blank')">
+          <img src="${e._photoUrl}" style="width:100%;height:100px;object-fit:cover;">
+          <div style="padding:6px 8px;">
+            <div style="font-size:11px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${e.name||'Equipment'}</div>
+            <div style="font-size:10px;color:#6b7280;">${e.floor||''}</div>
+            <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:${condColors[e.condition]||'#f3f4f6'};color:#374151;">${condText[e.condition]||'—'}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
   // ─── FC Status ───
   const fcInvites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
   if (fcInvites.length > 0) {
@@ -7006,9 +7026,14 @@ function renderEquipmentRegister() {
     }
     return `<tr onclick="editEquipmentItem('${eqIdEscaped}')" title="Click to edit"${needsInfo?' style="background:#fffbeb"':''}>
       <td>
-        <div style="font-weight:600;color:#111827;font-size:13px">${e.name || '—'}</div>
-        ${e.serialNo ? `<div style="font-size:10px;color:#9ca3af;margin-top:1px">S/N ${e.serialNo}</div>` : ''}
-        ${needsInfo ? '<div style="font-size:10px;color:#d97706;margin-top:2px">Needs info</div>' : ''}
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${e._photoUrl ? `<img src="${e._photoUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();window.open('${e._photoUrl}','_blank')" title="View photo">` : ''}
+          <div>
+            <div style="font-weight:600;color:#111827;font-size:13px">${e.name || '—'}</div>
+            ${e.serialNo ? `<div style="font-size:10px;color:#9ca3af;margin-top:1px">S/N ${e.serialNo}</div>` : ''}
+            ${needsInfo ? '<div style="font-size:10px;color:#d97706;margin-top:2px">Needs info</div>' : ''}
+          </div>
+        </div>
       </td>
       <td><span style="font-size:11px;background:#f3f4f6;padding:2px 8px;border-radius:99px;font-weight:600;white-space:nowrap">${e.system || '—'}</span></td>
       <td style="font-size:12px;max-width:140px;color:#374151">${floorLoc}</td>
@@ -7073,6 +7098,9 @@ async function pullFieldCaptures() {
         _eqId: eqId,
         _source: '📱 Field: ' + (bldgName ? bldgName.split(' ').pop() : '') + (unitName ? ' / ' + unitName : ''),
         _confirmed: !!c.manually_verified,
+        _photoUrl: c.photo_url || '',
+        _conditionRaw: c.condition_rating || '',
+        _capturedAt: c.created_at || '',
         name: dispName,
         system: systemMap[typeName] || 'Mechanical',
         manufacturer: c.make || '',
@@ -7097,7 +7125,36 @@ async function pullFieldCaptures() {
     if (activeBuildingId) saveEquipment(activeBuildingId, equipmentRegister);
     renderEquipmentRegister();
 
-    showToast && showToast(`Pulled ${added} equipment item${added !== 1 ? 's' : ''} from ${data.building_count} building${data.building_count !== 1 ? 's' : ''}`, 'success');
+    // Auto-generate deferred maintenance items from poor/fair/non-functional equipment
+    let dmAdded = 0;
+    for (const c of captures) {
+      const cond = c.condition_rating || '';
+      if (!['fair','poor','non_functional'].includes(cond)) continue;
+      const dmId = 'fc_dm::' + c.id;
+      if (allDeferredItems.find(d => d._dmId === dmId)) continue;
+      const typeName = c.equipment_type_name || 'Unknown';
+      const dispName = [c.make, c.model_name].filter(Boolean).join(' ') || typeName;
+      const condMap2 = { fair: 'Fair', poor: 'Poor', non_functional: 'Critical' };
+      const costEst = cond === 'non_functional' ? 8 : cond === 'poor' ? 5 : 2;
+      allDeferredItems.push({
+        _dmId: dmId,
+        item: dispName + ' — ' + (cond === 'non_functional' ? 'Replacement needed' : 'Repair/service needed'),
+        system: systemMap[typeName] || 'Mechanical',
+        location: (c.building_name||'').split(' ').pop() + (c.unit_name ? ' / ' + c.unit_name : ''),
+        condition: condMap2[cond] || 'Fair',
+        priority: cond === 'non_functional' ? 1 : cond === 'poor' ? 2 : 3,
+        cost_k: costEst,
+        timeline: cond === 'non_functional' ? 'Yr 1' : cond === 'poor' ? 'Yr 1-2' : 'Yr 2-3',
+        note: c.condition_notes || '',
+        source: '📱 Field Capture',
+      });
+      dmAdded++;
+    }
+    if (dmAdded > 0) {
+      localStorage.setItem('bos_dm_items', JSON.stringify(allDeferredItems));
+    }
+
+    showToast && showToast(`Pulled ${added} equipment item${added !== 1 ? 's' : ''} from field · ${dmAdded} maintenance items created`, 'success');
   } catch (e) {
     console.error('Pull FC error:', e);
     showToast && showToast('Error pulling field captures: ' + e.message, 'error');
