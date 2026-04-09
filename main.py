@@ -125,6 +125,13 @@ SUPPORTED_TYPES = {
     "image/webp": "image",
 }
 
+SPREADSHEET_TYPES = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+    "application/vnd.ms-excel",  # .xls
+    "text/csv",  # .csv
+    "application/csv",
+}
+
 # ─────────────────────────────────────────────
 # ANALYSIS PROMPT
 # This is what drives the quality of extraction.
@@ -398,6 +405,83 @@ def build_claude_document_content(file_bytes: bytes, content_type: str, message_
             "data": b64_data,
         },
     }
+
+
+def spreadsheet_to_text(file_bytes: bytes, filename: str, content_type: str) -> str:
+    """Convert Excel/CSV file bytes into a text representation for Claude analysis."""
+    import io
+    lines = []
+    lines.append(f"=== SPREADSHEET DATA: {filename} ===\n")
+
+    if content_type in ("text/csv", "application/csv") or filename.lower().endswith(".csv"):
+        import csv
+        text = file_bytes.decode("utf-8", errors="replace")
+        reader = csv.reader(io.StringIO(text))
+        rows = list(reader)
+        lines.append(f"CSV file with {len(rows)} rows\n")
+        for i, row in enumerate(rows[:500]):  # cap at 500 rows
+            lines.append("\t".join(str(c) for c in row))
+    else:
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            lines.append(f"\n--- Sheet: {sheet_name} ---")
+            row_count = 0
+            for row in ws.iter_rows(values_only=True):
+                if row_count >= 500:
+                    lines.append(f"... (truncated, sheet has more rows)")
+                    break
+                cells = [str(c) if c is not None else "" for c in row]
+                if any(cells):
+                    lines.append("\t".join(cells))
+                    row_count += 1
+        wb.close()
+
+    return "\n".join(lines)
+
+
+def analyze_spreadsheet_bytes(file_bytes: bytes, filename: str, content_type: str, api_key: str) -> dict:
+    """Analyze an Excel/CSV file by converting to text and sending to Claude."""
+    text_repr = spreadsheet_to_text(file_bytes, filename, content_type)
+    logger.info(f"Spreadsheet converted to text: {filename} ({len(text_repr)} chars)")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=16384,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"The following is data extracted from a building-related spreadsheet.\n\n{text_repr}"},
+                    {"type": "text", "text": ANALYSIS_PROMPT},
+                ],
+            }],
+        )
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=401, detail="Invalid Anthropic API key.")
+    except anthropic.RateLimitError:
+        raise HTTPException(status_code=429, detail="Rate limit reached. Please wait and retry.")
+    except anthropic.APIError as exc:
+        raise HTTPException(status_code=502, detail=f"AI analysis failed: {str(exc)}")
+
+    raw_text = _get_text(response.content[0])
+    try:
+        intelligence = extract_json_from_response(raw_text)
+    except ValueError:
+        raise HTTPException(status_code=500, detail="AI returned malformed data from spreadsheet. Try re-uploading.")
+
+    intelligence["_meta"] = {
+        "filename": filename,
+        "file_size_kb": round(len(file_bytes) / 1024, 1),
+        "content_type": content_type,
+        "model": "claude-haiku-4-5-20251001",
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+        "source_type": "spreadsheet",
+    }
+    return intelligence
 
 
 def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_key: str) -> dict:
@@ -2853,7 +2937,7 @@ def ask_building_documents_question(building_id: str, body: BuildingQuestionRequ
 @app.post("/analyze")
 async def analyze_document(file: UploadFile = File(...)):
     """
-    Upload a building document (PDF or image) and receive
+    Upload a building document (PDF, image, or Excel/CSV) and receive
     AI-extracted intelligence across 10 categories.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -2864,15 +2948,32 @@ async def analyze_document(file: UploadFile = File(...)):
         )
 
     file_bytes = await file.read()
-    intelligence = analyze_file_bytes(
-        file_bytes=file_bytes,
-        filename=file.filename or "document",
-        content_type=file.content_type or "",
-        api_key=api_key,
+    filename = file.filename or "document"
+    content_type = file.content_type or ""
+
+    # Detect spreadsheet files by content type or extension
+    is_spreadsheet = (
+        content_type in SPREADSHEET_TYPES
+        or filename.lower().endswith((".xlsx", ".xls", ".csv"))
     )
 
+    if is_spreadsheet:
+        intelligence = analyze_spreadsheet_bytes(
+            file_bytes=file_bytes,
+            filename=filename,
+            content_type=content_type,
+            api_key=api_key,
+        )
+    else:
+        intelligence = analyze_file_bytes(
+            file_bytes=file_bytes,
+            filename=filename,
+            content_type=content_type,
+            api_key=api_key,
+        )
+
     logger.info(
-        f"Analysis complete: {file.filename} — "
+        f"Analysis complete: {filename} — "
         f"{intelligence.get('assets', {}).get('total', '?')} assets, "
         f"{intelligence.get('compliance', {}).get('gaps', '?')} compliance gaps"
     )

@@ -1395,11 +1395,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 
           <!-- Drop zone (multi-file) -->
           <div id="dropZone" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleDrop(event)" onclick="document.getElementById('fileInput').click()">
-            <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple style="display:none" onchange="handleFileSelect(event)">
+            <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv" multiple style="display:none" onchange="handleFileSelect(event)">
             <div class="dz-icon">📄</div>
             <div class="dz-title">Drop files here — or click to browse</div>
             <div class="dz-sub">Select multiple files at once to batch-process them</div>
-            <div class="dz-types">PDF, PNG, JPG — PCAs, leases, floor plans, specs, O&amp;M manuals, inspection reports</div>
+            <div class="dz-types">PDF, PNG, JPG, Excel, CSV — PCAs, leases, floor plans, specs, rent rolls, equipment lists</div>
           </div>
 
           <!-- Legacy OAuth buttons (hidden - replaced by cloud cards above) -->
@@ -3369,8 +3369,8 @@ function importSharedLinks() {
 }
 
 function enqueueFiles(files) {
-  const validTypes = ['application/pdf','image/png','image/jpeg','image/webp'];
-  const valid = files.filter(f => validTypes.includes(f.type) || f.name.match(/\.(pdf|png|jpg|jpeg|webp)$/i));
+  const validTypes = ['application/pdf','image/png','image/jpeg','image/webp','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-excel','text/csv','application/csv'];
+  const valid = files.filter(f => validTypes.includes(f.type) || f.name.match(/\.(pdf|png|jpg|jpeg|webp|xlsx|xls|csv)$/i));
   if (!valid.length) return;
   valid.forEach(f => fileQueue.push({ name: applyNamingConvention(f.name), file: f, status: 'queued', elapsed: null }));
   renderQueue();
