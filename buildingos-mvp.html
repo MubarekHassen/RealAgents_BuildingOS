@@ -3741,15 +3741,41 @@ function showDocumentHighlight(doc) {
       <div class="hl-section-title" style="margin-bottom:7px">What's In This Document</div>
       <div class="hl-summary">${d.document_summary || 'Document processed — no structured summary could be extracted from this document type.'}</div>
       <div class="hl-stats">
-        <div class="hl-stat"><div class="hl-stat-val ${assets.total==null?'muted':''}">${assets.total??'—'}</div><div class="hl-stat-label">Assets</div>${assets.total==null?'<div style="font-size:9px;color:#d1d5db">Not in document</div>':''}</div>
-        <div class="hl-stat"><div class="hl-stat-val ${dmCount===null?'muted':''}">${dmCount??'—'}</div><div class="hl-stat-label">DM Items</div>${dmCount===null?'<div style="font-size:9px;color:#d1d5db">Not in document</div>':''}</div>
-        <div class="hl-stat"><div class="hl-stat-val ${!costV?'muted':''}">${costV?fmt(costV):'—'}</div><div class="hl-stat-label">Est. Cost</div>${!costV?'<div style="font-size:9px;color:#d1d5db">Not in document</div>':''}</div>
+        ${(() => {
+          const unitCount = (bp.units_list || []).length;
+          const tenantCount = (bp.tenants || []).length;
+          if (unitCount > 0 || tenantCount > 0) {
+            return `
+              <div class="hl-stat"><div class="hl-stat-val">${unitCount || '—'}</div><div class="hl-stat-label">Units</div></div>
+              <div class="hl-stat"><div class="hl-stat-val">${bp.gross_sf ? fmtSF(bp.gross_sf) : '—'}</div><div class="hl-stat-label">Total SF</div></div>
+              <div class="hl-stat"><div class="hl-stat-val">${tenantCount || '—'}</div><div class="hl-stat-label">Tenants</div></div>
+            `;
+          }
+          return `
+            <div class="hl-stat"><div class="hl-stat-val ${assets.total==null?'muted':''}">${assets.total??'—'}</div><div class="hl-stat-label">Assets</div>${assets.total==null?'<div style="font-size:9px;color:#d1d5db">Not in document</div>':''}</div>
+            <div class="hl-stat"><div class="hl-stat-val ${dmCount===null?'muted':''}">${dmCount??'—'}</div><div class="hl-stat-label">DM Items</div>${dmCount===null?'<div style="font-size:9px;color:#d1d5db">Not in document</div>':''}</div>
+            <div class="hl-stat"><div class="hl-stat-val ${!costV?'muted':''}">${costV?fmt(costV):'—'}</div><div class="hl-stat-label">Est. Cost</div>${!costV?'<div style="font-size:9px;color:#d1d5db">Not in document</div>':''}</div>
+          `;
+        })()}
       </div>
       ${outputRows ? `<div class="hl-section-title" style="margin-top:14px;margin-bottom:7px">Intelligence Populated</div>${outputRows}` : ''}
       ${missingHtml ? `<div class="hl-missing"><div class="hl-missing-title">⚠ Still needed for full coverage</div>${missingHtml}</div>` : ''}
       <div class="hl-actions">
         <button class="btn btn-secondary" onclick="closeHighlightModal()">Close</button>
-        <button class="btn btn-primary" onclick="closeHighlightModal();showPage('deferred')">View Maintenance →</button>
+        ${(() => {
+          const dt = d.document_type || '';
+          const hasUnits = (bp.units_list || []).length > 0;
+          const hasDM = (dm.items || []).length > 0;
+          const hasAssets = (assets.items || []).length > 0 || (assets.total && assets.total > 0);
+          const hasEnergy = ((d.energy || {}).opportunities || []).length > 0;
+          if (hasUnits) return '<button class="btn btn-primary" onclick="closeHighlightModal();showBuildingProfileModal();bpSwitchTab(\'units\')">View Units →</button>';
+          if (hasDM) return '<button class="btn btn-primary" onclick="closeHighlightModal();showPage(\'deferred\')">View Maintenance →</button>';
+          if (hasAssets) return '<button class="btn btn-primary" onclick="closeHighlightModal();showPage(\'assets\')">View Assets →</button>';
+          if (hasEnergy) return '<button class="btn btn-primary" onclick="closeHighlightModal();showPage(\'energy\')">View Energy →</button>';
+          if (dt === 'rent_roll' || dt === 'lease') return '<button class="btn btn-primary" onclick="closeHighlightModal();showBuildingProfileModal()">View Building Profile →</button>';
+          if (bp.gross_sf || bp.stories || bp.building_use) return '<button class="btn btn-primary" onclick="closeHighlightModal();showBuildingProfileModal()">View Building Profile →</button>';
+          return '<button class="btn btn-primary" onclick="closeHighlightModal();showPage(\'dashboard\')">View Dashboard →</button>';
+        })()}
       </div>
     </div>`;
   document.getElementById('highlightOverlay').classList.add('visible');

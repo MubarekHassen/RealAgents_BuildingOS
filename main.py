@@ -1062,6 +1062,16 @@ def index_document_bytes(
             analysis.setdefault("_meta", {}).update(source_meta)
 
         if text_error or not extracted_text or not extracted_text.strip():
+            # For spreadsheets, still return the analysis even if RAG text extraction fails
+            if _is_spreadsheet and analysis:
+                logger.warning("Spreadsheet RAG text extraction failed but analysis succeeded — skipping RAG indexing")
+                row = update_document_record(client, document_id, {
+                    "status": "ready",
+                    "document_summary": analysis.get("document_summary"),
+                    "analysis_json": analysis,
+                    "chunk_count": 0,
+                })
+                return {"document": serialize_document_record(row), "analysis": analysis}
             raise HTTPException(
                 status_code=400,
                 detail="No readable text could be extracted from this document for question answering.",
@@ -1069,6 +1079,15 @@ def index_document_bytes(
 
         chunks = chunk_text(extracted_text)
         if not chunks:
+            if _is_spreadsheet and analysis:
+                logger.warning("Spreadsheet produced no searchable chunks but analysis succeeded — skipping RAG indexing")
+                row = update_document_record(client, document_id, {
+                    "status": "ready",
+                    "document_summary": analysis.get("document_summary"),
+                    "analysis_json": analysis,
+                    "chunk_count": 0,
+                })
+                return {"document": serialize_document_record(row), "analysis": analysis}
             raise HTTPException(
                 status_code=400,
                 detail="The document did not produce any searchable chunks.",
@@ -1162,11 +1181,17 @@ def _index_existing_document(
             analysis.setdefault("_meta", {}).update(source_meta)
 
         if not extracted_text or not extracted_text.strip():
+            if _is_spreadsheet and analysis:
+                update_document_record(client, document_id, {"status": "ready", "document_summary": analysis.get("document_summary"), "analysis_json": analysis, "chunk_count": 0})
+                return {"status": "ready", "analysis": analysis}
             update_document_record(client, document_id, {"status": "error", "error_message": "No readable text extracted"})
             return {"status": "error"}
 
         chunks = chunk_text(extracted_text)
         if not chunks:
+            if _is_spreadsheet and analysis:
+                update_document_record(client, document_id, {"status": "ready", "document_summary": analysis.get("document_summary"), "analysis_json": analysis, "chunk_count": 0})
+                return {"status": "ready", "analysis": analysis}
             update_document_record(client, document_id, {"status": "error", "error_message": "No searchable chunks produced"})
             return {"status": "error"}
 
