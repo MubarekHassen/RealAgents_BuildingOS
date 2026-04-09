@@ -284,8 +284,29 @@ def extract_text_with_claude(file_bytes: bytes, content_type: str, api_key: str)
 
 def extract_text_for_rag(file_bytes: bytes, content_type: str, anthropic_api_key: Optional[str]) -> str:
     text = ""
+    _SPREADSHEET_MIMES = {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+        "application/csv",
+    }
     if content_type == "application/pdf":
         text = extract_pdf_text(file_bytes)
+    elif content_type in _SPREADSHEET_MIMES:
+        # Use openpyxl to extract spreadsheet text for RAG indexing
+        try:
+            import io, openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            parts = []
+            for ws in wb.worksheets:
+                parts.append(f"--- Sheet: {ws.title} ---")
+                for row in ws.iter_rows(values_only=True, max_row=500):
+                    vals = [str(c) if c is not None else "" for c in row]
+                    if any(vals):
+                        parts.append("\t".join(vals))
+            wb.close()
+            text = "\n".join(parts)
+        except Exception as exc:
+            logger.warning("Spreadsheet text extraction failed: %s", exc)
     elif content_type.startswith("text/"):
         try:
             text = file_bytes.decode("utf-8")

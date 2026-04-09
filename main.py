@@ -384,10 +384,13 @@ def normalize_content_type(content_type: str) -> str:
 def ensure_supported_upload(content_type: str, file_bytes: bytes) -> tuple[str, str]:
     normalized = normalize_content_type(content_type or "")
     message_type = SUPPORTED_TYPES.get(normalized)
+    # Also accept spreadsheet types
+    if not message_type and normalized in SPREADSHEET_TYPES:
+        message_type = "spreadsheet"
     if not message_type:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type: {normalized}. Supported: PDF, PNG, JPG, WEBP.",
+            detail=f"Unsupported file type: {normalized}. Supported: PDF, PNG, JPG, WEBP, Excel, CSV.",
         )
     max_upload_mb = int(os.getenv("MAX_UPLOAD_MB", "500"))
     if len(file_bytes) > max_upload_mb * 1024 * 1024:
@@ -693,12 +696,15 @@ async def download_shared_file(url: str) -> tuple[bytes, str, str, dict[str, Any
                 continue
 
             normalized_type, _ = ensure_supported_upload(content_type, file_bytes)
-            if Path(filename).suffix.lower() not in {".pdf", ".png", ".jpg", ".jpeg", ".webp"}:
+            if Path(filename).suffix.lower() not in {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".xlsx", ".xls", ".csv"}:
                 default_ext = {
                     "application/pdf": ".pdf",
                     "image/png": ".png",
                     "image/jpeg": ".jpg",
                     "image/webp": ".webp",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+                    "application/vnd.ms-excel": ".xls",
+                    "text/csv": ".csv",
                 }.get(normalized_type, "")
                 filename = f"{Path(filename).stem or 'shared-document'}{default_ext}"
 
@@ -1025,8 +1031,15 @@ def index_document_bytes(
         analysis_error = None
         text_error = None
 
+        # Route spreadsheets to the spreadsheet analyzer
+        _is_spreadsheet = (
+            content_type in SPREADSHEET_TYPES
+            or filename.lower().endswith((".xlsx", ".xls", ".csv"))
+        )
+        _analyze_fn = analyze_spreadsheet_bytes if _is_spreadsheet else analyze_file_bytes
+
         with ThreadPoolExecutor(max_workers=2) as executor:
-            future_analysis = executor.submit(analyze_file_bytes, file_bytes, filename, content_type, api_key)
+            future_analysis = executor.submit(_analyze_fn, file_bytes, filename, content_type, api_key)
             future_text = executor.submit(extract_text_for_rag, file_bytes, content_type, api_key)
 
             try:
@@ -1124,12 +1137,19 @@ def _index_existing_document(
 
     content_type, _ = ensure_supported_upload(content_type, file_bytes)
 
+    # Route spreadsheets to the spreadsheet analyzer
+    _is_spreadsheet = (
+        content_type in SPREADSHEET_TYPES
+        or filename.lower().endswith((".xlsx", ".xls", ".csv"))
+    )
+    _analyze_fn = analyze_spreadsheet_bytes if _is_spreadsheet else analyze_file_bytes
+
     try:
         analysis = None
         extracted_text = None
 
         with ThreadPoolExecutor(max_workers=2) as executor:
-            future_analysis = executor.submit(analyze_file_bytes, file_bytes, filename, content_type, api_key)
+            future_analysis = executor.submit(_analyze_fn, file_bytes, filename, content_type, api_key)
             future_text = executor.submit(extract_text_for_rag, file_bytes, content_type, api_key)
             analysis = future_analysis.result()
             extracted_text = future_text.result()
