@@ -3372,9 +3372,92 @@ function enqueueFiles(files) {
   const validTypes = ['application/pdf','image/png','image/jpeg','image/webp','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-excel','text/csv','application/csv'];
   const valid = files.filter(f => validTypes.includes(f.type) || f.name.match(/\.(pdf|png|jpg|jpeg|webp|xlsx|xls|csv)$/i));
   if (!valid.length) return;
+
+  // Pre-parse spreadsheets client-side to populate spaces instantly
+  valid.forEach(f => {
+    if (f.name.match(/\.(xlsx|xls|csv)$/i) || f.type.includes('spreadsheet') || f.type.includes('excel') || f.type === 'text/csv') {
+      parseSpreadsheetForSpaces(f);
+    }
+  });
+
   valid.forEach(f => fileQueue.push({ name: applyNamingConvention(f.name), file: f, status: 'queued', elapsed: null }));
   renderQueue();
   if (!queueRunning) runQueue();
+}
+
+async function parseSpreadsheetForSpaces(file) {
+  try {
+    // Dynamic import of SheetJS
+    if (!window.XLSX) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      document.head.appendChild(script);
+      await new Promise((resolve, reject) => { script.onload = resolve; script.onerror = reject; });
+    }
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    if (!rows.length) return;
+
+    // Detect columns (flexible header matching)
+    const headers = Object.keys(rows[0]);
+    const findCol = (keywords) => headers.find(h => keywords.some(k => h.toLowerCase().includes(k)));
+    const nameCol = findCol(['unit name', 'unit', 'space', 'suite', 'apt', 'apartment', 'number']);
+    const sqftCol = findCol(['sqft', 'sq ft', 'square', 'area', 'size']);
+    const bedsCol = findCol(['bed', 'br', 'bedroom']);
+    const bathsCol = findCol(['bath', 'ba', 'bathroom']);
+    const addrCol = findCol(['address', 'unit address']);
+    const rentCol = findCol(['rent', 'rate', 'price', 'amount']);
+    const statusCol = findCol(['status', 'occupancy', 'occupied', 'vacant']);
+
+    if (!nameCol) return; // Can't identify space names
+
+    const spaces = [];
+    for (const row of rows) {
+      const name = String(row[nameCol] || '').trim();
+      if (!name || name.toLowerCase().includes('total') || name === nameCol) continue;
+      const sqft = parseInt(row[sqftCol]) || null;
+      const beds = parseFloat(row[bedsCol]) || null;
+      const baths = parseFloat(row[bathsCol]) || null;
+      const rent = parseFloat(row[rentCol]) || null;
+      const addr = addrCol ? String(row[addrCol] || '').trim() : null;
+      const status = statusCol ? String(row[statusCol] || '').trim() : null;
+      if (sqft || beds || baths || addr) {
+        spaces.push({ name, sqft, beds, baths, rent, address: addr || null, status: status || null });
+      }
+    }
+
+    if (spaces.length > 0 && activeBuildingId) {
+      fullBuildingProfile.units_list = spaces;
+
+      // Also extract building name/address if present in the sheet metadata
+      const rawText = XLSX.utils.sheet_to_csv(ws);
+      const propMatch = rawText.match(/Properties?:\s*(.+)/i);
+      if (propMatch) {
+        const propStr = propMatch[1].trim();
+        if (!fullBuildingProfile.name && propStr) {
+          const dashIdx = propStr.indexOf(' - ');
+          fullBuildingProfile.name = dashIdx > 0 ? propStr.substring(0, dashIdx).trim() : propStr;
+        }
+      }
+
+      // Set building use to Multifamily if beds/baths present
+      if (spaces.some(s => s.beds) && !fullBuildingProfile.building_use) {
+        fullBuildingProfile.building_use = 'Multifamily';
+      }
+
+      // Calculate total SF
+      const totalSF = spaces.reduce((s, u) => s + (u.sqft || 0), 0);
+      if (totalSF > 0 && !fullBuildingProfile.gross_sf) fullBuildingProfile.gross_sf = totalSF;
+
+      saveBuildingProfile(activeBuildingId, fullBuildingProfile);
+      renderDashboard();
+      showToast && showToast(`${spaces.length} spaces loaded from ${file.name}`, 'success');
+    }
+  } catch (e) {
+    console.warn('Client-side spreadsheet parse failed (will rely on backend):', e);
+  }
 }
 
 async function processQueueItem(item) {
@@ -3746,7 +3829,7 @@ function showDocumentHighlight(doc) {
           const tenantCount = (bp.tenants || []).length;
           if (unitCount > 0 || tenantCount > 0) {
             return `
-              <div class="hl-stat"><div class="hl-stat-val">${unitCount || '—'}</div><div class="hl-stat-label">Units</div></div>
+              <div class="hl-stat"><div class="hl-stat-val">${unitCount || '—'}</div><div class="hl-stat-label">Spaces</div></div>
               <div class="hl-stat"><div class="hl-stat-val">${bp.gross_sf ? fmtSF(bp.gross_sf) : '—'}</div><div class="hl-stat-label">Total SF</div></div>
               <div class="hl-stat"><div class="hl-stat-val">${tenantCount || '—'}</div><div class="hl-stat-label">Tenants</div></div>
             `;
@@ -3768,7 +3851,7 @@ function showDocumentHighlight(doc) {
           const hasDM = (dm.items || []).length > 0;
           const hasAssets = (assets.items || []).length > 0 || (assets.total && assets.total > 0);
           const hasEnergy = ((d.energy || {}).opportunities || []).length > 0;
-          if (hasUnits) return '<button class="btn btn-primary" onclick="closeHighlightModal();showBuildingProfileModal();bpSwitchTab(\'units\')">View Units →</button>';
+          if (hasUnits) return '<button class="btn btn-primary" onclick="closeHighlightModal();showBuildingProfileModal();bpSwitchTab(\'spaces\')">View Spaces →</button>';
           if (hasDM) return '<button class="btn btn-primary" onclick="closeHighlightModal();showPage(\'deferred\')">View Maintenance →</button>';
           if (hasAssets) return '<button class="btn btn-primary" onclick="closeHighlightModal();showPage(\'assets\')">View Assets →</button>';
           if (hasEnergy) return '<button class="btn btn-primary" onclick="closeHighlightModal();showPage(\'energy\')">View Energy →</button>';
@@ -4927,7 +5010,7 @@ function renderDocDetail(doc) {
   }
 
   const assets=d.assets||{}, compliance=d.compliance||{}, capital=d.capital||{}, energy=d.energy||{}, missing=d.missing_data||[], bp=d.building_profile||{}, dm=d.deferred_maintenance||{};
-  const bpBits=[bp.address,bp.year_built?'Built '+bp.year_built:null,bp.gross_sf?fmtSF(bp.gross_sf):null,bp.building_use,bp.units_list?.length?bp.units_list.length+' units':null].filter(Boolean);
+  const bpBits=[bp.address,bp.year_built?'Built '+bp.year_built:null,bp.gross_sf?fmtSF(bp.gross_sf):null,bp.building_use,bp.units_list?.length?bp.units_list.length+' spaces':null].filter(Boolean);
 
   document.getElementById('dtab-highlight').innerHTML = `
     <div class="highlight-section"><div class="highlight-label">Document Summary</div><div class="highlight-summary">${d.document_summary||'No summary available.'}</div></div>
@@ -5097,7 +5180,7 @@ function renderBuildingProfileCard() {
     { val: bp.gross_sf ? (bp.gross_sf/1000).toFixed(0)+'K SF' : '—', label: 'Gross SF', src: bp.gross_sf_ai },
     { val: bp.stories ? bp.stories + (bp.basement_levels ? '+'+bp.basement_levels+'B' : '') + ' FL' : '—', label: 'Floors', src: bp.stories_ai },
     { val: bp.year_built || '—', label: 'Year Built', src: bp.year_built_ai },
-    { val: unitCount > 0 ? unitCount + ' Units' : (bp.building_use || '—'), label: unitCount > 0 ? 'Units' : 'Use', src: unitCount > 0 ? false : bp.building_use_ai },
+    { val: unitCount > 0 ? unitCount + ' Spaces' : (bp.building_use || '—'), label: unitCount > 0 ? 'Spaces' : 'Use', src: unitCount > 0 ? false : bp.building_use_ai },
     { val: completeness + '%', label: 'Profile Complete', src: false }
   ];
 
@@ -5170,8 +5253,8 @@ function renderBuildingProfileCard() {
 const BP_TABS = [
   { id:'basics',   label:'Basics',      icon:'🏢' },
   { id:'physical', label:'Physical',    icon:'🧱' },
-  { id:'units',    label:'Units',       icon:'🏠' },
-  { id:'spaces',   label:'Spaces',      icon:'📐' },
+  { id:'spaces',   label:'Spaces',      icon:'🏠' },
+  { id:'rooms',    label:'Rooms',       icon:'📐' },
   { id:'systems',  label:'Systems',     icon:'⚙️' },
   { id:'site',     label:'Site',        icon:'🗺️' },
   { id:'fieldcapture', label:'Field Capture', icon:'📱' },
@@ -5270,14 +5353,14 @@ function renderBuildingProfileModalFull() {
 
   // Units (for multifamily / townhouses)
   const bpUnits = bp.units_list || [];
-  const unitsSummary = bpUnits.length ? `${bpUnits.length} unit${bpUnits.length!==1?'s':''} · ${bpUnits.reduce((s,u)=>s+(u.sqft||0),0).toLocaleString()} total SF` : '';
-  const units = `<div class="bp-section ${bpActiveTab==='units'?'active':''}" id="bps-units">
-    <div class="bp-section-title">🏠 Unit Directory
-      <span style="font-size:11px;font-weight:400;color:#9ca3af">Manage individual units for multifamily, townhouses, and mixed-use properties</span>
+  const unitsSummary = bpUnits.length ? `${bpUnits.length} space${bpUnits.length!==1?'s':''} · ${bpUnits.reduce((s,u)=>s+(u.sqft||0),0).toLocaleString()} total SF` : '';
+  const units = `<div class="bp-section ${bpActiveTab==='spaces'?'active':''}" id="bps-spaces">
+    <div class="bp-section-title">🏠 Space Directory
+      <span style="font-size:11px;font-weight:400;color:#9ca3af">Manage individual spaces for multifamily, townhouses, and mixed-use properties</span>
     </div>
     ${unitsSummary ? `<div style="font-size:13px;color:#6b7280;margin-bottom:10px;padding:8px 12px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px">${unitsSummary}</div>` : ''}
     <div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 0.7fr 1fr 1fr auto;gap:6px;margin-bottom:4px;padding:0 4px">
-      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Unit Name</div>
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Space Name</div>
       <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Sqft</div>
       <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Beds</div>
       <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Baths</div>
@@ -5289,11 +5372,11 @@ function renderBuildingProfileModalFull() {
       ${bpUnits.length ? bpUnits.map((u,i) => bpUnitRowHtml(i, u)).join('') : bpUnitRowHtml(0, {})}
     </div>
     <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-      <button class="bp-add-row-btn" onclick="bpAddUnitRow()">+ Add unit</button>
-      <button class="bp-add-row-btn" onclick="bpAddMultipleUnits()" style="background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe">+ Add multiple units</button>
+      <button class="bp-add-row-btn" onclick="bpAddUnitRow()">+ Add space</button>
+      <button class="bp-add-row-btn" onclick="bpAddMultipleUnits()" style="background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe">+ Add multiple spaces</button>
     </div>
     <div style="margin-top:14px;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px">
-      <p style="font-size:12px;color:#6b7280;margin:0"><strong>Tip:</strong> Upload a unit directory spreadsheet (Excel/CSV) in the Documents tab to auto-populate units from a rent roll or unit list.</p>
+      <p style="font-size:12px;color:#6b7280;margin:0"><strong>Tip:</strong> Upload a unit directory spreadsheet (Excel/CSV) in the Documents tab to auto-populate spaces from a rent roll or unit list.</p>
     </div>
   </div>`;
 
@@ -5301,7 +5384,7 @@ function renderBuildingProfileModalFull() {
   const rooms = bp.room_types || [];
   const floors = bp.floor_breakdown || [];
   const amenities = (bp.amenities||[]).join(', ');
-  const spaces = `<div class="bp-section ${bpActiveTab==='spaces'?'active':''}" id="bps-spaces">
+  const spaces = `<div class="bp-section ${bpActiveTab==='rooms'?'active':''}" id="bps-rooms">
     <div class="bp-section-title">📐 Room Types
       <span style="font-size:11px;font-weight:400;color:#9ca3af">What types of rooms does this building have?</span>
     </div>
@@ -5434,10 +5517,10 @@ function renderBuildingProfileModalFull() {
       </label>`).join('')}
     </div>
 
-    <div class="bp-section-title" style="margin-top:16px">🏠 Units Configuration</div>
+    <div class="bp-section-title" style="margin-top:16px">🏠 Spaces Configuration</div>
     ${fcProfileUnitCount > 0 ? `
       <div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:10px;font-size:13px;color:#15803d;">
-        <strong>${fcProfileUnitCount} units</strong> loaded from the Units tab. These will be sent to the field technician automatically.
+        <strong>${fcProfileUnitCount} spaces</strong> loaded from the Spaces tab. These will be sent to the field technician automatically.
       </div>
     ` : `
       <div class="bp-grid" style="grid-template-columns:1fr 1fr;gap:12px">
@@ -5525,7 +5608,7 @@ function bpAddUnitRow() {
 }
 
 function bpAddMultipleUnits() {
-  const count = prompt('How many units to add?', '10');
+  const count = prompt('How many spaces to add?', '10');
   if (!count || isNaN(parseInt(count))) return;
   const n = Math.min(parseInt(count), 500);
   const prefix = prompt('Unit name prefix? (e.g. "101" starts at 101, "A-" starts at A-1)', '101');
