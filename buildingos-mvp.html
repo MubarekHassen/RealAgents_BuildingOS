@@ -1926,6 +1926,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <input class="ob-input" id="obBuildingAddr" placeholder="e.g. 123 Main St, San Francisco, CA 94105">
       <div class="ob-section-label" style="margin-top:10px;">Property type</div>
       <select class="ob-input" id="obBuildingType" onchange="obTypeChanged()" style="padding:10px 12px;background:#fff;cursor:pointer;">
+        <option value="" disabled selected>— Select property type —</option>
         <option value="single">Single Building (office, retail, industrial)</option>
         <option value="multifamily">Multifamily Apartment</option>
         <option value="townhomes">Townhomes / Multi-Building Campus</option>
@@ -2991,10 +2992,15 @@ function showBuildingSetup(bldId) {
   const mp = (bldId && bldId === activeBuildingId) ? mergedProfile : {};
   document.getElementById('obBuildingName').value = bld?.name || mp.name || '';
   document.getElementById('obBuildingAddr').value = bld?.address || (mp.address ? [mp.address, mp.city, mp.state].filter(Boolean).join(', ') : '');
-  document.getElementById('obBuildingType').value = bld?.buildingType || 'single';
-  document.getElementById('obTypeExtra').style.display = 'none';
-  document.getElementById('obTypeExtraContent').innerHTML = '';
-  if (bld?.buildingType && bld.buildingType !== 'single') obTypeChanged();
+  const typeSelect = document.getElementById('obBuildingType');
+  if (bld?.buildingType) {
+    typeSelect.value = bld.buildingType;
+    obTypeChanged();
+  } else {
+    typeSelect.value = '';
+    document.getElementById('obTypeExtra').style.display = 'none';
+    document.getElementById('obTypeExtraContent').innerHTML = '';
+  }
   // Update title for edit vs new
   if (bld) {
     document.getElementById('obTitle').textContent = 'Edit Property Settings';
@@ -3190,7 +3196,13 @@ function obNext() {
     // Save / create building
     const name = document.getElementById('obBuildingName').value.trim() || 'Unnamed Property';
     const addr = document.getElementById('obBuildingAddr').value.trim();
-    const bType = document.getElementById('obBuildingType')?.value || 'single';
+    const bType = document.getElementById('obBuildingType')?.value || '';
+    if (!bType) {
+      document.getElementById('obBuildingType').style.border = '2px solid #ef4444';
+      document.getElementById('obBuildingType').focus();
+      return;
+    }
+    document.getElementById('obBuildingType').style.border = '';
     if (editingBuildingId) {
       const bld = buildings.find(b => b.id === editingBuildingId);
       if (bld) { bld.name = name; bld.address = addr; bld.buildingType = bType; }
