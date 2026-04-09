@@ -155,6 +155,7 @@ CRITICAL RULES — READ CAREFULLY:
 DOCUMENT-TYPE SPECIFIC GUIDANCE:
 - PCA / Property Condition Assessment: This is the richest source. Extract building_profile (address, year built, SF, use), ALL deferred maintenance items with condition ratings and costs, capital needs by year, and all systems assessed.
 - Lease / Rent Roll: Extract tenant names, suite numbers, square footage, lease expiration dates, and rent per SF. Populate building_profile.tenants.
+- Unit Directory / Unit List: Extract EVERY unit with its name/number, sqft, bedrooms, bathrooms, rent, status, and address. Populate building_profile.units_list with ALL units. Also extract the property name, address, and total unit count for building_profile fields.
 - Floor plan / architectural drawing: THIS IS YOUR RICHEST PROFILE SOURCE. Extract everything you can for building_profile: number of floors, total SF (sum all floor areas if given), net SF, building use, room types and counts, ceiling heights, core vs shell vs tenant areas, structural grid, stair/elevator count, loading docks, parking levels, accessibility features, exterior cladding, window type, roof type. Also extract space breakdown percentages. Do NOT fabricate values not visible in the document.
 - Specification (CSI format): code compliance, approved manufacturers, and commissioning requirements may be available.
 - Equipment schedule / O&M manual: asset details, model numbers, useful life, and maintenance requirements.
@@ -209,6 +210,9 @@ Return this exact JSON structure:
     "amenities": ["<list of building amenities e.g. Fitness center, Rooftop terrace, Café, Conference center>"],
     "tenants": [
       {"name": "<tenant name>", "sf": <integer or null>, "suite": "<suite/unit or null>", "lease_exp": "<YYYY-MM or month-year string or null>", "rent_psf": <decimal annual rent per SF or null>}
+    ],
+    "units_list": [
+      {"name": "<unit number/name e.g. 101, 2-A, 8534-101>", "sqft": <integer SF or null>, "beds": <number of bedrooms or null>, "baths": <number of bathrooms decimal or null>, "rent": <monthly rent number or null>, "status": "<Occupied | Vacant | Renovation | Model | Down | null>", "address": "<unit-specific address or null>"}
     ]
   },
   "deferred_maintenance": {

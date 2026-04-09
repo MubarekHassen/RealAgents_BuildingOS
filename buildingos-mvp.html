@@ -4901,7 +4901,7 @@ function renderDocDetail(doc) {
   }
 
   const assets=d.assets||{}, compliance=d.compliance||{}, capital=d.capital||{}, energy=d.energy||{}, missing=d.missing_data||[], bp=d.building_profile||{}, dm=d.deferred_maintenance||{};
-  const bpBits=[bp.address,bp.year_built?'Built '+bp.year_built:null,bp.gross_sf?fmtSF(bp.gross_sf):null,bp.building_use].filter(Boolean);
+  const bpBits=[bp.address,bp.year_built?'Built '+bp.year_built:null,bp.gross_sf?fmtSF(bp.gross_sf):null,bp.building_use,bp.units_list?.length?bp.units_list.length+' units':null].filter(Boolean);
 
   document.getElementById('dtab-highlight').innerHTML = `
     <div class="highlight-section"><div class="highlight-label">Document Summary</div><div class="highlight-summary">${d.document_summary||'No summary available.'}</div></div>
@@ -5041,6 +5041,10 @@ function mergeAIIntoFullProfile(bp) {
   if (!fullBuildingProfile.amenities?.length && bp.amenities?.length) {
     fullBuildingProfile.amenities = bp.amenities;
   }
+  // Merge units from AI extraction (e.g. rent rolls, unit directories)
+  if (bp.units_list?.length && !fullBuildingProfile.units_list?.length) {
+    fullBuildingProfile.units_list = bp.units_list;
+  }
   if (activeBuildingId) saveBuildingProfile(activeBuildingId, fullBuildingProfile);
 }
 
@@ -5062,11 +5066,12 @@ function renderBuildingProfileCard() {
   const addr = [bp.address, bp.city, bp.state].filter(Boolean).join(', ');
 
   // Key stats row
+  const unitCount = (bp.units_list || []).length;
   const stats = [
     { val: bp.gross_sf ? (bp.gross_sf/1000).toFixed(0)+'K SF' : '—', label: 'Gross SF', src: bp.gross_sf_ai },
     { val: bp.stories ? bp.stories + (bp.basement_levels ? '+'+bp.basement_levels+'B' : '') + ' FL' : '—', label: 'Floors', src: bp.stories_ai },
     { val: bp.year_built || '—', label: 'Year Built', src: bp.year_built_ai },
-    { val: bp.building_use || '—', label: 'Use', src: bp.building_use_ai },
+    { val: unitCount > 0 ? unitCount + ' Units' : (bp.building_use || '—'), label: unitCount > 0 ? 'Units' : 'Use', src: unitCount > 0 ? false : bp.building_use_ai },
     { val: completeness + '%', label: 'Profile Complete', src: false }
   ];
 
@@ -5139,6 +5144,7 @@ function renderBuildingProfileCard() {
 const BP_TABS = [
   { id:'basics',   label:'Basics',      icon:'🏢' },
   { id:'physical', label:'Physical',    icon:'🧱' },
+  { id:'units',    label:'Units',       icon:'🏠' },
   { id:'spaces',   label:'Spaces',      icon:'📐' },
   { id:'systems',  label:'Systems',     icon:'⚙️' },
   { id:'site',     label:'Site',        icon:'🗺️' },
@@ -5233,6 +5239,35 @@ function renderBuildingProfileModalFull() {
       <div class="bp-field"><label>Exterior Cladding ${aiLabel('exterior_cladding')}</label><input id="bp-exterior_cladding" class="${aiClass('exterior_cladding')}" type="text" placeholder="e.g. Glass curtain wall" value="${bp.exterior_cladding||''}"></div>
       <div class="bp-field"><label>Roof Type ${aiLabel('roof_type')}</label><input id="bp-roof_type" class="${aiClass('roof_type')}" type="text" placeholder="e.g. TPO membrane" value="${bp.roof_type||''}"></div>
       <div class="bp-field"><label>Window Type ${aiLabel('window_type')}</label><input id="bp-window_type" class="${aiClass('window_type')}" type="text" placeholder="e.g. Double-pane curtain wall" value="${bp.window_type||''}"></div>
+    </div>
+  </div>`;
+
+  // Units (for multifamily / townhouses)
+  const bpUnits = bp.units_list || [];
+  const unitsSummary = bpUnits.length ? `${bpUnits.length} unit${bpUnits.length!==1?'s':''} · ${bpUnits.reduce((s,u)=>s+(u.sqft||0),0).toLocaleString()} total SF` : '';
+  const units = `<div class="bp-section ${bpActiveTab==='units'?'active':''}" id="bps-units">
+    <div class="bp-section-title">🏠 Unit Directory
+      <span style="font-size:11px;font-weight:400;color:#9ca3af">Manage individual units for multifamily, townhouses, and mixed-use properties</span>
+    </div>
+    ${unitsSummary ? `<div style="font-size:13px;color:#6b7280;margin-bottom:10px;padding:8px 12px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px">${unitsSummary}</div>` : ''}
+    <div style="display:grid;grid-template-columns:2fr 1fr 0.7fr 0.7fr 1fr 1fr auto;gap:6px;margin-bottom:4px;padding:0 4px">
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Unit Name</div>
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Sqft</div>
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Beds</div>
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Baths</div>
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Rent/Mo</div>
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase">Status</div>
+      <div></div>
+    </div>
+    <div id="bpUnitRows" style="max-height:340px;overflow-y:auto">
+      ${bpUnits.length ? bpUnits.map((u,i) => bpUnitRowHtml(i, u)).join('') : bpUnitRowHtml(0, {})}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <button class="bp-add-row-btn" onclick="bpAddUnitRow()">+ Add unit</button>
+      <button class="bp-add-row-btn" onclick="bpAddMultipleUnits()" style="background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe">+ Add multiple units</button>
+    </div>
+    <div style="margin-top:14px;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px">
+      <p style="font-size:12px;color:#6b7280;margin:0"><strong>Tip:</strong> Upload a unit directory spreadsheet (Excel/CSV) in the Documents tab to auto-populate units from a rent roll or unit list.</p>
     </div>
   </div>`;
 
@@ -5387,7 +5422,7 @@ function renderBuildingProfileModalFull() {
       <div class="bp-tabs">${tabs}</div>
     </div>
     <div class="bp-modal-body">
-      ${basics}${physical}${spaces}${systems}${site}${fieldcapture}
+      ${basics}${physical}${units}${spaces}${systems}${site}${fieldcapture}
     </div>
     <div class="bp-modal-foot">
       <div class="bp-completeness">
@@ -5425,7 +5460,46 @@ function bpFloorRowHtml(i, f) {
   </div>`;
 }
 
-let bpRoomIdx = 10, bpFloorIdx = 10;
+let bpRoomIdx = 10, bpFloorIdx = 10, bpUnitIdx = 200;
+
+function bpUnitRowHtml(i, u) {
+  const UNIT_STATUSES = ['Occupied','Vacant','Renovation','Model','Down'];
+  return `<div class="bp-unit-row" id="bpUnit-${i}" style="display:grid;grid-template-columns:2fr 1fr 0.7fr 0.7fr 1fr 1fr auto;gap:6px;margin-bottom:4px;align-items:center">
+    <input class="bp-unit-name" type="text" placeholder="e.g. 101, 2-A" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:6px 8px;font-size:12px;outline:none" value="${u.name||''}">
+    <input class="bp-unit-sqft" type="number" placeholder="SF" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:6px 8px;font-size:12px;outline:none" value="${u.sqft||''}">
+    <input class="bp-unit-beds" type="number" min="0" placeholder="Beds" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:6px 8px;font-size:12px;outline:none" value="${u.beds!=null?u.beds:''}">
+    <input class="bp-unit-baths" type="number" min="0" step="0.5" placeholder="Baths" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:6px 8px;font-size:12px;outline:none" value="${u.baths!=null?u.baths:''}">
+    <input class="bp-unit-rent" type="number" placeholder="$/mo" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:6px 8px;font-size:12px;outline:none" value="${u.rent||''}">
+    <select class="bp-unit-status" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:6px 8px;font-size:12px;outline:none">
+      <option value="">Status…</option>
+      ${UNIT_STATUSES.map(s=>`<option value="${s}" ${u.status===s?'selected':''}>${s}</option>`).join('')}
+    </select>
+    <button onclick="this.closest('.bp-unit-row').remove()" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:14px;padding:0 4px">✕</button>
+  </div>`;
+}
+
+function bpAddUnitRow() {
+  const c = document.getElementById('bpUnitRows');
+  if(c) { c.insertAdjacentHTML('beforeend', bpUnitRowHtml(bpUnitIdx++, {})); c.scrollTop = c.scrollHeight; }
+}
+
+function bpAddMultipleUnits() {
+  const count = prompt('How many units to add?', '10');
+  if (!count || isNaN(parseInt(count))) return;
+  const n = Math.min(parseInt(count), 500);
+  const prefix = prompt('Unit name prefix? (e.g. "101" starts at 101, "A-" starts at A-1)', '101');
+  if (prefix === null) return;
+  const c = document.getElementById('bpUnitRows');
+  if (!c) return;
+  const startNum = parseInt(prefix) || 1;
+  const isNumeric = !isNaN(parseInt(prefix));
+  for (let i = 0; i < n; i++) {
+    const name = isNumeric ? String(startNum + i) : prefix + (i + 1);
+    c.insertAdjacentHTML('beforeend', bpUnitRowHtml(bpUnitIdx++, { name }));
+  }
+  c.scrollTop = c.scrollHeight;
+}
+
 function bpAddRoomRow()  { const c = document.getElementById('bpRoomRows');  if(c) { c.insertAdjacentHTML('beforeend', bpRoomRowHtml(bpRoomIdx++, {})); } }
 function bpAddFloorRow() { const c = document.getElementById('bpFloorRows'); if(c) { c.insertAdjacentHTML('beforeend', bpFloorRowHtml(bpFloorIdx++, {})); } }
 
@@ -5483,6 +5557,27 @@ function saveBuildingProfileFromModal() {
     if (level || use) floors.push({ level: level||'', use: use||'', sf: sf ? parseInt(sf) : null });
   });
   if (floors.length) fullBuildingProfile.floor_breakdown = floors;
+
+  // Units
+  const unitRows = document.querySelectorAll('#bpUnitRows .bp-unit-row');
+  const unitsList = [];
+  unitRows.forEach(row => {
+    const name = row.querySelector('.bp-unit-name')?.value?.trim();
+    const sqft = row.querySelector('.bp-unit-sqft')?.value;
+    const beds = row.querySelector('.bp-unit-beds')?.value;
+    const baths = row.querySelector('.bp-unit-baths')?.value;
+    const rent = row.querySelector('.bp-unit-rent')?.value;
+    const status = row.querySelector('.bp-unit-status')?.value;
+    if (name) unitsList.push({
+      name,
+      sqft: sqft ? parseInt(sqft) : null,
+      beds: beds ? parseFloat(beds) : null,
+      baths: baths ? parseFloat(baths) : null,
+      rent: rent ? parseFloat(rent) : null,
+      status: status || null
+    });
+  });
+  fullBuildingProfile.units_list = unitsList;
 
   // Amenities
   const amenitiesInput = document.getElementById('bp-amenities')?.value?.trim();
