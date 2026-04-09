@@ -5722,7 +5722,7 @@ function renderBuildingProfilePage() {
     html += `<div style="margin-top:24px;font-size:15px;font-weight:700;color:#111827;margin-bottom:10px;">Field Capture</div>
     <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border:1.5px solid #bbf7d0;border-radius:14px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;">
       <div>
-        <div style="font-size:11px;font-weight:600;color:#15803d;">📱 Active invite code${fcInvites.length>1?' ('+fcInvites.length+' complexes)':''}</div>
+        <div style="font-size:11px;font-weight:600;color:#15803d;">📱 Active invite code</div>
         <div style="font-family:monospace;font-size:22px;font-weight:800;color:#1e40af;letter-spacing:4px;margin-top:4px;">${code}</div>
       </div>
       <button onclick="fcCopyInviteCode('${code}')" style="background:#2563eb;color:#fff;border:none;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(37,99,235,0.2);">📋 Copy</button>
@@ -6162,26 +6162,18 @@ function renderBuildingProfileModalFull() {
         <div style="border:2px solid #2563eb;border-radius:14px;overflow:hidden;background:#fff;">
           <div style="background:#f0f9ff;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="fcCopyInviteCode('${fcInvite.code}')">
             <div>
-              <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;">${fcInviteArr.length > 1 ? fcInviteArr.length + ' Buildings · Share any one code' : 'Active Invite Code'}</div>
+              <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;">Active Invite Code</div>
               <div style="font-family:monospace;font-size:28px;font-weight:800;letter-spacing:5px;color:#1e40af;">${fcInvite.code}</div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
-              <span id="fc-copy-hint" style="font-size:11px;color:#2563eb;font-weight:600;">Tap to copy</span>
-            </div>
+            <span style="font-size:11px;color:#2563eb;font-weight:600;">Tap to copy</span>
           </div>
-          ${fcInviteArr.length > 1 ? `<div style="padding:8px 20px;border-top:1px solid #e5e7eb;max-height:150px;overflow-y:auto;">
-            ${fcInviteArr.map(inv => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;">
-              <span style="color:#374151;">${inv.building_name || inv._sub_label || ''}</span>
-              <span style="font-family:monospace;color:#4f46e5;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();fcCopyInviteCode('${inv.code}')">${inv.code}</span>
-            </div>`).join('')}
-          </div>` : ''}
           <div style="padding:12px 20px;display:flex;gap:8px;border-top:1px solid #e5e7eb;">
             <button onclick="fcCopyInviteCode('${fcInvite.code}')" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;">📋 Copy Code</button>
             <button onclick="fcGenerateInviteCode()" style="flex:1;background:#f9fafb;color:#374151;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;">🔄 Change</button>
             <button onclick="fcDeleteInviteCode()" style="background:#f9fafb;color:#ef4444;border:1.5px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;">🗑️</button>
           </div>
         </div>
-        ${fcProfileUnitCount > 0 ? `<div style="font-size:12px;color:#059669;margin-top:6px;padding-left:4px;">${fcProfileUnitCount} spaces across ${fcInviteArr.length > 1 ? fcInviteArr.length + ' buildings' : '1 building'} will be synced to technician</div>` : ''}
+        ${fcProfileUnitCount > 0 ? `<div style="font-size:12px;color:#059669;margin-top:6px;padding-left:4px;">${fcProfileUnitCount} spaces will be synced to technician</div>` : ''}
         <div style="padding:8px 20px 12px;">
           <button onclick="fcSyncToServer()" style="width:100%;background:#f0fdf4;color:#059669;border:1.5px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;">🔄 Sync Spaces to Field Capture</button>
         </div>
@@ -6488,59 +6480,26 @@ function fcGenerateInviteCode() {
   const bp = fullBuildingProfile || {};
   const config = JSON.parse(localStorage.getItem('bos_fc_config_' + activeBuildingId) || '{}');
   const createdBy = localStorage.getItem('bos_user_name') || 'Office User';
-  const bDetails = bp.building_details || [];
-  const isMulti = bDetails.length > 1;
 
-  if (isMulti) {
-    // Multi-building property: create one invite per sub-building
-    const invites = [];
-    const propName = bp.name || bld?.name || 'Property';
-    for (const d of bDetails) {
-      const subId = activeBuildingId + '::' + d.label;
-      const code = _fcGenCode();
-      const invite = {
-        code,
-        building_id: subId,
-        building_name: propName + ' ' + d.label,
-        building_address: d.address || '',
-        created_by: createdBy,
-        max_uses: 10,
-        uses: 0,
-        equipment_types: config.equipment_types || [],
-        is_active: true,
-        created_at: new Date().toISOString(),
-        _sub_label: d.label
-      };
-      invites.push(invite);
-      if (FIELD_CAPTURE_API) {
-        // Push only this building's units
-        const subUnits = (bp.units_list || []).filter(u => (u.name || '').split('-')[0] === d.label);
-        fcPushSetupToServer(invite, { ...config, _overrideUnits: subUnits });
-      }
-    }
-    localStorage.setItem('bos_fc_invites_' + activeBuildingId, JSON.stringify(invites));
-    fcShowInviteCodeScreen(invites[0], invites);
-  } else {
-    // Single building: original behavior
-    const code = _fcGenCode();
-    const invite = {
-      code,
-      building_id: activeBuildingId,
-      building_name: bld?.name || 'Unknown',
-      building_address: bld?.address || '',
-      created_by: createdBy,
-      max_uses: 10,
-      uses: 0,
-      equipment_types: config.equipment_types || [],
-      unit_count: config.unit_count || 0,
-      unit_pattern: config.unit_pattern || 'numeric',
-      is_active: true,
-      created_at: new Date().toISOString()
-    };
-    localStorage.setItem('bos_fc_invites_' + activeBuildingId, JSON.stringify([invite]));
-    if (FIELD_CAPTURE_API) fcPushSetupToServer(invite, config);
-    fcShowInviteCodeScreen(invite);
-  }
+  // One code per property — all units pushed together
+  const code = _fcGenCode();
+  const propName = bp.name || bld?.name || 'Property';
+  const invite = {
+    code,
+    building_id: activeBuildingId,
+    building_name: propName,
+    building_address: bp.address || bld?.address || '',
+    created_by: createdBy,
+    max_uses: 10,
+    uses: 0,
+    equipment_types: config.equipment_types || [],
+    unit_count: (bp.units_list || []).length || config.unit_count || 0,
+    is_active: true,
+    created_at: new Date().toISOString()
+  };
+  localStorage.setItem('bos_fc_invites_' + activeBuildingId, JSON.stringify([invite]));
+  if (FIELD_CAPTURE_API) fcPushSetupToServer(invite, config);
+  fcShowInviteCodeScreen(invite);
 }
 
 async function fcDeleteInviteCode() {
@@ -6564,66 +6523,40 @@ async function fcDeleteInviteCode() {
   showToast && showToast('Invite code deleted', 'success');
 }
 
-function fcShowInviteCodeScreen(invite, allInvites) {
-  // Replace the modal content with a dedicated invite code display
+function fcShowInviteCodeScreen(invite) {
   const modal = document.getElementById('bpModal');
   if (!modal) return;
 
+  const bp = fullBuildingProfile || {};
   const bld = activeBuilding();
-  const unitCount = (fullBuildingProfile.units_list || []).length;
+  const unitCount = (bp.units_list || []).length;
+  const propName = bp.name || bld?.name || 'Property';
+  const propAddr = bp.address || bld?.address || '';
   const fieldCaptureUrl = FIELD_CAPTURE_API || 'https://buildingosinitial-production.up.railway.app';
-  const isMulti = allInvites && allInvites.length > 1;
-
-  // For multi-building: show all codes, tech only needs to enter any one (auto-join handles rest)
-  let codesHtml = '';
-  if (isMulti) {
-    const allCodes = allInvites.map(i => i.code).join(', ');
-    codesHtml = `
-      <div style="background:#f0f9ff;border:2px dashed #2563eb;border-radius:16px;padding:20px;margin-bottom:20px;cursor:pointer;" onclick="fcCopyInviteCode('${allCodes}')">
-        <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:8px;">Any one code joins all ${allInvites.length} buildings</div>
-        <div style="font-family:monospace;font-size:28px;font-weight:800;letter-spacing:4px;color:#1e40af;">${invite.code}</div>
-        <div id="fc-copy-hint" style="font-size:12px;color:#2563eb;margin-top:8px;font-weight:600;">Tap to copy</div>
-      </div>
-      <div style="background:#f9fafb;border-radius:12px;padding:14px;text-align:left;margin-bottom:16px;max-height:200px;overflow-y:auto;">
-        <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px;">${allInvites.length} Buildings</div>
-        ${allInvites.map(inv => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;">
-            <div>
-              <div style="font-size:13px;font-weight:600;">${inv.building_name}</div>
-              <div style="font-size:11px;color:#6b7280;">${inv.building_address || ''}</div>
-            </div>
-            <div style="font-family:monospace;font-size:12px;color:#4f46e5;font-weight:700;cursor:pointer;" onclick="event.stopPropagation();fcCopyInviteCode('${inv.code}')">${inv.code}</div>
-          </div>
-        `).join('')}
-      </div>`;
-  } else {
-    codesHtml = `
-      <div id="fc-code-display" style="background:#f0f9ff;border:2px dashed #2563eb;border-radius:16px;padding:24px;margin-bottom:20px;cursor:pointer;" onclick="fcCopyInviteCode('${invite.code}')">
-        <div style="font-family:monospace;font-size:36px;font-weight:800;letter-spacing:6px;color:#1e40af;">${invite.code}</div>
-        <div id="fc-copy-hint" style="font-size:12px;color:#2563eb;margin-top:8px;font-weight:600;">Tap to copy</div>
-      </div>
-      <div style="background:#f9fafb;border-radius:12px;padding:16px;text-align:left;margin-bottom:20px;">
-        <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;margin-bottom:8px;">Building Details</div>
-        <div style="font-size:14px;font-weight:600;">${bld?.name || 'Building'}</div>
-        <div style="font-size:12px;color:#6b7280;">${bld?.address || ''}</div>
-        ${unitCount > 0 ? `<div style="font-size:12px;color:#6b7280;margin-top:4px;">${unitCount} units will be loaded</div>` : ''}
-      </div>`;
-  }
 
   modal.innerHTML = `<div class="bp-modal" style="max-width:480px;">
     <div style="padding:32px 28px;text-align:center;">
       <div style="font-size:48px;margin-bottom:12px;">🔗</div>
-      <h2 style="font-size:20px;font-weight:700;margin:0 0 4px;">${isMulti ? allInvites.length + ' Invite Codes Ready' : 'Invite Code Ready'}</h2>
-      <p style="font-size:13px;color:#6b7280;margin:0 0 24px;">Share ${isMulti ? 'any one code' : 'this code'} with your field technician</p>
+      <h2 style="font-size:20px;font-weight:700;margin:0 0 4px;">Invite Code Ready</h2>
+      <p style="font-size:13px;color:#6b7280;margin:0 0 24px;">Share this code with your field technician</p>
 
-      ${codesHtml}
+      <div style="background:#f0f9ff;border:2px dashed #2563eb;border-radius:16px;padding:24px;margin-bottom:20px;cursor:pointer;" onclick="fcCopyInviteCode('${invite.code}')">
+        <div style="font-family:monospace;font-size:36px;font-weight:800;letter-spacing:6px;color:#1e40af;">${invite.code}</div>
+        <div id="fc-copy-hint" style="font-size:12px;color:#2563eb;margin-top:8px;font-weight:600;">Tap to copy</div>
+      </div>
+
+      <div style="background:#f9fafb;border-radius:12px;padding:16px;text-align:left;margin-bottom:20px;">
+        <div style="font-size:14px;font-weight:600;">${propName}</div>
+        ${propAddr ? `<div style="font-size:12px;color:#6b7280;">${propAddr}</div>` : ''}
+        ${unitCount > 0 ? `<div style="font-size:12px;color:#6b7280;margin-top:4px;">${unitCount} units will be loaded</div>` : ''}
+      </div>
 
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;text-align:left;margin-bottom:24px;">
         <div style="font-size:13px;color:#15803d;font-weight:600;margin-bottom:6px;">Instructions for technician:</div>
         <div style="font-size:13px;color:#166534;line-height:1.6;">
           1. Open <strong>${fieldCaptureUrl.replace('https://','')}</strong><br>
           2. Register with name and email<br>
-          3. Enter code: <strong style="font-family:monospace;letter-spacing:1px;">${invite.code}</strong>${isMulti ? '<br>   <em>(auto-joins all ' + allInvites.length + ' buildings)</em>' : ''}
+          3. Enter code: <strong style="font-family:monospace;letter-spacing:1px;">${invite.code}</strong>
         </div>
       </div>
 

@@ -680,49 +680,20 @@
             return;
         }
 
-        // Group buildings by property (detect common name prefix)
-        const groups = {};
-        for (const b of state.buildings) {
-            const name = b.building_name || 'Building';
-            const prefix = name.replace(/\s+\d[\d\w]*$/, '').trim() || name;
-            if (!groups[prefix]) groups[prefix] = [];
-            groups[prefix].push(b);
-        }
-        const groupKeys = Object.keys(groups);
-
         let html = '';
-        for (const gk of groupKeys) {
-            const bldgs = groups[gk];
-            const isMulti = bldgs.length > 1;
-
-            if (isMulti) {
-                const totalSpaces = bldgs.reduce((s,b) => s + (b.unit_count||0), 0);
-                const totalDone = bldgs.reduce((s,b) => s + (b.captures_done||0), 0);
-                const totalCap = bldgs.reduce((s,b) => s + (b.captures_total||0), 0);
-                const aggPct = totalCap > 0 ? Math.round(totalDone / totalCap * 100) : 0;
-                html += `
-                    <div style="margin-bottom:4px;margin-top:16px;">
-                        <div style="font-size:15px;font-weight:700;color:#1e293b;">${gk}</div>
-                        <div style="font-size:12px;color:#64748b;">${bldgs.length} buildings &middot; ${totalSpaces} spaces &middot; ${aggPct}% captured</div>
-                        <div class="progress-bar" style="margin-top:4px;margin-bottom:8px;"><div class="progress-fill" style="width:${aggPct}%"></div></div>
-                    </div>`;
-            }
-
-            for (const b of bldgs) {
-                const pct = b.captures_total > 0 ? Math.round(b.captures_done / b.captures_total * 100) : 0;
-                const shortName = isMulti ? (b.building_name || '').replace(gk, '').trim() || b.building_name : b.building_name || 'Building';
-                html += `
-                    <div class="card" style="${isMulti ? 'margin-left:8px;border-left:3px solid #4f46e5;' : ''}" onclick="selectBuilding('${b.building_id}', '${(b.building_name || '').replace(/'/g, "\\'")}', '${(b.building_address || '').replace(/'/g, "\\'")}')">
-                        <div class="card-title">${isMulti ? '&#127968; ' + shortName : b.building_name || 'Building'}</div>
-                        ${b.building_address ? '<div class="card-sub">' + b.building_address + '</div>' : ''}
-                        <div style="margin-top:8px;display:flex;gap:12px;font-size:12px;color:#64748b;">
-                            <span>${b.unit_count} spaces</span>
-                            <span>${b.equipment_type_count} equip types</span>
-                            <span style="font-weight:600;color:${pct >= 100 ? '#059669' : '#4f46e5'}">${pct}%</span>
-                        </div>
-                        <div class="progress-bar" style="margin-top:6px;"><div class="progress-fill" style="width:${pct}%;${pct >= 100 ? 'background:#059669;' : ''}"></div></div>
-                    </div>`;
-            }
+        for (const b of state.buildings) {
+            const pct = b.captures_total > 0 ? Math.round(b.captures_done / b.captures_total * 100) : 0;
+            html += `
+                <div class="card" onclick="selectBuilding('${b.building_id}', '${(b.building_name || '').replace(/'/g, "\\'")}', '${(b.building_address || '').replace(/'/g, "\\'")}')">
+                    <div class="card-title">${b.building_name || 'Building'}</div>
+                    ${b.building_address ? '<div class="card-sub">' + b.building_address + '</div>' : ''}
+                    <div style="margin-top:8px;display:flex;gap:12px;font-size:12px;color:#64748b;">
+                        <span>${b.unit_count} spaces</span>
+                        <span>${b.equipment_type_count} equip types</span>
+                        <span style="font-weight:600;color:${pct >= 100 ? '#059669' : '#4f46e5'}">${pct}%</span>
+                    </div>
+                    <div class="progress-bar" style="margin-top:6px;"><div class="progress-fill" style="width:${pct}%;${pct >= 100 ? 'background:#059669;' : ''}"></div></div>
+                </div>`;
         }
         el.innerHTML = html;
     }
@@ -756,53 +727,22 @@
         const raw = document.getElementById('joinCode').value.trim().toUpperCase();
         if (!raw) { toast('Enter an invite code'); return; }
 
-        // Support comma-separated codes
-        const codes = raw.split(/[,\s]+/).filter(c => c.length > 0);
-
-        if (codes.length > 1) {
-            // Bulk join
-            showLoading(`Joining ${codes.length} buildings...`);
-            try {
-                const r = await api('/api/join-bulk', { user_id: state.user.id, codes });
-                hideLoading();
-                const joined = r.joined_count || 0;
-                toast(`Joined ${joined} building${joined !== 1 ? 's' : ''}!`);
-                document.getElementById('joinCode').value = '';
-                await loadBuildings();
-                if (state.buildings.length === 1) {
-                    const b = state.buildings[0];
-                    selectBuilding(b.building_id, b.building_name, b.building_address);
-                } else {
-                    showScreen('screenBuildings', { noStack: true });
-                }
-            } catch (e) {
-                hideLoading();
-                toast(e.message);
+        showLoading('Joining...');
+        try {
+            const r = await api(`/api/join/${raw}`, { user_id: state.user.id });
+            toast('Joined ' + (r.building_name || 'building') + '!');
+            hideLoading();
+            document.getElementById('joinCode').value = '';
+            await loadBuildings();
+            if (state.buildings.length === 1) {
+                selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
+                screenStack = ['screenBuildings'];
+            } else {
+                showScreen('screenBuildings', { noStack: true });
             }
-        } else {
-            // Single code — may auto-join related buildings in the same property
-            showLoading('Joining...');
-            try {
-                const r = await api(`/api/join/${codes[0]}`, { user_id: state.user.id });
-                const count = r.joined_count || 1;
-                if (count > 1) {
-                    toast(`Joined ${count} buildings at ${r.building_name?.split(' ').slice(0,-1).join(' ') || 'this property'}!`);
-                } else {
-                    toast('Joined ' + (r.building_name || 'building') + '!');
-                }
-                hideLoading();
-                document.getElementById('joinCode').value = '';
-                await loadBuildings();
-                if (state.buildings.length === 1) {
-                    selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
-                    screenStack = ['screenBuildings'];
-                } else {
-                    showScreen('screenBuildings', { noStack: true });
-                }
-            } catch (e) {
-                hideLoading();
-                toast(e.message);
-            }
+        } catch (e) {
+            hideLoading();
+            toast(e.message);
         }
     }
 
