@@ -335,11 +335,8 @@
         </div>
 
         <div style="text-align:center;margin-top:16px;">
-            <p style="font-size:13px;color:#94a3b8;">Have an invite code?</p>
-            <div class="input-group" style="margin-top:8px;">
-                <input type="text" id="loginInviteCode" placeholder="Enter 6-character code" maxlength="6"
-                       style="text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase;">
-            </div>
+            <p style="font-size:13px;color:#94a3b8;">Enter your name and email to get started.</p>
+            <input type="hidden" id="loginInviteCode" value="">
         </div>
     </div>
 </div>
@@ -385,52 +382,28 @@
             </div>
         </div>
 
+        <!-- Actions -->
+        <div style="margin-top:8px;">
+            <button class="btn btn-success" onclick="startWalk()" style="font-size:17px;padding:16px;">
+                &#128694; Start Walk
+            </button>
+        </div>
+
+        <!-- Spaces -->
+        <div class="section-title">Spaces</div>
+        <div id="dashSpaceList"></div>
+        <div id="dashSpaceEmpty" style="display:none;" class="card"><p style="text-align:center;color:#94a3b8;font-size:13px;">No spaces configured yet.</p></div>
+
         <!-- Equipment type progress -->
         <div class="section-title">Equipment Types</div>
         <div id="dashTypeProgress"></div>
 
-        <!-- Unit Summary -->
-        <div class="section-title">Units</div>
-        <div id="dashUnitSummary" class="card" style="padding:14px 16px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-weight:600;font-size:14px;" id="dashUnitCount">0 units</span>
-                <button class="btn-outline" style="width:auto;padding:6px 14px;font-size:12px;border-radius:6px;cursor:pointer;" onclick="viewAllUnits()">View All Units</button>
-            </div>
-            <div id="dashUnitPreview" style="margin-top:10px;"></div>
-        </div>
-
-        <!-- Actions -->
-        <div style="margin-top:20px;">
-            <button class="btn btn-success" onclick="startWalk()" style="font-size:17px;padding:16px;">
-                &#128694; Start Walk
-            </button>
-            <button class="btn btn-outline" onclick="exportCSV()">Export CSV</button>
-        </div>
+        <button class="btn btn-outline" onclick="exportCSV()" style="margin-top:12px;">Export CSV</button>
     </div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SCREEN: All Units (browse from dashboard)                               -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<div class="screen" id="screenAllUnits">
-    <div class="screen-pad">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <div>
-                <div style="font-weight:700;font-size:16px;">All Units</div>
-                <div style="font-size:12px;color:#64748b;" id="allUnitsSubtitle"></div>
-            </div>
-            <button class="btn btn-success" style="width:auto;padding:8px 16px;font-size:13px;" onclick="startWalk()">Start Walk</button>
-        </div>
-
-        <input type="text" id="allUnitSearch" placeholder="Search units..." oninput="renderAllUnits()"
-               style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:12px;">
-
-        <div id="allUnitList"></div>
-    </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SCREEN: Unit List (during walk)                                         -->
+<!-- SCREEN: Space List (during walk)                                        -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <div class="screen" id="screenUnits">
     <div class="screen-pad">
@@ -442,7 +415,7 @@
             <button class="btn-outline" style="width:auto;padding:6px 14px;font-size:12px;border-radius:6px;border:1.5px solid #ef4444;color:#ef4444;background:white;cursor:pointer;" onclick="endWalk()">End Walk</button>
         </div>
 
-        <input type="text" id="unitSearch" placeholder="Search units..." oninput="renderUnits()"
+        <input type="text" id="unitSearch" placeholder="Search spaces..." oninput="renderUnits()"
                style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:12px;">
 
         <div id="unitList"></div>
@@ -461,9 +434,9 @@
         <div id="equipChecklist"></div>
 
         <div style="margin-top:20px;">
-            <button class="btn btn-secondary" onclick="skipUnit()">Skip Unit (Access Issue)</button>
+            <button class="btn btn-secondary" onclick="skipUnit()">Skip Space (Access Issue)</button>
             <button class="btn btn-success" id="btnCompleteUnit" onclick="completeUnit()" disabled>
-                &#10003; Mark Unit Complete
+                &#10003; Mark Complete
             </button>
         </div>
     </div>
@@ -602,12 +575,24 @@
         const back = document.getElementById('headerBack');
         const title = document.getElementById('headerTitle');
 
+        const act = document.getElementById('headerAction');
+        act.style.display = 'none';
+        act.onclick = null;
+
         if (id === 'screenLogin') {
             back.style.display = 'none';
             title.textContent = 'BuildingOS Field Capture';
         } else if (id === 'screenBuildings') {
             back.style.display = 'none';
             title.textContent = 'Your Buildings';
+            act.textContent = 'Log Out';
+            act.style.display = 'block';
+            act.onclick = logout;
+        } else if (id === 'screenDashboard') {
+            back.style.display = 'block';
+            act.textContent = 'Log Out';
+            act.style.display = 'block';
+            act.onclick = logout;
         } else {
             back.style.display = 'block';
         }
@@ -667,6 +652,18 @@
         }
     }
 
+    function logout() {
+        localStorage.removeItem('fc_user');
+        state.user = null;
+        state.buildings = [];
+        state.currentBuilding = null;
+        state.walkSession = null;
+        document.getElementById('loginName').value = '';
+        document.getElementById('loginEmail').value = '';
+        screenStack = ['screenLogin'];
+        showScreen('screenLogin', { noStack: true });
+    }
+
     // ─── Buildings ──────────────────────────
     async function loadBuildings() {
         if (!state.user) return;
@@ -688,7 +685,7 @@
                     <div class="card-title">${b.building_name || 'Building'}</div>
                     <div class="card-sub">${b.building_address || ''}</div>
                     <div style="margin-top:8px;display:flex;gap:12px;font-size:12px;color:#64748b;">
-                        <span>${b.unit_count} units</span>
+                        <span>${b.unit_count} spaces</span>
                         <span>${b.equipment_type_count} equipment types</span>
                         <span>${pct}% captured</span>
                     </div>
@@ -766,31 +763,30 @@
             </div>
         `).join('');
 
-        // Unit summary on dashboard
-        const unitCountEl = document.getElementById('dashUnitCount');
-        const unitPreviewEl = document.getElementById('dashUnitPreview');
+        // Spaces list on dashboard
+        const spaceListEl = document.getElementById('dashSpaceList');
+        const spaceEmptyEl = document.getElementById('dashSpaceEmpty');
         const units = state.units || [];
-        if (unitCountEl) {
-            const complete = units.filter(u => u.is_complete).length;
-            unitCountEl.textContent = `${units.length} unit${units.length !== 1 ? 's' : ''}` + (complete > 0 ? ` · ${complete} complete` : '');
-        }
-        if (unitPreviewEl && units.length > 0) {
-            unitPreviewEl.innerHTML = units.slice(0, 5).map(u => {
+        if (units.length > 0) {
+            if (spaceEmptyEl) spaceEmptyEl.style.display = 'none';
+            spaceListEl.innerHTML = units.map(u => {
                 const done = u.captures_done || 0;
                 const total = u.captures_total || 0;
-                const statusColor = done >= total && total > 0 ? '#059669' : done > 0 ? '#f59e0b' : '#94a3b8';
+                const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
+                const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
                 const meta = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
-                return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
-                    <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></div>
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-weight:600;font-size:13px;">${u.unit_name}</div>
-                        ${meta ? `<div style="font-size:11px;color:#64748b;">${meta}</div>` : ''}
-                    </div>
-                    <div style="font-size:11px;color:#64748b;">${done}/${total}</div>
-                </div>`;
-            }).join('') + (units.length > 5 ? `<div style="text-align:center;padding:8px 0;font-size:12px;color:#4f46e5;cursor:pointer;" onclick="viewAllUnits()">View all ${units.length} units →</div>` : '');
-        } else if (unitPreviewEl) {
-            unitPreviewEl.innerHTML = '<div style="font-size:13px;color:#94a3b8;text-align:center;padding:8px 0;">No units configured for this building.</div>';
+                return `
+                    <div class="unit-card">
+                        <div class="unit-status ${statusClass}">${label}</div>
+                        <div class="unit-info">
+                            <div class="unit-name">${u.unit_name}</div>
+                            <div class="unit-meta">${meta || ''}${u.floor ? (meta ? ' · ' : '') + 'Floor ' + u.floor : ''}</div>
+                        </div>
+                    </div>`;
+            }).join('');
+        } else {
+            spaceListEl.innerHTML = '';
+            if (spaceEmptyEl) spaceEmptyEl.style.display = 'block';
         }
     }
 
@@ -832,56 +828,13 @@
         showScreen('screenDashboard', { title: state.currentBuildingName, noStack: true });
     }
 
-    // ─── All Units (browse from dashboard) ──
-    function viewAllUnits() {
-        renderAllUnits();
-        showScreen('screenAllUnits', { title: 'All Units' });
-    }
-
-    function renderAllUnits() {
-        const search = (document.getElementById('allUnitSearch')?.value || '').toLowerCase();
-        const filtered = state.units.filter(u => u.unit_name.toLowerCase().includes(search));
-        const complete = state.units.filter(u => u.is_complete).length;
-
-        const subtitleEl = document.getElementById('allUnitsSubtitle');
-        if (subtitleEl) subtitleEl.textContent = `${complete} of ${state.units.length} units complete`;
-
-        const listEl = document.getElementById('allUnitList');
-        if (!listEl) return;
-
-        if (filtered.length === 0) {
-            listEl.innerHTML = `<div style="text-align:center;padding:32px 0;color:#94a3b8;">
-                ${state.units.length === 0 ? 'No units configured for this building yet.' : 'No units match your search.'}
-            </div>`;
-            return;
-        }
-
-        listEl.innerHTML = filtered.map(u => {
-            const done = u.captures_done || 0;
-            const total = u.captures_total || 0;
-            const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
-            const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
-            const details = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
-
-            return `
-                <div class="unit-card">
-                    <div class="unit-status ${statusClass}">${label}</div>
-                    <div class="unit-info">
-                        <div class="unit-name">${u.unit_name}</div>
-                        <div class="unit-meta">${details || ''}${u.floor ? (details ? ' · ' : '') + 'Floor ' + u.floor : ''}${u.unit_type && u.unit_type !== 'residential' ? ' · ' + u.unit_type : ''}</div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    // ─── Unit List ──────────────────────────
+    // ─── Space List (during walk) ──────────
     function renderUnits() {
         const search = (document.getElementById('unitSearch').value || '').toLowerCase();
         const filtered = state.units.filter(u => u.unit_name.toLowerCase().includes(search));
 
         document.getElementById('walkSubtitle').textContent =
-            state.units.filter(u => u.is_complete).length + ' of ' + state.units.length + ' units complete';
+            state.units.filter(u => u.is_complete).length + ' of ' + state.units.length + ' spaces complete';
 
         document.getElementById('unitList').innerHTML = filtered.map(u => {
             const done = u.captures_done || 0;
@@ -975,7 +928,7 @@
         if (state.currentVisit) {
             api(`/api/visits/${state.currentVisit.id}`, { status: 'access_issue', access_note: note }).catch(() => {});
         }
-        toast('Unit skipped');
+        toast('Space skipped');
         goBack();
     }
 
@@ -987,7 +940,7 @@
         state.capturePhoto = null;
 
         document.getElementById('captureEquipName').textContent = (et.icon || '🔧') + ' ' + et.name;
-        document.getElementById('captureUnitName').textContent = 'Unit: ' + state.currentUnit.unit_name;
+        document.getElementById('captureUnitName').textContent = 'Space: ' + state.currentUnit.unit_name;
 
         // Reset UI
         document.getElementById('captureStep1').style.display = 'block';
