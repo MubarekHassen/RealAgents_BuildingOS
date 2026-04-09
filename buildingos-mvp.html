@@ -5701,17 +5701,29 @@ function fcGenerateInviteCode() {
 
 async function fcPushSetupToServer(invite, config) {
   try {
-    // Generate unit list based on pattern
-    const unitCount = parseInt(config.unit_count) || 0;
-    const units = [];
-    for (let i = 1; i <= unitCount; i++) {
-      let name;
-      switch (config.unit_pattern) {
-        case 'floor-unit': name = `${Math.ceil(i/10)}-${String(i%10||10).padStart(2,'0')}`; break;
-        case 'letter': name = String.fromCharCode(64 + i); break;
-        default: name = String(100 + i); // numeric: 101, 102, ...
+    // Use units from building profile if available, otherwise generate from pattern
+    const profileUnits = fullBuildingProfile.units_list || [];
+    let units = [];
+    if (profileUnits.length > 0) {
+      units = profileUnits.map(u => ({
+        unit_name: u.name,
+        unit_type: 'residential',
+        sqft: u.sqft || null,
+        bedrooms: u.beds || null,
+        bathrooms: u.baths || null,
+        notes: u.status ? `Status: ${u.status}` + (u.rent ? ` · Rent: $${u.rent}/mo` : '') : '',
+      }));
+    } else {
+      const unitCount = parseInt(config.unit_count) || 0;
+      for (let i = 1; i <= unitCount; i++) {
+        let name;
+        switch (config.unit_pattern) {
+          case 'floor-unit': name = `${Math.ceil(i/10)}-${String(i%10||10).padStart(2,'0')}`; break;
+          case 'letter': name = String.fromCharCode(64 + i); break;
+          default: name = String(100 + i); // numeric: 101, 102, ...
+        }
+        units.push({ unit_name: name, floor: String(Math.ceil(i/10)), unit_type: 'residential' });
       }
-      units.push({ unit_name: name, floor: String(Math.ceil(i/10)), unit_type: 'residential' });
     }
 
     const resp = await fetch(`${FIELD_CAPTURE_API}/api/buildings/${invite.building_id}/setup`, {

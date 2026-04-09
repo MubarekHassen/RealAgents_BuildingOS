@@ -389,6 +389,16 @@
         <div class="section-title">Equipment Types</div>
         <div id="dashTypeProgress"></div>
 
+        <!-- Unit Summary -->
+        <div class="section-title">Units</div>
+        <div id="dashUnitSummary" class="card" style="padding:14px 16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-weight:600;font-size:14px;" id="dashUnitCount">0 units</span>
+                <button class="btn-outline" style="width:auto;padding:6px 14px;font-size:12px;border-radius:6px;cursor:pointer;" onclick="viewAllUnits()">View All Units</button>
+            </div>
+            <div id="dashUnitPreview" style="margin-top:10px;"></div>
+        </div>
+
         <!-- Actions -->
         <div style="margin-top:20px;">
             <button class="btn btn-success" onclick="startWalk()" style="font-size:17px;padding:16px;">
@@ -396,6 +406,26 @@
             </button>
             <button class="btn btn-outline" onclick="exportCSV()">Export CSV</button>
         </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: All Units (browse from dashboard)                               -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="screen" id="screenAllUnits">
+    <div class="screen-pad">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div>
+                <div style="font-weight:700;font-size:16px;">All Units</div>
+                <div style="font-size:12px;color:#64748b;" id="allUnitsSubtitle"></div>
+            </div>
+            <button class="btn btn-success" style="width:auto;padding:8px 16px;font-size:13px;" onclick="startWalk()">Start Walk</button>
+        </div>
+
+        <input type="text" id="allUnitSearch" placeholder="Search units..." oninput="renderAllUnits()"
+               style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:12px;">
+
+        <div id="allUnitList"></div>
     </div>
 </div>
 
@@ -733,6 +763,33 @@
                 <div class="progress-bar"><div class="progress-fill" style="width:${t.pct}%;background:${t.pct >= 100 ? '#059669' : '#4f46e5'}"></div></div>
             </div>
         `).join('');
+
+        // Unit summary on dashboard
+        const unitCountEl = document.getElementById('dashUnitCount');
+        const unitPreviewEl = document.getElementById('dashUnitPreview');
+        const units = state.units || [];
+        if (unitCountEl) {
+            const complete = units.filter(u => u.is_complete).length;
+            unitCountEl.textContent = `${units.length} unit${units.length !== 1 ? 's' : ''}` + (complete > 0 ? ` · ${complete} complete` : '');
+        }
+        if (unitPreviewEl && units.length > 0) {
+            unitPreviewEl.innerHTML = units.slice(0, 5).map(u => {
+                const done = u.captures_done || 0;
+                const total = u.captures_total || 0;
+                const statusColor = done >= total && total > 0 ? '#059669' : done > 0 ? '#f59e0b' : '#94a3b8';
+                const meta = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
+                return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+                    <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;font-size:13px;">${u.unit_name}</div>
+                        ${meta ? `<div style="font-size:11px;color:#64748b;">${meta}</div>` : ''}
+                    </div>
+                    <div style="font-size:11px;color:#64748b;">${done}/${total}</div>
+                </div>`;
+            }).join('') + (units.length > 5 ? `<div style="text-align:center;padding:8px 0;font-size:12px;color:#4f46e5;cursor:pointer;" onclick="viewAllUnits()">View all ${units.length} units →</div>` : '');
+        } else if (unitPreviewEl) {
+            unitPreviewEl.innerHTML = '<div style="font-size:13px;color:#94a3b8;text-align:center;padding:8px 0;">No units configured for this building.</div>';
+        }
     }
 
     // ─── Walk Session ───────────────────────
@@ -773,6 +830,49 @@
         showScreen('screenDashboard', { title: state.currentBuildingName, noStack: true });
     }
 
+    // ─── All Units (browse from dashboard) ──
+    function viewAllUnits() {
+        renderAllUnits();
+        showScreen('screenAllUnits', { title: 'All Units' });
+    }
+
+    function renderAllUnits() {
+        const search = (document.getElementById('allUnitSearch')?.value || '').toLowerCase();
+        const filtered = state.units.filter(u => u.unit_name.toLowerCase().includes(search));
+        const complete = state.units.filter(u => u.is_complete).length;
+
+        const subtitleEl = document.getElementById('allUnitsSubtitle');
+        if (subtitleEl) subtitleEl.textContent = `${complete} of ${state.units.length} units complete`;
+
+        const listEl = document.getElementById('allUnitList');
+        if (!listEl) return;
+
+        if (filtered.length === 0) {
+            listEl.innerHTML = `<div style="text-align:center;padding:32px 0;color:#94a3b8;">
+                ${state.units.length === 0 ? 'No units configured for this building yet.' : 'No units match your search.'}
+            </div>`;
+            return;
+        }
+
+        listEl.innerHTML = filtered.map(u => {
+            const done = u.captures_done || 0;
+            const total = u.captures_total || 0;
+            const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
+            const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
+            const details = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
+
+            return `
+                <div class="unit-card">
+                    <div class="unit-status ${statusClass}">${label}</div>
+                    <div class="unit-info">
+                        <div class="unit-name">${u.unit_name}</div>
+                        <div class="unit-meta">${details || ''}${u.floor ? (details ? ' · ' : '') + 'Floor ' + u.floor : ''}${u.unit_type && u.unit_type !== 'residential' ? ' · ' + u.unit_type : ''}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     // ─── Unit List ──────────────────────────
     function renderUnits() {
         const search = (document.getElementById('unitSearch').value || '').toLowerCase();
@@ -787,12 +887,13 @@
             const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
             const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
 
+            const details = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
             return `
                 <div class="unit-card" onclick="openUnit('${u.id}')">
                     <div class="unit-status ${statusClass}">${label}</div>
                     <div class="unit-info">
                         <div class="unit-name">${u.unit_name}</div>
-                        <div class="unit-meta">${u.floor ? 'Floor ' + u.floor + ' · ' : ''}${u.unit_type || ''}</div>
+                        <div class="unit-meta">${details || ''}${u.floor ? (details ? ' · ' : '') + 'Floor ' + u.floor : ''}${u.unit_type && u.unit_type !== 'residential' ? ' · ' + u.unit_type : ''}</div>
                     </div>
                     <div class="unit-arrow">&#8250;</div>
                 </div>
