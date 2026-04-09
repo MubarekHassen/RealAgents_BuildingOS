@@ -6471,10 +6471,19 @@ function _fcGenCode() {
   return code;
 }
 
-function fcGenerateInviteCode() {
+async function fcGenerateInviteCode() {
   if (!activeBuildingId) { alert('No building selected'); return; }
 
   fcSaveConfig();
+
+  // Clean up any old per-building codes from server
+  const oldInvites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
+  if (FIELD_CAPTURE_API && oldInvites.length > 0) {
+    const oldIds = new Set(oldInvites.map(i => i.building_id));
+    for (const oid of oldIds) {
+      try { await fetch(`${FIELD_CAPTURE_API}/api/buildings/${oid}/invite-codes`, { method: 'DELETE' }); } catch(e) {}
+    }
+  }
 
   const bld = activeBuilding();
   const bp = fullBuildingProfile || {};
@@ -6507,11 +6516,13 @@ async function fcDeleteInviteCode() {
   const invites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
   if (!invites.length) return;
 
-  // Delete from server
+  // Delete from server — clean up all old building IDs (including legacy per-building codes)
   if (FIELD_CAPTURE_API) {
-    try {
-      await fetch(`${FIELD_CAPTURE_API}/api/buildings/${activeBuildingId}/invite-codes`, { method: 'DELETE' });
-    } catch(e) { console.error('Failed to delete invite codes on server:', e); }
+    const oldIds = new Set(invites.map(i => i.building_id));
+    oldIds.add(activeBuildingId);
+    for (const oid of oldIds) {
+      try { await fetch(`${FIELD_CAPTURE_API}/api/buildings/${oid}/invite-codes`, { method: 'DELETE' }); } catch(e) {}
+    }
   }
 
   // Clear locally
