@@ -1552,7 +1552,10 @@ def serve_frontend():
     html_path = Path(__file__).parent / "buildingos-mvp.html"
     if not html_path.exists():
         return HTMLResponse("<h1>buildingos-mvp.html not found</h1>", status_code=404)
-    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        html_path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+    )
 
 
 @app.get("/health")

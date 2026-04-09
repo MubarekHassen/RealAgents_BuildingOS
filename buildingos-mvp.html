@@ -6350,8 +6350,7 @@ async function pullFieldCaptures() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling...'; }
 
   try {
-    const creator = localStorage.getItem('bos_user_name') || 'mubarek@berkeley.edu';
-    const resp = await fetch(`${FIELD_CAPTURE_API}/api/all-captures?created_by=${encodeURIComponent(creator)}`);
+    const resp = await fetch(`${FIELD_CAPTURE_API}/api/all-captures`);
     if (!resp.ok) throw new Error('Failed to fetch captures');
     const data = await resp.json();
     const captures = data.captures || [];
