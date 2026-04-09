@@ -5497,7 +5497,10 @@ function renderBuildingProfileModalFull() {
             <button onclick="fcDeleteInviteCode()" style="background:#f9fafb;color:#ef4444;border:1.5px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;">🗑️</button>
           </div>
         </div>
-        ${fcProfileUnitCount > 0 ? `<div style="font-size:12px;color:#059669;margin-top:6px;padding-left:4px;">${fcProfileUnitCount} units from building profile will be sent to technician</div>` : ''}
+        ${fcProfileUnitCount > 0 ? `<div style="font-size:12px;color:#059669;margin-top:6px;padding-left:4px;">${fcProfileUnitCount} spaces from building profile will be synced to technician</div>` : ''}
+        <div style="padding:8px 20px 12px;">
+          <button onclick="fcSyncToServer()" style="width:100%;background:#f0fdf4;color:#059669;border:1.5px solid #bbf7d0;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;">🔄 Sync Spaces to Field Capture</button>
+        </div>
       ` : `
         <div style="text-align:center;padding:28px 20px;border:2px dashed #e5e7eb;border-radius:14px;background:#f9fafb;">
           <div style="font-size:32px;margin-bottom:8px;">🔗</div>
@@ -5635,6 +5638,15 @@ function bpSwitchTab(tab) {
   if (tabEl) tabEl.classList.add('active');
   const sec = document.getElementById('bps-' + tab);
   if (sec) sec.classList.add('active');
+
+  // Auto-sync spaces to Field Capture when opening that tab
+  if (tab === 'fieldcapture' && FIELD_CAPTURE_API && activeBuildingId) {
+    const invites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
+    if (invites.length > 0 && (fullBuildingProfile.units_list || []).length > 0) {
+      const fcConfig = JSON.parse(localStorage.getItem('bos_fc_config_' + activeBuildingId) || '{}');
+      fcPushSetupToServer(invites[0], fcConfig);
+    }
+  }
 }
 
 function saveBuildingProfileFromModal() {
@@ -5926,6 +5938,23 @@ async function fcPushSetupToServer(invite, config) {
   } catch(e) {
     console.error('Field Capture API error:', e);
   }
+}
+
+async function fcSyncToServer() {
+  if (!activeBuildingId || !FIELD_CAPTURE_API) {
+    showToast && showToast('No Field Capture API configured', 'error');
+    return;
+  }
+  const invites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
+  const invite = invites[0];
+  if (!invite) {
+    showToast && showToast('Generate an invite code first', 'error');
+    return;
+  }
+  const fcConfig = JSON.parse(localStorage.getItem('bos_fc_config_' + activeBuildingId) || '{}');
+  showToast && showToast('Syncing spaces to Field Capture...', 'info');
+  await fcPushSetupToServer(invite, fcConfig);
+  showToast && showToast('Spaces synced to Field Capture!', 'success');
 }
 
 function fcCopyInviteCode(code) {

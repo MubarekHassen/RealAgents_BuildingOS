@@ -95,6 +95,19 @@ async def sb_patch(table: str, filters: str, data: dict) -> list:
         return r.json() if r.text else []
 
 
+async def sb_delete(table: str, filters: str):
+    """DELETE rows in Supabase."""
+    async with httpx.AsyncClient() as client:
+        r = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/{table}{filters}",
+            headers=HEADERS,
+        )
+        if r.status_code >= 400:
+            logger.error(f"sb_delete {table}: {r.status_code} {r.text}")
+            raise HTTPException(500, f"Database error: {r.text}")
+        return r.json() if r.text else []
+
+
 async def sb_upload(bucket: str, path: str, data: bytes, content_type: str = "image/jpeg") -> str:
     """Upload file to Supabase Storage and return public URL."""
     async with httpx.AsyncClient() as client:
@@ -165,8 +178,9 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
     equipment_types = body.get("equipment_types", [])  # [{name, icon, description}]
     created_by = body.get("created_by", "")
 
-    # Insert units
+    # Clear existing units for this building (upsert pattern) then re-insert
     if units:
+        await sb_delete("fc_units", f"?building_id=eq.{building_id}")
         unit_rows = [{
             "building_id": building_id,
             "unit_name": u.get("name", u.get("unit_name", "")),
@@ -180,8 +194,9 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
         } for i, u in enumerate(units)]
         await sb_post("fc_units", unit_rows)
 
-    # Insert equipment types
+    # Clear existing equipment types then re-insert
     if equipment_types:
+        await sb_delete("fc_equipment_types", f"?building_id=eq.{building_id}")
         type_rows = [{
             "building_id": building_id,
             "name": et.get("name", ""),
