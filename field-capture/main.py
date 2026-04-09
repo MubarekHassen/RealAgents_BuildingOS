@@ -16,6 +16,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import anthropic
 import httpx
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
@@ -188,8 +191,8 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
         } for i, et in enumerate(equipment_types)]
         await sb_post("fc_equipment_types", type_rows)
 
-    # Generate invite code
-    code = _generate_invite_code()
+    # Use invite code from main app if provided, otherwise generate one
+    code = body.get("invite_code") or _generate_invite_code()
     invite = await sb_post("fc_invite_codes", {
         "code": code,
         "building_id": building_id,
