@@ -819,6 +819,41 @@ async def manual_capture(building_id: str, unit_id: str, request: Request):
     return {"capture": result[0] if result else capture_record}
 
 
+# ─── All Captures (for main app pull) ────────────────────────────────────────
+
+@app.get("/api/all-captures")
+async def get_all_captures(created_by: str = ""):
+    """Return all captures across all buildings, enriched with unit/type names.
+    Optionally filtered by the invite code creator's email."""
+    # Find all buildings — either by created_by filter or all
+    if created_by:
+        codes = await sb_get("fc_invite_codes", f"?created_by=eq.{created_by}")
+    else:
+        codes = await sb_get("fc_invite_codes", "?limit=500")
+
+    building_ids = list({c["building_id"] for c in codes})
+    building_names = {c["building_id"]: c.get("building_name", "") for c in codes}
+
+    all_captures = []
+    for bid in building_ids:
+        captures = await sb_get("fc_captures", f"?building_id=eq.{bid}")
+        units = await sb_get("fc_units", f"?building_id=eq.{bid}&select=id,unit_name")
+        types = await sb_get("fc_equipment_types", f"?building_id=eq.{bid}&select=id,name,icon")
+
+        unit_map = {u["id"]: u["unit_name"] for u in units}
+        type_map = {t["id"]: {"name": t["name"], "icon": t.get("icon", "🔧")} for t in types}
+
+        for c in captures:
+            c["building_name"] = building_names.get(bid, "")
+            c["unit_name"] = unit_map.get(c.get("unit_id"), "")
+            et = type_map.get(c.get("equipment_type_id"), {})
+            c["equipment_type_name"] = et.get("name", "")
+            c["equipment_type_icon"] = et.get("icon", "🔧")
+            all_captures.append(c)
+
+    return {"captures": all_captures, "building_count": len(building_ids), "total": len(all_captures)}
+
+
 # ─── Progress & Dashboard ────────────────────────────────────────────────────
 
 @app.get("/api/buildings/{building_id}/progress")
