@@ -402,7 +402,9 @@ async def login_field_user(request: Request):
 
 @app.post("/api/join/{code}")
 async def join_building(code: str, request: Request):
-    """Field user joins a building using invite code."""
+    """Field user joins a building using invite code.
+    If the building belongs to a property group, auto-joins all buildings in that group.
+    """
     body = await request.json()
     user_id = body.get("user_id")
     if not user_id:
@@ -417,29 +419,61 @@ async def join_building(code: str, request: Request):
     if invite.get("uses", 0) >= invite.get("max_uses", 10):
         raise HTTPException(410, "Invite code has reached maximum uses")
 
-    # Check if already a member
-    existing = await sb_get(
-        "fc_building_members",
-        f"?user_id=eq.{user_id}&building_id=eq.{invite['building_id']}"
-    )
-    if existing:
-        return {"already_member": True, "building_id": invite["building_id"], "building_name": invite["building_name"]}
+    primary_bid = invite["building_id"]
 
-    # Create membership
-    await sb_post("fc_building_members", {
-        "user_id": user_id,
-        "building_id": invite["building_id"],
-        "invite_code_id": invite["id"],
-    })
+    # Check for property group — find all buildings that share the same created_by
+    # and have a similar building_name (same property)
+    created_by = invite.get("created_by", "")
+    all_codes = await sb_get("fc_invite_codes", f"?created_by=eq.{created_by}&is_active=eq.true")
+
+    # Group buildings that belong to the same property
+    # Heuristic: same created_by + building names share a common prefix
+    primary_name = invite.get("building_name", "")
+    # Extract property name (e.g., "Marquis Villa" from "Marquis Villa 8534")
+    name_parts = primary_name.rsplit(" ", 1)
+    property_prefix = name_parts[0] if len(name_parts) > 1 and name_parts[-1].isdigit() else primary_name
+
+    related_building_ids = set()
+    for ic in all_codes:
+        ic_name = ic.get("building_name", "")
+        ic_parts = ic_name.rsplit(" ", 1)
+        ic_prefix = ic_parts[0] if len(ic_parts) > 1 and ic_parts[-1].isdigit() else ic_name
+        if ic_prefix == property_prefix:
+            related_building_ids.add(ic["building_id"])
+
+    # Always include the primary building
+    related_building_ids.add(primary_bid)
+
+    joined_buildings = []
+    for bid in related_building_ids:
+        existing = await sb_get(
+            "fc_building_members",
+            f"?user_id=eq.{user_id}&building_id=eq.{bid}"
+        )
+        if existing:
+            continue
+        await sb_post("fc_building_members", {
+            "user_id": user_id,
+            "building_id": bid,
+            "invite_code_id": invite["id"],
+        })
+        # Find the building name from invite codes
+        bname = next((ic.get("building_name", "") for ic in all_codes if ic["building_id"] == bid), "")
+        joined_buildings.append({"building_id": bid, "building_name": bname})
 
     # Increment usage
     await sb_patch("fc_invite_codes", f"?id=eq.{invite['id']}", {"uses": invite.get("uses", 0) + 1})
 
+    if not joined_buildings:
+        return {"already_member": True, "building_id": primary_bid, "building_name": invite["building_name"]}
+
     return {
         "joined": True,
-        "building_id": invite["building_id"],
+        "building_id": primary_bid,
         "building_name": invite["building_name"],
         "building_address": invite.get("building_address", ""),
+        "joined_count": len(joined_buildings),
+        "buildings": joined_buildings,
     }
 
 

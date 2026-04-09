@@ -749,16 +749,21 @@
                 toast(e.message);
             }
         } else {
-            // Single code
+            // Single code — may auto-join related buildings in the same property
             showLoading('Joining...');
             try {
                 const r = await api(`/api/join/${codes[0]}`, { user_id: state.user.id });
-                toast('Joined ' + (r.building_name || 'building') + '!');
+                const count = r.joined_count || 1;
+                if (count > 1) {
+                    toast(`Joined ${count} buildings at ${r.building_name?.split(' ').slice(0,-1).join(' ') || 'this property'}!`);
+                } else {
+                    toast('Joined ' + (r.building_name || 'building') + '!');
+                }
                 hideLoading();
                 document.getElementById('joinCode').value = '';
                 await loadBuildings();
                 if (state.buildings.length === 1) {
-                    selectBuilding(r.building_id, r.building_name, r.building_address);
+                    selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
                     screenStack = ['screenBuildings'];
                 } else {
                     showScreen('screenBuildings', { noStack: true });
