@@ -443,6 +443,45 @@ async def join_building(code: str, request: Request):
     }
 
 
+@app.post("/api/join-bulk")
+async def join_multiple_buildings(request: Request):
+    """Join multiple buildings at once using comma-separated codes."""
+    body = await request.json()
+    user_id = body.get("user_id")
+    codes = body.get("codes", [])
+    if not user_id or not codes:
+        raise HTTPException(400, "user_id and codes required")
+
+    results = []
+    for code in codes:
+        code = code.strip().upper()
+        if not code:
+            continue
+        invites = await sb_get("fc_invite_codes", f"?code=eq.{code}&is_active=eq.true")
+        if not invites:
+            results.append({"code": code, "joined": False, "error": "Invalid code"})
+            continue
+        invite = invites[0]
+        existing = await sb_get(
+            "fc_building_members",
+            f"?user_id=eq.{user_id}&building_id=eq.{invite['building_id']}"
+        )
+        if existing:
+            results.append({"code": code, "joined": True, "already_member": True,
+                           "building_id": invite["building_id"], "building_name": invite["building_name"]})
+            continue
+        await sb_post("fc_building_members", {
+            "user_id": user_id,
+            "building_id": invite["building_id"],
+            "invite_code_id": invite["id"],
+        })
+        await sb_patch("fc_invite_codes", f"?id=eq.{invite['id']}", {"uses": invite.get("uses", 0) + 1})
+        results.append({"code": code, "joined": True,
+                       "building_id": invite["building_id"], "building_name": invite["building_name"]})
+
+    return {"results": results, "joined_count": sum(1 for r in results if r.get("joined"))}
+
+
 @app.get("/api/users/{user_id}/buildings")
 async def list_user_buildings(user_id: str):
     """List buildings a field user belongs to."""
