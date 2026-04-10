@@ -366,14 +366,16 @@
         <h2 style="margin-bottom:16px;">Your Buildings</h2>
         <div id="buildingList"></div>
 
-        <div class="section-title" style="margin-top:24px;">Join a Building</div>
-        <div class="card">
-            <div class="input-group" style="margin-bottom:8px;">
-                <label style="font-size:12px;color:#64748b;margin-bottom:4px;">Enter one or more invite codes (comma-separated)</label>
-                <input type="text" id="joinCode" placeholder="e.g. ABC123 or ABC123, DEF456"
-                       style="text-align:center;font-size:16px;letter-spacing:2px;text-transform:uppercase;">
+        <div id="joinSection">
+            <div class="section-title" style="margin-top:24px;">Join a Building</div>
+            <div class="card">
+                <div class="input-group" style="margin-bottom:8px;">
+                    <label style="font-size:12px;color:#64748b;margin-bottom:4px;">Enter an invite code</label>
+                    <input type="text" id="joinCode" placeholder="e.g. ABC123"
+                           style="text-align:center;font-size:16px;letter-spacing:2px;text-transform:uppercase;">
+                </div>
+                <button class="btn btn-outline" onclick="joinBuilding()">Join Building</button>
             </div>
-            <button class="btn btn-outline" onclick="joinBuilding()">Join Building(s)</button>
         </div>
     </div>
 </div>
@@ -732,10 +734,14 @@
 
     function renderBuildings() {
         const el = document.getElementById('buildingList');
+        const joinEl = document.getElementById('joinSection');
         if (!state.buildings.length) {
             el.innerHTML = '<div class="card"><p style="text-align:center;color:#94a3b8;">No buildings yet. Enter an invite code below.</p></div>';
+            if (joinEl) joinEl.style.display = '';
             return;
         }
+        // Hide join section once user has buildings
+        if (joinEl) joinEl.style.display = 'none';
 
         let html = '';
         for (const b of state.buildings) {
@@ -825,27 +831,53 @@
             </div>
         `).join('');
 
-        // Spaces list on dashboard
+        // Spaces list on dashboard — grouped by complex prefix
         const spaceListEl = document.getElementById('dashSpaceList');
         const spaceEmptyEl = document.getElementById('dashSpaceEmpty');
         const units = state.units || [];
         if (units.length > 0) {
             if (spaceEmptyEl) spaceEmptyEl.style.display = 'none';
-            spaceListEl.innerHTML = units.map(u => {
-                const done = u.captures_done || 0;
-                const total = u.captures_total || 0;
-                const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
-                const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
-                const meta = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
-                return `
-                    <div class="unit-card">
-                        <div class="unit-status ${statusClass}">${label}</div>
-                        <div class="unit-info">
-                            <div class="unit-name">${u.unit_name}</div>
-                            <div class="unit-meta">${meta || ''}${u.floor ? (meta ? ' · ' : '') + 'Floor ' + u.floor : ''}</div>
-                        </div>
+
+            // Group units by complex prefix (e.g., "8534" from "8534-101")
+            const complexes = {};
+            for (const u of units) {
+                const name = u.unit_name || '';
+                const prefix = name.includes('-') ? name.split('-')[0] : 'Main';
+                if (!complexes[prefix]) complexes[prefix] = [];
+                complexes[prefix].push(u);
+            }
+            const complexKeys = Object.keys(complexes).sort();
+            const hasMultipleComplexes = complexKeys.length > 1;
+
+            let html = '';
+            for (const prefix of complexKeys) {
+                const cUnits = complexes[prefix];
+                const cDone = cUnits.filter(u => (u.captures_done || 0) >= (u.captures_total || 1) && (u.captures_total || 0) > 0).length;
+
+                if (hasMultipleComplexes) {
+                    html += `<div style="margin:16px 0 8px;padding:0 4px;display:flex;align-items:center;justify-content:space-between;">
+                        <div style="font-weight:700;font-size:14px;color:#1e293b;">Complex ${prefix}</div>
+                        <div style="font-size:12px;color:#64748b;">${cDone}/${cUnits.length} complete</div>
                     </div>`;
-            }).join('');
+                }
+
+                html += cUnits.map(u => {
+                    const done = u.captures_done || 0;
+                    const total = u.captures_total || 0;
+                    const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
+                    const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
+                    const meta = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
+                    return `
+                        <div class="unit-card">
+                            <div class="unit-status ${statusClass}">${label}</div>
+                            <div class="unit-info">
+                                <div class="unit-name">${u.unit_name}</div>
+                                <div class="unit-meta">${meta || ''}${u.floor ? (meta ? ' · ' : '') + 'Floor ' + u.floor : ''}</div>
+                            </div>
+                        </div>`;
+                }).join('');
+            }
+            spaceListEl.innerHTML = html;
         } else {
             spaceListEl.innerHTML = '';
             if (spaceEmptyEl) spaceEmptyEl.style.display = 'block';

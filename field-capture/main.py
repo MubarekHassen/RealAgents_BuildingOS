@@ -220,7 +220,7 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
         "building_address": building_address,
         "created_by": created_by,
         "max_uses": 10,
-        "expires_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+        "expires_at": (datetime.utcnow() + timedelta(days=3650)).isoformat(),  # ~10 years, effectively permanent
     })
 
     return {
@@ -244,7 +244,7 @@ async def create_invite_code(request: Request):
         "building_address": body.get("building_address", ""),
         "created_by": body.get("created_by", ""),
         "max_uses": body.get("max_uses", 10),
-        "expires_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+        "expires_at": (datetime.utcnow() + timedelta(days=3650)).isoformat(),  # ~10 years, effectively permanent
     })
     return {"code": code, "invite": invite[0] if invite else None}
 
@@ -518,7 +518,10 @@ async def join_multiple_buildings(request: Request):
 
 @app.get("/api/users/{user_id}/buildings")
 async def list_user_buildings(user_id: str):
-    """List buildings a field user belongs to."""
+    """List buildings a field user belongs to.
+    Deduplicates: if a user belongs to multiple buildings from the same property,
+    only return the one with the most units (the combined property-level building).
+    """
     memberships = await sb_get("fc_building_members", f"?user_id=eq.{user_id}")
     buildings = []
     for m in memberships:
@@ -537,14 +540,47 @@ async def list_user_buildings(user_id: str):
             "captures_total": total_expected,
         })
 
-    # Enrich with invite code info (building name)
+    # Enrich with invite code info (building name, address, created_by)
     for b in buildings:
         invites = await sb_get("fc_invite_codes", f"?building_id=eq.{b['building_id']}&limit=1")
         if invites:
             b["building_name"] = invites[0].get("building_name", "")
             b["building_address"] = invites[0].get("building_address", "")
+            b["_created_by"] = invites[0].get("created_by", "")
 
-    return {"buildings": buildings}
+    # Deduplicate: group by created_by, keep only the building with most units per group
+    # This removes old per-complex buildings when a combined property-level building exists
+    by_creator = {}
+    for b in buildings:
+        creator = b.get("_created_by", "")
+        if not creator:
+            by_creator[b["building_id"]] = [b]  # ungrouped
+            continue
+        if creator not in by_creator:
+            by_creator[creator] = []
+        by_creator[creator].append(b)
+
+    deduped = []
+    for key, group in by_creator.items():
+        if len(group) <= 1:
+            deduped.extend(group)
+        else:
+            # Keep only the one with the most units (the combined property building)
+            group.sort(key=lambda x: x["unit_count"], reverse=True)
+            deduped.append(group[0])
+            # Clean up old memberships for this user (auto-remove duplicates)
+            for old in group[1:]:
+                try:
+                    await sb_delete("fc_building_members",
+                        f"?user_id=eq.{user_id}&building_id=eq.{old['building_id']}")
+                except:
+                    pass
+
+    # Remove internal fields
+    for b in deduped:
+        b.pop("_created_by", None)
+
+    return {"buildings": deduped}
 
 
 @app.delete("/api/buildings/{building_id}/members/{user_id}")
