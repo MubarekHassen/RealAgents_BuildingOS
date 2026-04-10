@@ -1562,7 +1562,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <button class="btn btn-secondary btn-sm" onclick="showBuildingProfileModal()">✏️ Edit Full Profile</button>
     </div>
   </div>
-  <div id="bpPageContent" style="padding:0 24px 24px;"></div>
+  <div id="bpPageContent" style="padding:0 24px 24px;flex:1;overflow-y:auto;"></div>
 </div>
 
 <!-- SETTINGS PAGE -->
@@ -7184,7 +7184,7 @@ async function pullFieldCaptures(opts) {
     }
 
     // Re-render Building Profile if we're on that page
-    if (document.getElementById('page-building-profile')?.classList?.contains('active-page')) {
+    if (document.getElementById('page-building-profile')?.classList?.contains('active')) {
       renderBuildingProfilePage();
     }
   } catch (e) {
