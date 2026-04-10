@@ -5759,13 +5759,18 @@ function _bpUnitRow(u, prefix) {
         const condBg = condColors[c.condition_rating] || '#f3f4f6';
         const condLbl = condLabels[c.condition_rating] || '—';
         const eqName = [c.make, c.model_name].filter(Boolean).join(' ') || c.equipment_type_name || 'Equipment';
-        return `<div style="min-width:110px;max-width:140px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;flex-shrink:0;overflow:hidden;">
+        const capDate = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+        return `<div style="min-width:110px;max-width:140px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;flex-shrink:0;overflow:hidden;position:relative;">
           ${c.photo_url ? `<img src="${c.photo_url}" style="width:100%;height:64px;object-fit:cover;cursor:pointer;display:block;" onclick="window.open('${c.photo_url}','_blank')">` : `<div style="width:100%;height:64px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:20px;">📷</div>`}
+          <button onclick="bpDeleteFieldCapture('${c.id}','${u.name}')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;" title="Delete">✕</button>
           <div style="padding:4px 6px;">
             <div style="font-size:10px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.equipment_type_name||'Equipment'}</div>
             <div style="font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eqName}</div>
             ${c.serial_number ? `<div style="font-size:8px;color:#9ca3af;">S/N ${c.serial_number}</div>` : ''}
-            <span style="font-size:8px;padding:1px 4px;border-radius:3px;background:${condBg};color:#374151;">${condLbl}</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+              <span style="font-size:8px;padding:1px 4px;border-radius:3px;background:${condBg};color:#374151;">${condLbl}</span>
+              ${capDate ? `<span style="font-size:8px;color:#9ca3af;">${capDate}</span>` : ''}
+            </div>
           </div>
         </div>`;
       }).join('')}
@@ -5786,6 +5791,24 @@ function _bpUnitRow(u, prefix) {
     </button>
     ${captureHtml}
   </div>`;
+}
+
+async function bpDeleteFieldCapture(captureId, unitName) {
+  if (!confirm('Delete this capture and its photo?')) return;
+  try {
+    await fetch(`${FIELD_CAPTURE_API}/api/captures/${captureId}`, { method: 'DELETE' });
+    // Remove from local cache
+    if (_fcCapturesByUnit[unitName]) {
+      _fcCapturesByUnit[unitName] = _fcCapturesByUnit[unitName].filter(c => c.id !== captureId);
+    }
+    // Remove from equipment register
+    equipmentRegister = equipmentRegister.filter(e => e._eqId !== 'fc::' + captureId);
+    if (activeBuildingId) saveEquipment(activeBuildingId, equipmentRegister);
+    renderBuildingProfilePage();
+    showToast && showToast('Capture deleted', 'success');
+  } catch (e) {
+    showToast && showToast('Error deleting capture', 'error');
+  }
 }
 
 function bpToggleBuilding(prefix) {

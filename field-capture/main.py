@@ -791,6 +791,18 @@ async def update_capture(capture_id: str, request: Request):
     return {"capture": result[0] if result else None}
 
 
+@app.delete("/api/captures/{capture_id}")
+async def delete_capture(capture_id: str):
+    """Delete a capture and its photo."""
+    # Get capture to find photo URL
+    captures = await sb_get("fc_captures", f"?id=eq.{capture_id}")
+    if not captures:
+        raise HTTPException(404, "Capture not found")
+    # Delete from database
+    await sb_delete("fc_captures", f"?id=eq.{capture_id}")
+    return {"deleted": True, "id": capture_id}
+
+
 @app.post("/api/buildings/{building_id}/units/{unit_id}/manual-capture")
 async def manual_capture(building_id: str, unit_id: str, request: Request):
     """Manual capture when tag is unreadable — field user types data directly."""
