@@ -459,8 +459,41 @@
             <div id="unitPhotos" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;"></div>
         </div>
 
+        <!-- Notes section -->
+        <div style="margin-top:16px;">
+            <div class="section-title">&#128221; Notes</div>
+            <div id="unitNotesList"></div>
+            <div id="addNoteForm" style="display:none;margin-bottom:12px;">
+                <textarea id="noteText" rows="3" placeholder="Add a note about this space..." style="width:100%;padding:12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="btn btn-success" onclick="saveNote()" style="flex:1;padding:10px;">Save Note</button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('addNoteForm').style.display='none'" style="flex:1;padding:10px;">Cancel</button>
+                </div>
+            </div>
+            <button class="btn btn-outline" onclick="document.getElementById('addNoteForm').style.display='block';document.getElementById('noteText').focus();" style="padding:10px;font-size:13px;">&#128221; Add Note</button>
+        </div>
+
         <div style="margin-top:20px;">
-            <button class="btn btn-secondary" onclick="skipUnit()">Skip Space (Access Issue)</button>
+            <div id="skipForm" style="display:none;margin-bottom:12px;">
+                <div class="card" style="border:1.5px solid #fde68a;background:#fffef5;">
+                    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:8px;">Why are you skipping this space?</div>
+                    <select id="skipReason" style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:8px;">
+                        <option value="">— Select reason —</option>
+                        <option value="no_access">No access / Locked</option>
+                        <option value="tenant_refused">Tenant refused entry</option>
+                        <option value="unsafe">Unsafe conditions</option>
+                        <option value="under_renovation">Under renovation</option>
+                        <option value="not_applicable">Not applicable</option>
+                        <option value="other">Other</option>
+                    </select>
+                    <textarea id="skipNote" rows="2" placeholder="Additional details (optional)..." style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;resize:vertical;font-family:inherit;margin-bottom:8px;"></textarea>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-danger" onclick="confirmSkip()" style="flex:1;padding:10px;">Skip Space</button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('skipForm').style.display='none'" style="flex:1;padding:10px;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="document.getElementById('skipForm').style.display='block'" id="btnSkipSpace">Skip Space</button>
             <button class="btn btn-success" id="btnCompleteUnit" onclick="completeUnit()" disabled>
                 &#10003; Mark Complete
             </button>
@@ -505,9 +538,9 @@
                 <img id="photoPreview" style="max-width:100%;border-radius:10px;display:block;">
                 <canvas id="annotationCanvas"></canvas>
             </div>
-            <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end;">
-                <button onclick="clearAnnotation()" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;">Clear Drawings</button>
-                <button onclick="undoAnnotation()" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;">Undo</button>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+                <button onclick="undoAnnotation()" style="flex:1;background:#fff;color:#4f46e5;border:2px solid #4f46e5;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">&#8630; Undo</button>
+                <button onclick="clearAnnotation()" style="flex:1;background:#fff;color:#ef4444;border:2px solid #ef4444;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">&#10005; Clear All</button>
             </div>
             <div class="photo-confirm-bar">
                 <button class="btn btn-secondary" onclick="retakePhoto()">&#128247; Retake</button>
@@ -1026,6 +1059,15 @@
         const allDone = state.equipTypes.every(et => unitCaptures.some(c => c.equipment_type_id === et.id));
         document.getElementById('btnCompleteUnit').disabled = !allDone;
 
+        // Reset skip/note forms
+        document.getElementById('skipForm').style.display = 'none';
+        document.getElementById('addNoteForm').style.display = 'none';
+        document.getElementById('skipReason').value = '';
+        document.getElementById('skipNote').value = '';
+
+        // Load notes
+        refreshUnitNotes();
+
         showScreen('screenUnitDetail', { title: unit.unit_name });
     }
 
@@ -1041,14 +1083,78 @@
         goBack();
     }
 
-    function skipUnit() {
-        const note = prompt('Reason for skipping (e.g., "locked", "no access"):');
-        if (note === null) return;
+    function confirmSkip() {
+        const reason = document.getElementById('skipReason').value;
+        const note = document.getElementById('skipNote').value.trim();
+        if (!reason) { toast('Please select a reason'); return; }
+
+        const fullNote = reason.replace(/_/g, ' ') + (note ? ': ' + note : '');
+
+        // Save as a note with skip attribution
+        api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/note`, {
+            user_id: state.user.id,
+            user_name: state.user.name,
+            note_text: 'SKIPPED — ' + fullNote,
+            note_type: 'skip',
+        }).catch(() => {});
+
         if (state.currentVisit) {
-            api(`/api/visits/${state.currentVisit.id}`, { status: 'access_issue', access_note: note }).catch(() => {});
+            api(`/api/visits/${state.currentVisit.id}`, { status: 'skipped', access_note: fullNote }).catch(() => {});
         }
-        toast('Space skipped');
+        toast('Space skipped: ' + reason.replace(/_/g, ' '));
         goBack();
+    }
+
+    async function saveNote() {
+        const text = document.getElementById('noteText').value.trim();
+        if (!text) { toast('Please enter a note'); return; }
+
+        showLoading('Saving note...');
+        try {
+            await api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/note`, {
+                user_id: state.user.id,
+                user_name: state.user.name,
+                note_text: text,
+                note_type: 'general',
+            });
+            document.getElementById('noteText').value = '';
+            document.getElementById('addNoteForm').style.display = 'none';
+
+            // Refresh notes
+            await refreshUnitNotes();
+            hideLoading();
+            toast('Note saved');
+        } catch (e) {
+            hideLoading();
+            toast('Error saving note');
+        }
+    }
+
+    async function refreshUnitNotes() {
+        if (!state.currentUnit) return;
+        try {
+            const r = await api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/notes`);
+            renderUnitNotes(r.notes || []);
+        } catch (e) { renderUnitNotes([]); }
+    }
+
+    function renderUnitNotes(notes) {
+        const el = document.getElementById('unitNotesList');
+        if (!notes.length) {
+            el.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:4px 0 8px;">No notes yet</div>';
+            return;
+        }
+        el.innerHTML = notes.map(n => {
+            const date = n.created_at ? new Date(n.created_at) : new Date();
+            const dateStr = date.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' + date.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+            const isSkip = n.note_type === 'skip';
+            return `<div style="background:${isSkip ? '#fef3c7' : '#f8fafc'};border:1px solid ${isSkip ? '#fde68a' : '#e2e8f0'};border-radius:8px;padding:10px 12px;margin-bottom:6px;">
+                <div style="font-size:13px;color:#1e293b;">${n.note_text}</div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
+                    <strong>${n.user_name || 'Unknown'}</strong> · ${dateStr}
+                </div>
+            </div>`;
+        }).join('');
     }
 
     // ─── Capture Flow ───────────────────────
@@ -1159,27 +1265,35 @@
             ctx.drawImage(document.getElementById('annotationCanvas'), 0, 0);
         }
 
-        // Stamp date at bottom
+        // Stamp at bottom: user name + date/time on line 1, equipment + unit on line 2
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) + '  ' + now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
-        const fontSize = Math.max(16, Math.round(canvas.width / 30));
-        const pad = Math.round(fontSize * 0.6);
-        const barH = fontSize + pad * 2;
+        const userName = state.user?.name || 'Unknown';
+        const fontSize = Math.max(14, Math.round(canvas.width / 35));
+        const pad = Math.round(fontSize * 0.5);
+        const lineH = fontSize + pad;
+        const barH = lineH * 2 + pad * 2;
 
         // Semi-transparent bar at bottom
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
         ctx.fillRect(0, canvas.height - barH, canvas.width, barH);
 
-        // Date text
         ctx.fillStyle = '#ffffff';
         ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
         ctx.textBaseline = 'middle';
-        ctx.fillText(dateStr, pad, canvas.height - barH / 2);
 
-        // Equipment type + unit on right side
-        const label = (state.currentEquipType?.name || '') + '  ·  ' + (state.currentUnit?.unit_name || '');
-        const labelW = ctx.measureText(label).width;
-        ctx.fillText(label, canvas.width - labelW - pad, canvas.height - barH / 2);
+        // Line 1: User name + date/time
+        const line1Y = canvas.height - barH + pad + lineH / 2;
+        ctx.fillText(userName, pad, line1Y);
+        const dateW = ctx.measureText(dateStr).width;
+        ctx.fillText(dateStr, canvas.width - dateW - pad, line1Y);
+
+        // Line 2: Equipment type + unit
+        const line2Y = line1Y + lineH;
+        const equipLabel = state.currentEquipType?.name || '';
+        const unitLabel = state.currentUnit?.unit_name || '';
+        ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        ctx.fillText(equipLabel + '  ·  ' + unitLabel, pad, line2Y);
 
         canvas.toBlob((blob) => {
             state.capturePhoto = new File([blob], 'capture.jpg', { type: 'image/jpeg' });

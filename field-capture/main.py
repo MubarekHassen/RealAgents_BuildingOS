@@ -590,6 +590,48 @@ async def remove_building_member(building_id: str, user_id: str):
     return {"removed": True}
 
 
+# ─── Unit Notes ──────────────────────────────────────────────────────────────
+
+@app.post("/api/buildings/{building_id}/units/{unit_id}/note")
+async def add_unit_note(building_id: str, unit_id: str, request: Request):
+    """Add a note to a unit. Stored as a capture record with is_note=true.
+    Notes are stamped with user name and timestamp."""
+    body = await request.json()
+    note_text = body.get("note_text", "").strip()
+    if not note_text:
+        raise HTTPException(400, "note_text required")
+
+    # Store as a capture record with special markers for notes
+    note = await sb_post("fc_captures", {
+        "building_id": building_id,
+        "unit_id": unit_id,
+        "user_id": body.get("user_id", ""),
+        "user_name": body.get("user_name", "Unknown"),
+        "condition_notes": note_text,
+        "condition_rating": body.get("note_type", "general"),  # reuse field: general, skip
+        "manually_verified": True,
+        "make": "__note__",  # sentinel to identify notes vs equipment captures
+    })
+    return {"note": note[0] if note else None}
+
+
+@app.get("/api/buildings/{building_id}/units/{unit_id}/notes")
+async def list_unit_notes(building_id: str, unit_id: str):
+    """List all notes for a unit, newest first."""
+    captures = await sb_get("fc_captures",
+        f"?unit_id=eq.{unit_id}&make=eq.__note__&order=created_at.desc")
+    # Transform capture records into note format
+    notes = [{
+        "id": c["id"],
+        "note_text": c.get("condition_notes", ""),
+        "note_type": c.get("condition_rating", "general"),
+        "user_name": c.get("user_name", "Unknown"),
+        "user_id": c.get("user_id", ""),
+        "created_at": c.get("created_at", ""),
+    } for c in captures]
+    return {"notes": notes}
+
+
 # ─── Walk Sessions ───────────────────────────────────────────────────────────
 
 @app.post("/api/buildings/{building_id}/walks")
@@ -884,7 +926,7 @@ async def get_all_captures(created_by: str = ""):
 
     all_captures = []
     for bid in building_ids:
-        captures = await sb_get("fc_captures", f"?building_id=eq.{bid}")
+        captures = await sb_get("fc_captures", f"?building_id=eq.{bid}&make=neq.__note__")
         units = await sb_get("fc_units", f"?building_id=eq.{bid}&select=id,unit_name")
         types = await sb_get("fc_equipment_types", f"?building_id=eq.{bid}&select=id,name,icon")
 
@@ -960,7 +1002,7 @@ async def building_progress(building_id: str):
 @app.get("/api/buildings/{building_id}/captures")
 async def list_captures(building_id: str, unit_id: str = None):
     """List all captures for a building, optionally filtered by unit."""
-    filters = f"?building_id=eq.{building_id}&order=created_at.desc"
+    filters = f"?building_id=eq.{building_id}&make=neq.__note__&order=created_at.desc"
     if unit_id:
         filters += f"&unit_id=eq.{unit_id}"
     captures = await sb_get("fc_captures", filters)
