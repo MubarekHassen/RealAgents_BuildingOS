@@ -5349,7 +5349,15 @@ function saveBuildingProfile(bid, profile) {
   try { localStorage.setItem('bos_bp_' + bid, JSON.stringify(profile)); } catch(e) {}
 }
 function loadBuildingProfile(bid) {
-  try { return JSON.parse(localStorage.getItem('bos_bp_' + bid)) || {}; } catch(e) { return {}; }
+  try {
+    const bp = JSON.parse(localStorage.getItem('bos_bp_' + bid)) || {};
+    // Always recalculate gross_sf from units to prevent stale values
+    if (bp.units_list && bp.units_list.length > 0) {
+      const calcSF = bp.units_list.reduce((s, u) => s + (parseInt(u.sqft) || 0), 0);
+      if (calcSF > 0) bp.gross_sf = calcSF;
+    }
+    return bp;
+  } catch(e) { return {}; }
 }
 
 let fullBuildingProfile = {}; // current building's extended profile
