@@ -2780,7 +2780,11 @@ function showPage(id) {
   if (idx >= 0 && navs[idx]) navs[idx].classList.add('active');
   closeSourceDrawer();
   if (id === 'dashboard') renderDashboard();
-  if (id === 'building-profile') renderBuildingProfilePage();
+  if (id === 'building-profile') {
+    renderBuildingProfilePage();
+    // Auto-pull field captures silently
+    if (FIELD_CAPTURE_API) pullFieldCaptures({ silent: true });
+  }
   if (id === 'deferred')  renderDeferredMaintenance();
   if (id === 'capital')   renderCapitalPlan();
   if (id === 'equipment') renderEquipmentRegister();
@@ -5634,6 +5638,8 @@ function renderBuildingProfilePage() {
       const bAddr = b.address || '';
       const expanded = _bpExpandedBuildings.has(prefix);
       const avgSF = b.units.length ? Math.round(b.totalSF / b.units.length) : 0;
+      const capturedUnits = b.units.filter(u => (_fcCapturesByUnit[u.name] || []).length > 0).length;
+      const totalCaptures = b.units.reduce((s, u) => s + (_fcCapturesByUnit[u.name] || []).length, 0);
       // Detect common beds/baths for "Apply to all" hint
       const commonBeds = b.units.length > 0 && b.units.every(u => u.beds === b.units[0].beds) ? b.units[0].beds : null;
       const commonBaths = b.units.length > 0 && b.units.every(u => u.baths === b.units[0].baths) ? b.units[0].baths : null;
@@ -5650,6 +5656,7 @@ function renderBuildingProfilePage() {
           </div>
           <div style="display:flex;align-items:center;gap:14px;">
             <span style="font-size:13px;color:#6b7280;"><strong style="color:#4f46e5;">${b.units.length}</strong> units</span>
+            ${totalCaptures > 0 ? `<span style="font-size:11px;color:#059669;">📷 ${totalCaptures}</span>` : ''}
             <span style="font-size:11px;color:#9ca3af;">~${avgSF.toLocaleString()} SF</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" style="transition:transform 0.2s;transform:rotate(${expanded?180:0}deg);flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
@@ -5715,26 +5722,6 @@ function renderBuildingProfilePage() {
     </div>
   </div>`;
 
-  // ─── Field Photos Gallery ───
-  const eqWithPhotos = (typeof equipmentRegister !== 'undefined' ? equipmentRegister : []).filter(e => e._photoUrl);
-  if (eqWithPhotos.length > 0) {
-    html += `<div style="margin-top:24px;font-size:15px;font-weight:700;color:#111827;margin-bottom:10px;">&#128248; Field Photos <span style="font-size:12px;font-weight:500;color:#6b7280;">(${eqWithPhotos.length})</span></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;">
-      ${eqWithPhotos.map(e => {
-        const condColors = {good:'#dcfce7',fair:'#fef3c7',poor:'#fee2e2',eol:'#fee2e2',unknown:'#f3f4f6'};
-        const condText = {good:'Good',fair:'Fair',poor:'Poor',eol:'EOL',unknown:'—'};
-        return `<div style="border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;background:#fff;cursor:pointer;" onclick="window.open('${e._photoUrl}','_blank')">
-          <img src="${e._photoUrl}" style="width:100%;height:100px;object-fit:cover;">
-          <div style="padding:6px 8px;">
-            <div style="font-size:11px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${e.name||'Equipment'}</div>
-            <div style="font-size:10px;color:#6b7280;">${e.floor||''}</div>
-            <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:${condColors[e.condition]||'#f3f4f6'};color:#374151;">${condText[e.condition]||'—'}</span>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
-  }
-
   // ─── FC Status ───
   const fcInvites = JSON.parse(localStorage.getItem('bos_fc_invites_' + activeBuildingId) || '[]');
   if (fcInvites.length > 0) {
@@ -5758,7 +5745,34 @@ function _bpUnitRow(u, prefix) {
   const inputS = 'border:1.5px solid #f3f4f6;border-radius:6px;padding:6px 8px;font-size:13px;outline:none;transition:border-color 0.15s,box-shadow 0.15s;background:#fafafa;width:100%;';
   const f = "this.style.borderColor='#4f46e5';this.style.boxShadow='0 0 0 2px rgba(79,70,229,0.06)';this.style.background='#fff'";
   const b = "this.style.borderColor='#f3f4f6';this.style.boxShadow='none';this.style.background='#fafafa';bpSaveInline()";
-  return `<div class="bp-page-unit" data-idx="${idx}" style="display:grid;grid-template-columns:2.2fr 1fr 0.7fr 0.7fr 1.2fr auto;gap:4px;margin-bottom:3px;align-items:center;">
+
+  // Field captures for this unit
+  const unitCaptures = _fcCapturesByUnit[u.name] || [];
+  const hasCaptures = unitCaptures.length > 0;
+  const condColors = {excellent:'#dcfce7',good:'#dcfce7',fair:'#fef3c7',poor:'#fee2e2',non_functional:'#fee2e2'};
+  const condLabels = {excellent:'Excellent',good:'Good',fair:'Fair',poor:'Poor',non_functional:'Non-functional'};
+
+  let captureHtml = '';
+  if (hasCaptures) {
+    captureHtml = `<div style="grid-column:1/-1;padding:6px 0 8px;display:flex;gap:8px;overflow-x:auto;">
+      ${unitCaptures.map(c => {
+        const condBg = condColors[c.condition_rating] || '#f3f4f6';
+        const condLbl = condLabels[c.condition_rating] || '—';
+        const eqName = [c.make, c.model_name].filter(Boolean).join(' ') || c.equipment_type_name || 'Equipment';
+        return `<div style="min-width:110px;max-width:140px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;flex-shrink:0;overflow:hidden;">
+          ${c.photo_url ? `<img src="${c.photo_url}" style="width:100%;height:64px;object-fit:cover;cursor:pointer;display:block;" onclick="window.open('${c.photo_url}','_blank')">` : `<div style="width:100%;height:64px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:20px;">📷</div>`}
+          <div style="padding:4px 6px;">
+            <div style="font-size:10px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.equipment_type_name||'Equipment'}</div>
+            <div style="font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eqName}</div>
+            ${c.serial_number ? `<div style="font-size:8px;color:#9ca3af;">S/N ${c.serial_number}</div>` : ''}
+            <span style="font-size:8px;padding:1px 4px;border-radius:3px;background:${condBg};color:#374151;">${condLbl}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  return `<div class="bp-page-unit" data-idx="${idx}" style="display:grid;grid-template-columns:2.2fr 1fr 0.7fr 0.7fr 1.2fr auto;gap:4px;margin-bottom:${hasCaptures?'0':'3'}px;align-items:center;">
     <input value="${u.name||''}" data-field="name" placeholder="Unit name" style="${inputS}font-weight:500;" onfocus="${f}" onblur="${b}">
     <input value="${u.sqft||''}" data-field="sqft" type="number" placeholder="—" style="${inputS}" onfocus="${f}" onblur="${b}">
     <input value="${u.beds!=null?u.beds:''}" data-field="beds" type="number" min="0" placeholder="—" style="${inputS}" onfocus="${f}" onblur="${b}">
@@ -5770,6 +5784,7 @@ function _bpUnitRow(u, prefix) {
     <button onclick="bpPageRemoveUnit(${idx},'${prefix}')" style="background:none;border:none;cursor:pointer;color:#d1d5db;padding:2px;transition:color 0.15s;width:24px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'" title="Remove">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
+    ${captureHtml}
   </div>`;
 }
 
@@ -7050,66 +7065,77 @@ function renderEquipmentRegister() {
   }).join('');
 }
 
-// ── Pull Field Capture data into Equipment Register ──
-async function pullFieldCaptures() {
-  if (!FIELD_CAPTURE_API) { showToast && showToast('Field Capture not configured','error'); return; }
+// ── Pull Field Capture data ──
+// Stores raw captures keyed by unit name for Building Profile display
+let _fcCapturesByUnit = {};
+let _fcLastPull = 0;
+
+const FC_SYSTEM_MAP = {
+  'HVAC System': 'HVAC', 'Water Heater': 'Plumbing',
+  'Electrical Panel': 'Electrical', 'Boiler': 'HVAC',
+  'Chiller': 'HVAC', 'Air Handler': 'HVAC', 'Rooftop Unit': 'HVAC',
+  'Generator': 'Electrical', 'Elevator': 'Mechanical',
+  'Fire Alarm Panel': 'Electrical', 'Fire Suppression': 'Mechanical',
+  'Solar Panel': 'Electrical', 'EV Charger': 'Electrical',
+  'Split System': 'HVAC', 'Cooling Tower': 'HVAC',
+};
+const FC_COND_MAP = { 'excellent': 'good', 'good': 'good', 'fair': 'fair', 'poor': 'poor', 'non_functional': 'eol' };
+
+async function pullFieldCaptures(opts) {
+  const silent = opts?.silent || false;
+  if (!FIELD_CAPTURE_API) { if (!silent) showToast && showToast('Field Capture not configured','error'); return; }
+
+  // Throttle: don't pull more than once per 30 seconds
+  if (Date.now() - _fcLastPull < 30000 && Object.keys(_fcCapturesByUnit).length > 0) return;
+
   const btn = document.getElementById('btnPullFC');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling...'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
 
   try {
     const resp = await fetch(`${FIELD_CAPTURE_API}/api/all-captures`);
     if (!resp.ok) throw new Error('Failed to fetch captures');
     const data = await resp.json();
     const captures = data.captures || [];
+    _fcLastPull = Date.now();
+
+    // Index captures by unit name
+    _fcCapturesByUnit = {};
+    for (const c of captures) {
+      const uName = c.unit_name || '_unknown';
+      if (!_fcCapturesByUnit[uName]) _fcCapturesByUnit[uName] = [];
+      _fcCapturesByUnit[uName].push(c);
+    }
 
     if (!captures.length) {
-      showToast && showToast('No field captures found yet','info');
+      if (!silent) showToast && showToast('No field captures yet','info');
       if (btn) { btn.disabled = false; btn.textContent = '📱 Pull from Field'; }
       return;
     }
 
     // Map FC captures → equipment register items
-    const systemMap = {
-      'HVAC System': 'HVAC', 'Water Heater': 'Plumbing',
-      'Electrical Panel': 'Electrical', 'Boiler': 'HVAC',
-      'Chiller': 'HVAC', 'Air Handler': 'HVAC', 'Rooftop Unit': 'HVAC',
-      'Generator': 'Electrical', 'Elevator': 'Mechanical',
-      'Fire Alarm Panel': 'Electrical', 'Fire Suppression': 'Mechanical',
-      'Solar Panel': 'Electrical', 'EV Charger': 'Electrical',
-      'Split System': 'HVAC', 'Cooling Tower': 'HVAC',
-    };
-    const condMap = {
-      'excellent': 'good', 'good': 'good', 'fair': 'fair',
-      'poor': 'poor', 'non_functional': 'eol',
-    };
-
     let added = 0;
     for (const c of captures) {
       const eqId = 'fc::' + c.id;
-      // Skip if already in register
       if (equipmentRegister.find(e => e._eqId === eqId)) continue;
-
       const typeName = c.equipment_type_name || 'Unknown';
       const dispName = [c.make, c.model_name].filter(Boolean).join(' ') || typeName;
-      const bldgName = c.building_name || '';
-      const unitName = c.unit_name || '';
-
       equipmentRegister.push({
         _eqId: eqId,
-        _source: '📱 Field: ' + (bldgName ? bldgName.split(' ').pop() : '') + (unitName ? ' / ' + unitName : ''),
+        _source: '📱 Field: ' + (c.unit_name || ''),
         _confirmed: !!c.manually_verified,
         _photoUrl: c.photo_url || '',
         _conditionRaw: c.condition_rating || '',
         _capturedAt: c.created_at || '',
+        _unitName: c.unit_name || '',
         name: dispName,
-        system: systemMap[typeName] || 'Mechanical',
+        system: FC_SYSTEM_MAP[typeName] || 'Mechanical',
         manufacturer: c.make || '',
         model: c.model_name || '',
         serialNo: c.serial_number || '',
         age: c.manufacture_year || '',
-        condition: condMap[c.condition_rating] || 'unknown',
-        floor: unitName || '',
-        location: bldgName || '',
+        condition: FC_COND_MAP[c.condition_rating] || 'unknown',
+        floor: c.unit_name || '',
+        location: c.building_name || '',
         zone: '',
         notes: c.condition_notes || '',
         installStatus: '',
@@ -7121,12 +7147,14 @@ async function pullFieldCaptures() {
       added++;
     }
 
-    // Save and re-render
-    if (activeBuildingId) saveEquipment(activeBuildingId, equipmentRegister);
-    renderEquipmentRegister();
+    if (added > 0) {
+      if (activeBuildingId) saveEquipment(activeBuildingId, equipmentRegister);
+      renderEquipmentRegister();
+    }
 
-    // Auto-generate deferred maintenance items from poor/fair/non-functional equipment
+    // Auto-generate deferred maintenance items from poor/fair/non-functional
     let dmAdded = 0;
+    const condMap2 = { fair: 'Fair', poor: 'Poor', non_functional: 'Critical' };
     for (const c of captures) {
       const cond = c.condition_rating || '';
       if (!['fair','poor','non_functional'].includes(cond)) continue;
@@ -7134,13 +7162,12 @@ async function pullFieldCaptures() {
       if (allDeferredItems.find(d => d._dmId === dmId)) continue;
       const typeName = c.equipment_type_name || 'Unknown';
       const dispName = [c.make, c.model_name].filter(Boolean).join(' ') || typeName;
-      const condMap2 = { fair: 'Fair', poor: 'Poor', non_functional: 'Critical' };
       const costEst = cond === 'non_functional' ? 8 : cond === 'poor' ? 5 : 2;
       allDeferredItems.push({
         _dmId: dmId,
         item: dispName + ' — ' + (cond === 'non_functional' ? 'Replacement needed' : 'Repair/service needed'),
-        system: systemMap[typeName] || 'Mechanical',
-        location: (c.building_name||'').split(' ').pop() + (c.unit_name ? ' / ' + c.unit_name : ''),
+        system: FC_SYSTEM_MAP[typeName] || 'Mechanical',
+        location: c.unit_name || '',
         condition: condMap2[cond] || 'Fair',
         priority: cond === 'non_functional' ? 1 : cond === 'poor' ? 2 : 3,
         cost_k: costEst,
@@ -7150,14 +7177,19 @@ async function pullFieldCaptures() {
       });
       dmAdded++;
     }
-    if (dmAdded > 0) {
-      localStorage.setItem('bos_dm_items', JSON.stringify(allDeferredItems));
+    if (dmAdded > 0) localStorage.setItem('bos_dm_items', JSON.stringify(allDeferredItems));
+
+    if (!silent && (added > 0 || dmAdded > 0)) {
+      showToast && showToast(`Synced ${captures.length} captures from field`, 'success');
     }
 
-    showToast && showToast(`Pulled ${added} equipment item${added !== 1 ? 's' : ''} from field · ${dmAdded} maintenance items created`, 'success');
+    // Re-render Building Profile if we're on that page
+    if (document.getElementById('page-building-profile')?.classList?.contains('active-page')) {
+      renderBuildingProfilePage();
+    }
   } catch (e) {
     console.error('Pull FC error:', e);
-    showToast && showToast('Error pulling field captures: ' + e.message, 'error');
+    if (!silent) showToast && showToast('Error pulling field captures: ' + e.message, 'error');
   }
   if (btn) { btn.disabled = false; btn.textContent = '📱 Pull from Field'; }
 }
