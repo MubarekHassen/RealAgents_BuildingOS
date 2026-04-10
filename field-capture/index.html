@@ -528,23 +528,39 @@
             </button>
         </div>
 
-        <!-- Step 1.5: Confirm Photo + Annotate -->
+        <!-- Step 1.5: Confirm Photo -->
         <div id="captureStepConfirm" style="display:none;">
             <div style="background:#f0f9ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
                 <span style="font-size:14px;font-weight:600;color:#1e40af;">Is the photo clear enough?</span>
-                <p style="font-size:12px;color:#64748b;margin:4px 0 0;">Circle or highlight areas of interest if needed</p>
             </div>
             <div class="annotation-wrap" id="annotationWrap">
                 <img id="photoPreview" style="max-width:100%;border-radius:10px;display:block;">
-                <canvas id="annotationCanvas"></canvas>
+                <canvas id="annotationCanvas" style="display:none;"></canvas>
             </div>
-            <div style="display:flex;gap:8px;margin-top:10px;">
-                <button onclick="undoAnnotation()" style="flex:1;background:#fff;color:#4f46e5;border:2px solid #4f46e5;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">&#8630; Undo</button>
-                <button onclick="clearAnnotation()" style="flex:1;background:#fff;color:#ef4444;border:2px solid #ef4444;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">&#10005; Clear All</button>
+
+            <!-- Drawing tools — hidden by default, shown when Draw mode is active -->
+            <div id="drawingTools" style="display:none;margin-top:10px;">
+                <div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:8px;text-align:center;font-size:12px;color:#92400e;font-weight:600;">
+                    &#9998; Drawing mode — draw on the photo to highlight areas
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="undoAnnotation()" style="flex:1;background:#fff;color:#4f46e5;border:2px solid #4f46e5;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">&#8630; Undo</button>
+                    <button onclick="clearAnnotation()" style="flex:1;background:#fff;color:#ef4444;border:2px solid #ef4444;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">&#10005; Clear All</button>
+                </div>
+                <button class="btn btn-primary" onclick="exitDrawMode()" style="margin-top:8px;">&#10003; Done Drawing</button>
             </div>
-            <div class="photo-confirm-bar">
-                <button class="btn btn-secondary" onclick="retakePhoto()">&#128247; Retake</button>
-                <button class="btn btn-success" onclick="confirmPhoto()">&#10003; Looks Good — Analyze</button>
+
+            <!-- Action buttons — shown when NOT drawing -->
+            <div id="confirmActions" style="margin-top:10px;">
+                <div class="input-group" style="margin-bottom:10px;">
+                    <label style="font-size:12px;">Quick note (optional)</label>
+                    <input type="text" id="captureQuickNote" placeholder="e.g. rust on bottom, hard to reach, etc." style="font-size:14px;">
+                </div>
+                <button class="btn btn-outline" onclick="enterDrawMode()" style="padding:10px;font-size:13px;margin-bottom:8px;">&#9998; Draw / Annotate on Photo</button>
+                <div class="photo-confirm-bar">
+                    <button class="btn btn-secondary" onclick="retakePhoto()">&#128247; Retake</button>
+                    <button class="btn btn-success" onclick="confirmPhoto()">&#10003; Looks Good — Analyze</button>
+                </div>
             </div>
         </div>
 
@@ -1175,7 +1191,12 @@
         document.getElementById('photoPreview').style.display = 'none';
         document.getElementById('cameraPlaceholder').style.display = 'block';
         document.getElementById('photoInput').value = '';
-        _annPaths = []; _annCurrent = [];
+        _annPaths = []; _annCurrent = []; _annModeActive = false;
+        document.getElementById('annotationCanvas').style.display = 'none';
+        document.getElementById('drawingTools').style.display = 'none';
+        document.getElementById('confirmActions').style.display = 'block';
+        const qn = document.getElementById('captureQuickNote');
+        if (qn) qn.value = '';
 
         showScreen('screenCapture', { title: 'Capture: ' + et.name });
     }
@@ -1204,16 +1225,23 @@
         reader.readAsDataURL(file);
     }
 
+    let _annModeActive = false;
+
     function setupAnnotation(img) {
         const canvas = document.getElementById('annotationCanvas');
-        const wrap = document.getElementById('annotationWrap');
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         canvas.style.width = img.clientWidth + 'px';
         canvas.style.height = img.clientHeight + 'px';
         _annPaths = [];
         _annCurrent = [];
+        _annModeActive = false;
+        // Canvas stays hidden until user taps "Draw / Annotate"
+        canvas.style.display = 'none';
+    }
 
+    function _attachDrawEvents() {
+        const canvas = document.getElementById('annotationCanvas');
         const getPos = (e) => {
             const rect = canvas.getBoundingClientRect();
             const touch = e.touches ? e.touches[0] : e;
@@ -1222,13 +1250,37 @@
                 y: (touch.clientY - rect.top) / rect.height * canvas.height
             };
         };
-
         const startDraw = (e) => { e.preventDefault(); _annDrawing = true; _annCurrent = [getPos(e)]; };
         const moveDraw = (e) => { if (!_annDrawing) return; e.preventDefault(); _annCurrent.push(getPos(e)); drawAnnotations(); };
-        const endDraw = (e) => { if (!_annDrawing) return; _annDrawing = false; if (_annCurrent.length > 1) _annPaths.push([..._annCurrent]); _annCurrent = []; drawAnnotations(); };
+        const endDraw = () => { if (!_annDrawing) return; _annDrawing = false; if (_annCurrent.length > 1) _annPaths.push([..._annCurrent]); _annCurrent = []; drawAnnotations(); };
 
         canvas.onmousedown = startDraw; canvas.onmousemove = moveDraw; canvas.onmouseup = endDraw;
         canvas.ontouchstart = startDraw; canvas.ontouchmove = moveDraw; canvas.ontouchend = endDraw;
+    }
+
+    function _detachDrawEvents() {
+        const canvas = document.getElementById('annotationCanvas');
+        canvas.onmousedown = null; canvas.onmousemove = null; canvas.onmouseup = null;
+        canvas.ontouchstart = null; canvas.ontouchmove = null; canvas.ontouchend = null;
+    }
+
+    function enterDrawMode() {
+        _annModeActive = true;
+        const canvas = document.getElementById('annotationCanvas');
+        canvas.style.display = 'block';
+        _attachDrawEvents();
+        document.getElementById('drawingTools').style.display = 'block';
+        document.getElementById('confirmActions').style.display = 'none';
+    }
+
+    function exitDrawMode() {
+        _annModeActive = false;
+        _detachDrawEvents();
+        document.getElementById('drawingTools').style.display = 'none';
+        document.getElementById('confirmActions').style.display = 'block';
+        // Keep canvas visible if there are drawings, hide if empty
+        const canvas = document.getElementById('annotationCanvas');
+        if (_annPaths.length === 0) canvas.style.display = 'none';
     }
 
     function drawAnnotations() {
@@ -1288,12 +1340,14 @@
         const dateW = ctx.measureText(dateStr).width;
         ctx.fillText(dateStr, canvas.width - dateW - pad, line1Y);
 
-        // Line 2: Equipment type + unit
+        // Line 2: Equipment type + unit + quick note
         const line2Y = line1Y + lineH;
         const equipLabel = state.currentEquipType?.name || '';
         const unitLabel = state.currentUnit?.unit_name || '';
+        const quickNote = (document.getElementById('captureQuickNote')?.value || '').trim();
         ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        ctx.fillText(equipLabel + '  ·  ' + unitLabel, pad, line2Y);
+        const line2Text = equipLabel + '  ·  ' + unitLabel + (quickNote ? '  ·  ' + quickNote : '');
+        ctx.fillText(line2Text, pad, line2Y);
 
         canvas.toBlob((blob) => {
             state.capturePhoto = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
@@ -1333,7 +1387,8 @@
             document.getElementById('fieldSerial').value = c.serial_number || '';
             document.getElementById('fieldYear').value = c.manufacture_year || '';
             document.getElementById('fieldCondition').value = c.condition_rating || '';
-            document.getElementById('fieldNotes').value = c.condition_notes || '';
+            const quickNoteVal = (document.getElementById('captureQuickNote')?.value || '').trim();
+            document.getElementById('fieldNotes').value = c.condition_notes || quickNoteVal || '';
 
             // Confidence badge
             const conf = c.ai_confidence || 'low';
@@ -1392,7 +1447,13 @@
         document.getElementById('photoPreview').style.display = 'none';
         document.getElementById('cameraPlaceholder').style.display = 'block';
         document.getElementById('photoInput').value = '';
-        _annPaths = []; _annCurrent = [];
+        _annPaths = []; _annCurrent = []; _annModeActive = false;
+        _detachDrawEvents();
+        document.getElementById('annotationCanvas').style.display = 'none';
+        document.getElementById('drawingTools').style.display = 'none';
+        document.getElementById('confirmActions').style.display = 'block';
+        const qn = document.getElementById('captureQuickNote');
+        if (qn) qn.value = '';
     }
 
     async function saveCapture() {
