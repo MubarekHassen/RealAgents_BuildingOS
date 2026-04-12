@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -374,6 +375,41 @@ def chunk_text(text: str, max_chars: int = 1800, overlap: int = 250) -> list[dic
     return chunks
 
 
+def _embedding_request_with_retry(
+    url: str, headers: dict, payload: dict, timeout: float, max_retries: int = 5
+) -> dict:
+    """Make an embedding API request with exponential backoff on 429 rate limits."""
+    for attempt in range(max_retries + 1):
+        try:
+            response = httpx.post(url, headers=headers, json=payload, timeout=timeout)
+            if response.status_code == 429:
+                if attempt == max_retries:
+                    response.raise_for_status()
+                # Exponential backoff: 2s, 4s, 8s, 16s, 32s
+                wait = min(2 ** (attempt + 1), 60)
+                retry_after = response.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        wait = max(wait, float(retry_after))
+                    except ValueError:
+                        pass
+                logger.warning(
+                    "Embedding API rate limited (429), attempt %d/%d — retrying in %.1fs",
+                    attempt + 1, max_retries, wait,
+                )
+                time.sleep(wait)
+                continue
+            response.raise_for_status()
+            return response.json()
+        except httpx.TimeoutException:
+            if attempt == max_retries:
+                raise
+            wait = 2 ** (attempt + 1)
+            logger.warning("Embedding API timeout, attempt %d/%d — retrying in %.1fs", attempt + 1, max_retries, wait)
+            time.sleep(wait)
+    raise ValueError("Embedding request failed after all retries")
+
+
 def generate_embedding(text: str, config: Optional[RAGConfig] = None) -> list[float]:
     config = config or load_rag_config()
     if not is_embeddings_configured(config):
@@ -383,17 +419,15 @@ def generate_embedding(text: str, config: Optional[RAGConfig] = None) -> list[fl
     if config.embedding_dimensions:
         payload["dimensions"] = config.embedding_dimensions
 
-    response = httpx.post(
+    body = _embedding_request_with_retry(
         config.embedding_api_url,
         headers={
             "Authorization": f"Bearer {config.embedding_api_key}",
             "Content-Type": "application/json",
         },
-        json=payload,
+        payload=payload,
         timeout=60.0,
     )
-    response.raise_for_status()
-    body = response.json()
     data = body.get("data") or []
     if not data or "embedding" not in data[0]:
         raise ValueError("Embedding API returned no embedding vector.")
@@ -401,31 +435,32 @@ def generate_embedding(text: str, config: Optional[RAGConfig] = None) -> list[fl
 
 
 def generate_embeddings_batch(texts: list[str], config: Optional[RAGConfig] = None) -> list[list[float]]:
-    """Generate embeddings for multiple texts in a single API call (much faster)."""
+    """Generate embeddings for multiple texts in a single API call (much faster).
+    Falls back to smaller batches if the full batch is rate-limited."""
     config = config or load_rag_config()
     if not is_embeddings_configured(config):
         raise ValueError("Embeddings are not configured.")
-    
+
     if not texts:
         return []
-    
+
+    headers = {
+        "Authorization": f"Bearer {config.embedding_api_key}",
+        "Content-Type": "application/json",
+    }
+
     payload: dict[str, Any] = {"model": config.embedding_model, "input": texts}
     if config.embedding_dimensions:
         payload["dimensions"] = config.embedding_dimensions
 
-    response = httpx.post(
+    body = _embedding_request_with_retry(
         config.embedding_api_url,
-        headers={
-            "Authorization": f"Bearer {config.embedding_api_key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=120.0,  # Longer timeout for batch
+        headers=headers,
+        payload=payload,
+        timeout=120.0,
     )
-    response.raise_for_status()
-    body = response.json()
     data = body.get("data") or []
-    
+
     # Sort by index to maintain order
     data.sort(key=lambda x: x.get("index", 0))
     return [item["embedding"] for item in data if "embedding" in item]

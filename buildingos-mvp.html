@@ -1276,6 +1276,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
         <div class="upload-left-header">
           <span class="ul-heading">Library</span>
           <span class="ul-count" id="docLibCount">0 docs</span>
+          <button id="retryErrorsBtn" style="display:none;margin-left:auto;font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid #dc2626;background:#fef2f2;color:#dc2626;cursor:pointer" onclick="retryErroredDocuments()">Retry Failed</button>
         </div>
         <div class="upload-left-body" id="docLibList">
           <div style="text-align:center;padding:28px 14px;color:#9ca3af">
@@ -2531,6 +2532,25 @@ function renderAssistantAnswer(text) {
 function renderSourceSnippet(text) {
   const safe = escapeHtml(text || '');
   return safe.length > 220 ? safe.slice(0, 220) + '…' : safe;
+}
+
+async function retryErroredDocuments() {
+  const btn = document.getElementById('retryErrorsBtn');
+  if (btn) { btn.textContent = 'Retrying…'; btn.disabled = true; }
+  try {
+    const res = await fetch(CONFIG.BACKEND_URL + '/documents/retry-errors', { method: 'POST' });
+    const data = await res.json();
+    showToast && showToast(data.message || 'Retrying…', 'info');
+    // Poll more frequently while retrying
+    setTimeout(syncIndexedDocuments, 3000);
+    setTimeout(syncIndexedDocuments, 8000);
+    setTimeout(syncIndexedDocuments, 15000);
+    setTimeout(syncIndexedDocuments, 25000);
+  } catch (e) {
+    showToast && showToast('Retry failed: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.textContent = 'Retry Failed'; btn.disabled = false; }
+  }
 }
 
 async function syncIndexedDocuments() {
@@ -4992,6 +5012,9 @@ function showDocSummaryPopup(doc) {
 function renderDocLibrary() {
   const list = document.getElementById('docLibList');
   document.getElementById('docLibCount').textContent = analyzedDocs.length + ' doc' + (analyzedDocs.length!==1?'s':'');
+  const retryBtn = document.getElementById('retryErrorsBtn');
+  const hasErrors = analyzedDocs.some(d => d.status === 'error');
+  if (retryBtn) retryBtn.style.display = hasErrors ? '' : 'none';
   renderUploadInsights();
   if (!analyzedDocs.length) { list.innerHTML = '<div style="text-align:center;padding:28px 14px;color:#9ca3af"><div style="font-size:28px;margin-bottom:7px">📁</div><div style="font-size:12px">No documents yet.</div></div>'; return; }
 

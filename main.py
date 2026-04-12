@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 
 import anthropic
 import httpx
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form, Depends, Request, Header
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form, Depends, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from dotenv import load_dotenv
@@ -1648,6 +1648,55 @@ def clear_errored_documents():
     return {"deleted": deleted, "total_errors_found": len(error_docs)}
 
 
+@app.post("/documents/retry-errors")
+async def retry_errored_documents(background_tasks: BackgroundTasks):
+    """Re-index all documents with status='error' — processes sequentially to avoid rate limits."""
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured.")
+
+    response = client.table("documents").select("*").eq("status", "error").execute()
+    error_docs = response.data or []
+    if not error_docs:
+        return {"message": "No errored documents to retry", "count": 0}
+
+    # Reset status to processing so frontend shows spinner
+    for doc in error_docs:
+        update_document_record(client, doc["id"], {"status": "processing", "error_message": None})
+
+    async def _retry_in_background():
+        for idx, doc in enumerate(error_docs):
+            if idx > 0:
+                await asyncio.sleep(3)  # Stagger to avoid rate limits
+            try:
+                storage_path = doc.get("storage_path", "")
+                if not storage_path:
+                    update_document_record(client, doc["id"], {"status": "error", "error_message": "No storage path — must re-upload"})
+                    continue
+                # Download file from Supabase storage
+                file_bytes = client.storage.from_(rag_config.supabase_storage_bucket).download(storage_path)
+                await asyncio.to_thread(
+                    _index_existing_document,
+                    client=client, rag_config=rag_config, api_key=api_key,
+                    document_id=doc["id"], file_bytes=file_bytes,
+                    filename=doc.get("filename", "document"),
+                    content_type=doc.get("mime_type", "application/pdf"),
+                )
+                logger.info("Retry indexing succeeded for %s (%s)", doc["id"], doc.get("filename"))
+            except Exception as exc:
+                logger.exception("Retry indexing failed for %s", doc["id"])
+                try:
+                    update_document_record(client, doc["id"], {"status": "error", "error_message": f"Retry failed: {str(exc)[:400]}"})
+                except Exception:
+                    pass
+
+    asyncio.create_task(_retry_in_background())
+    return {"message": f"Retrying {len(error_docs)} errored documents", "count": len(error_docs)}
+
+
 # ─────────────────────────────────────────────────────────────
 # INTEGRATIONS — Status & OAuth
 # ─────────────────────────────────────────────────────────────
@@ -2621,12 +2670,12 @@ async def import_shared_link(body: SharedLinkImportRequest):
                 logger.warning("Failed to pre-create doc record for %s: %s", fname, exc)
 
         async def _process_in_background():
-            """Download, analyze, and index all files from the shared folder."""
-            BATCH_SIZE = 5
-            for i in range(0, len(pending_docs), BATCH_SIZE):
-                batch = pending_docs[i:i + BATCH_SIZE]
-                tasks = [_process_single_bg_item(p, client, rag_config, api_key, body) for p in batch]
-                await asyncio.gather(*tasks)
+            """Download, analyze, and index all files from the shared folder sequentially
+            to avoid OpenAI embedding rate limits (429)."""
+            for idx, pending in enumerate(pending_docs):
+                if idx > 0:
+                    await asyncio.sleep(2)  # Small delay between docs to avoid rate limits
+                await _process_single_bg_item(pending, client, rag_config, api_key, body)
 
         async def _process_single_bg_item(pending, client, rag_config, api_key, body):
             doc_id = pending["document_id"]
