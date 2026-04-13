@@ -5743,8 +5743,8 @@ function renderBuildingProfilePage() {
 
           <!-- Unit table -->
           <div style="padding:0 18px 14px;">
-            <div style="display:grid;grid-template-columns:2.2fr 1fr 0.7fr 0.7fr 1.2fr auto;gap:0;font-size:10px;font-weight:700;color:#b0b5bf;text-transform:uppercase;letter-spacing:0.5px;padding:6px 4px;border-bottom:1px solid #f3f4f6;margin-bottom:4px;">
-              <div>Unit Name</div><div>Sq Ft</div><div>Beds</div><div>Baths</div><div>Status</div><div style="width:24px;"></div>
+            <div style="display:grid;grid-template-columns:2.2fr 1fr 0.7fr 0.7fr 1fr 0.6fr auto;gap:0;font-size:10px;font-weight:700;color:#b0b5bf;text-transform:uppercase;letter-spacing:0.5px;padding:6px 4px;border-bottom:1px solid #f3f4f6;margin-bottom:4px;">
+              <div>Unit Name</div><div>Sq Ft</div><div>Beds</div><div>Baths</div><div>Status</div><div style="text-align:center;">Captures</div><div style="width:20px;"></div>
             </div>
             <div id="bpBldgUnits-${prefix}">
               ${b.units.map(u => _bpUnitRow(u, prefix, isEdit)).join('')}`; })()}
@@ -5821,54 +5821,27 @@ function _bpUnitRow(u, prefix, editable) {
   const f = "this.style.borderColor='#4f46e5';this.style.boxShadow='0 0 0 2px rgba(79,70,229,0.06)';this.style.background='#fff'";
   const b = "this.style.borderColor='#f3f4f6';this.style.boxShadow='none';this.style.background='#fafafa';bpSaveInline()";
 
-  // Field captures for this unit
+  // Field captures for this unit — count only (details in side panel)
   const unitCaptures = _fcCapturesByUnit[u.name] || [];
-  const hasCaptures = unitCaptures.length > 0;
-  const condColors = {excellent:'#dcfce7',good:'#dcfce7',fair:'#fef3c7',poor:'#fee2e2',non_functional:'#fee2e2'};
-  const condLabels = {excellent:'Excellent',good:'Good',fair:'Fair',poor:'Poor',non_functional:'Non-functional'};
-
-  let captureHtml = '';
-  if (hasCaptures) {
-    captureHtml = `<div style="grid-column:1/-1;padding:6px 0 8px;display:flex;gap:8px;overflow-x:auto;">
-      ${unitCaptures.map(c => {
-        const condBg = condColors[c.condition_rating] || '#f3f4f6';
-        const condLbl = condLabels[c.condition_rating] || '—';
-        const eqName = [c.make, c.model_name].filter(Boolean).join(' ') || c.equipment_type_name || 'Equipment';
-        const capDate = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
-        return `<div style="min-width:110px;max-width:140px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;flex-shrink:0;overflow:hidden;position:relative;">
-          ${c.photo_url ? `<img src="${c.photo_url}" style="width:100%;height:64px;object-fit:cover;cursor:pointer;display:block;" onclick="window.open('${c.photo_url}','_blank')">` : `<div style="width:100%;height:64px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:20px;">📷</div>`}
-          ${editable ? `<button onclick="bpDeleteFieldCapture('${c.id}','${u.name}')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;" title="Delete">✕</button>` : ''}
-          <div style="padding:4px 6px;">
-            <div style="font-size:10px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.equipment_type_name||'Equipment'}</div>
-            <div style="font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${eqName}</div>
-            ${c.serial_number ? `<div style="font-size:8px;color:#9ca3af;">S/N ${c.serial_number}</div>` : ''}
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-              <span style="font-size:8px;padding:1px 4px;border-radius:3px;background:${condBg};color:#374151;">${condLbl}</span>
-              ${capDate ? `<span style="font-size:8px;color:#9ca3af;">${capDate}</span>` : ''}
-            </div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
-  }
+  const captureCount = unitCaptures.length;
 
   if (!editable) {
     // Read-only mode — clickable to open detail panel
     const statusColor = u.status === 'Occupied' ? '#059669' : u.status === 'Vacant' ? '#d97706' : '#6b7280';
     const isSelected = typeof _bpSelectedUnit !== 'undefined' && _bpSelectedUnit === u.name;
-    return `<div class="bp-page-unit" data-idx="${idx}" data-unit="${u.name}" onclick="openUnitDetail('${u.name}')" style="display:grid;grid-template-columns:2.2fr 1fr 0.7fr 0.7fr 1.2fr auto;gap:4px;margin-bottom:${hasCaptures?'0':'3'}px;align-items:center;cursor:pointer;border-radius:8px;padding:2px 4px;transition:background 0.15s;${isSelected?'background:#eef2ff;box-shadow:inset 3px 0 0 #4f46e5;':''}" onmouseover="if(!this.dataset.unit||this.dataset.unit!==_bpSelectedUnit)this.style.background='#f9fafb'" onmouseout="if(!this.dataset.unit||this.dataset.unit!==_bpSelectedUnit)this.style.background=''">
+    return `<div class="bp-page-unit" data-idx="${idx}" data-unit="${u.name}" onclick="openUnitDetail('${u.name}')" style="display:grid;grid-template-columns:2.2fr 1fr 0.7fr 0.7fr 1fr 0.6fr auto;gap:4px;margin-bottom:3px;align-items:center;cursor:pointer;border-radius:8px;padding:2px 4px;transition:background 0.15s;${isSelected?'background:#eef2ff;box-shadow:inset 3px 0 0 #4f46e5;':''}" onmouseover="if(!this.dataset.unit||this.dataset.unit!==_bpSelectedUnit)this.style.background='#f9fafb'" onmouseout="if(!this.dataset.unit||this.dataset.unit!==_bpSelectedUnit)this.style.background=''">
       <div style="${readS}font-weight:500;color:#111827;">${u.name||'—'}</div>
       <div style="${readS}">${u.sqft ? Number(u.sqft).toLocaleString() : '—'}</div>
       <div style="${readS}">${u.beds!=null ? u.beds : '—'}</div>
       <div style="${readS}">${u.baths!=null ? u.baths : '—'}</div>
       <div style="${readS}"><span style="color:${statusColor};font-weight:500;">${u.status||'—'}</span></div>
-      <div style="width:24px;display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c7d2fe" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>
-      ${captureHtml}
+      <div style="${readS}text-align:center;">${captureCount > 0 ? `<span style="background:#eef2ff;color:#4f46e5;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;">📷 ${captureCount}</span>` : `<span style="color:#d1d5db;font-size:10px;">—</span>`}</div>
+      <div style="width:20px;display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${isSelected?'#4f46e5':'#c7d2fe'}" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></div>
     </div>`;
   }
 
   // Edit mode
-  return `<div class="bp-page-unit" data-idx="${idx}" style="display:grid;grid-template-columns:2.2fr 1fr 0.7fr 0.7fr 1.2fr auto;gap:4px;margin-bottom:${hasCaptures?'0':'3'}px;align-items:center;">
+  return `<div class="bp-page-unit" data-idx="${idx}" style="display:grid;grid-template-columns:2.2fr 1fr 0.7fr 0.7fr 1fr 0.6fr auto;gap:4px;margin-bottom:3px;align-items:center;">
     <input value="${u.name||''}" data-field="name" placeholder="Unit name" style="${inputS}font-weight:500;" onfocus="${f}" onblur="${b}">
     <input value="${u.sqft||''}" data-field="sqft" type="number" placeholder="—" style="${inputS}" onfocus="${f}" onblur="${b}">
     <input value="${u.beds!=null?u.beds:''}" data-field="beds" type="number" min="0" placeholder="—" style="${inputS}" onfocus="${f}" onblur="${b}">
@@ -5877,10 +5850,10 @@ function _bpUnitRow(u, prefix, editable) {
       <option value="">—</option>
       ${STATUSES.map(s => `<option value="${s}" ${u.status===s?'selected':''}>${s}</option>`).join('')}
     </select>
+    <div style="${readS}text-align:center;">${captureCount > 0 ? `<span style="background:#eef2ff;color:#4f46e5;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;">📷 ${captureCount}</span>` : ''}</div>
     <button onclick="bpPageRemoveUnit(${idx},'${prefix}')" style="background:none;border:none;cursor:pointer;color:#d1d5db;padding:2px;transition:color 0.15s;width:24px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#d1d5db'" title="Remove">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
-    ${captureHtml}
   </div>`;
 }
 
@@ -5904,6 +5877,7 @@ async function bpDeleteFieldCapture(captureId, unitName) {
 
 // ─── UNIT DETAIL PANEL ──────────────────────────────────
 let _bpSelectedUnit = null;
+let _udEditMode = false;
 
 function openUnitDetail(unitName) {
   const bp = fullBuildingProfile || {};
@@ -5912,93 +5886,275 @@ function openUnitDetail(unitName) {
   if (!unit) return;
 
   _bpSelectedUnit = unitName;
-
-  // Get field captures for this unit
-  const captures = _fcCapturesByUnit[unitName] || [];
-  const condColors = {excellent:'#dcfce7',good:'#dcfce7',fair:'#fef3c7',poor:'#fee2e2',non_functional:'#fee2e2'};
-  const condLabels = {excellent:'Excellent',good:'Good',fair:'Fair',poor:'Poor',non_functional:'Non-functional'};
-
-  // Build panel HTML
-  let html = `
-    <div style="padding:20px 24px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:2;">
-      <div>
-        <div style="font-size:18px;font-weight:800;color:#111827;">${unitName}</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:2px;">${unit.building_address || bp.address || ''}</div>
-      </div>
-      <button onclick="closeUnitDetail()" style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;font-size:16px;transition:all 0.15s;" onmouseover="this.style.background='#fee2e2';this.style.borderColor='#fecaca';this.style.color='#ef4444'" onmouseout="this.style.background='#f9fafb';this.style.borderColor='#e5e7eb';this.style.color='#6b7280'">✕</button>
-    </div>
-
-    <!-- Unit Details Card -->
-    <div style="padding:16px 24px;">
-      <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Unit Details</div>
-      <div style="background:#f9fafb;border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div><div style="font-size:10px;color:#9ca3af;font-weight:600;">Sq Ft</div><div style="font-size:15px;font-weight:700;color:#111827;">${unit.sqft ? Number(unit.sqft).toLocaleString() : '—'}</div></div>
-        <div><div style="font-size:10px;color:#9ca3af;font-weight:600;">Beds / Baths</div><div style="font-size:15px;font-weight:700;color:#111827;">${unit.beds || '—'} / ${unit.baths || '—'}</div></div>
-        <div><div style="font-size:10px;color:#9ca3af;font-weight:600;">Status</div><div style="font-size:13px;font-weight:600;color:${unit.status==='Occupied'?'#059669':unit.status==='Vacant'?'#d97706':'#6b7280'};">${unit.status || '—'}</div></div>
-        <div><div style="font-size:10px;color:#9ca3af;font-weight:600;">Property ID / Unit ID</div><div style="font-size:13px;font-weight:600;color:#374151;">${unit.property_id || '791'} / ${unit.unit_id || '—'}</div></div>
-      </div>
-    </div>`;
-
-  // Equipment / Captures section
-  if (captures.length > 0) {
-    html += `<div style="padding:0 24px 16px;">
-      <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Equipment & Captures <span style="color:#4f46e5;">(${captures.length})</span></div>`;
-
-    captures.forEach(c => {
-      const condBg = condColors[c.condition_rating] || '#f3f4f6';
-      const condLbl = condLabels[c.condition_rating] || '—';
-      const eqName = [c.make, c.model_name].filter(Boolean).join(' ') || c.equipment_type_name || 'Equipment';
-      const capDate = c.created_at ? new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
-
-      html += `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:10px;overflow:hidden;">
-        ${c.photo_url ? `<div style="position:relative;">
-          <img src="${c.photo_url}" style="width:100%;height:200px;object-fit:cover;display:block;cursor:pointer;border-radius:12px 12px 0 0;" onclick="window.open('${c.photo_url}','_blank')">
-          <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.6);color:#fff;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:600;backdrop-filter:blur(4px);">Click to enlarge</div>
-        </div>` : `<div style="height:80px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:28px;border-radius:12px 12px 0 0;">📷</div>`}
-        <div style="padding:12px 14px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <div style="font-size:14px;font-weight:700;color:#111827;">${c.equipment_type_name || 'Equipment'}</div>
-            <span style="font-size:11px;padding:3px 8px;border-radius:6px;background:${condBg};color:#374151;font-weight:600;">${condLbl}</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;">
-            ${c.make ? `<div><span style="color:#9ca3af;">Make:</span> <strong>${c.make}</strong></div>` : ''}
-            ${c.model_name ? `<div><span style="color:#9ca3af;">Model:</span> <strong>${c.model_name}</strong></div>` : ''}
-            ${c.model_number ? `<div><span style="color:#9ca3af;">Model #:</span> <strong>${c.model_number}</strong></div>` : ''}
-            ${c.serial_number ? `<div><span style="color:#9ca3af;">S/N:</span> <strong>${c.serial_number}</strong></div>` : ''}
-            ${c.model_year ? `<div><span style="color:#9ca3af;">Year:</span> <strong>${c.model_year}</strong></div>` : ''}
-          </div>
-          ${c.description ? `<div style="margin-top:8px;font-size:12px;color:#6b7280;line-height:1.4;"><span style="color:#9ca3af;">Notes:</span> ${c.description}</div>` : ''}
-          ${c.quick_note ? `<div style="margin-top:6px;font-size:12px;color:#6b7280;line-height:1.4;background:#fffbeb;padding:6px 10px;border-radius:6px;border:1px solid #fde68a;"><span style="font-weight:600;color:#d97706;">Note:</span> ${c.quick_note}</div>` : ''}
-          ${capDate ? `<div style="margin-top:8px;font-size:10px;color:#9ca3af;">Captured: ${capDate}${c.captured_by_name ? ' by ' + c.captured_by_name : ''}</div>` : ''}
-        </div>
-      </div>`;
-    });
-
-    html += '</div>';
-  } else {
-    html += `<div style="padding:16px 24px;">
-      <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Equipment & Captures</div>
-      <div style="background:#f9fafb;border-radius:12px;padding:32px;text-align:center;">
-        <div style="font-size:32px;margin-bottom:8px;">📷</div>
-        <div style="font-size:13px;font-weight:600;color:#6b7280;">No captures yet</div>
-        <div style="font-size:11px;color:#9ca3af;margin-top:4px;">Use Field Capture on mobile to photograph equipment in this unit</div>
-      </div>
-    </div>`;
-  }
+  _renderUnitPanel(unit, bp);
 
   // Show panel
   const panel = document.getElementById('unitDetailPanel');
-  const content = document.getElementById('unitDetailContent');
-  content.innerHTML = html;
-  panel.style.width = '420px';
-  panel.style.minWidth = '420px';
+  panel.style.width = '440px';
+  panel.style.minWidth = '440px';
 
-  // Re-render to highlight selected row (without closing panel)
+  // Re-render table to highlight selected row
   renderBuildingProfilePage();
+}
+
+function _renderUnitPanel(unit, bp) {
+  const unitName = unit.name;
+  const captures = _fcCapturesByUnit[unitName] || [];
+  const condColors = {excellent:'#dcfce7',good:'#dcfce7',fair:'#fef3c7',poor:'#fee2e2',non_functional:'#fee2e2'};
+  const condLabels = {excellent:'Excellent',good:'Good',fair:'Fair',poor:'Poor',non_functional:'Non-functional'};
+  const STATUSES = ['Active','Occupied','Vacant','Renovation','Model','Down'];
+  const isEdit = _udEditMode;
+  const iS = 'border:1.5px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;width:100%;background:#fff;transition:border-color 0.15s,box-shadow 0.15s;';
+  const iF = "this.style.borderColor='#4f46e5';this.style.boxShadow='0 0 0 3px rgba(79,70,229,0.08)'";
+  const iB = "this.style.borderColor='#e5e7eb';this.style.boxShadow='none'";
+
+  // Timestamps
+  const now = new Date();
+  const addedDate = unit._addedAt ? new Date(unit._addedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : null;
+  const editedDate = unit._editedAt ? new Date(unit._editedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : null;
+  const addedBy = unit._addedBy || null;
+  const editedBy = unit._editedBy || null;
+
+  let html = `
+    <!-- Sticky Header -->
+    <div style="padding:16px 20px;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:2;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:18px;font-weight:800;color:#111827;">${unitName}</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px;">${unit.building_address || bp.address || ''} · Property ID ${unit.property_id||'791'} · Unit ID ${unit.unit_id||'—'}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button onclick="_udEditMode=!_udEditMode;_renderUnitPanel(fullBuildingProfile.units_list.find(u=>u.name==='${unitName}'),fullBuildingProfile)" style="background:${isEdit?'#4f46e5':'#f9fafb'};color:${isEdit?'#fff':'#374151'};border:1.5px solid ${isEdit?'#4f46e5':'#e5e7eb'};border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
+          ${isEdit ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Done' : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit'}
+        </button>
+        <button onclick="closeUnitDetail()" style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;font-size:14px;transition:all 0.15s;" onmouseover="this.style.background='#fee2e2';this.style.borderColor='#fecaca';this.style.color='#ef4444'" onmouseout="this.style.background='#f9fafb';this.style.borderColor='#e5e7eb';this.style.color='#6b7280'">✕</button>
+      </div>
+    </div>
+
+    <!-- Unit Info -->
+    <div style="padding:16px 20px;">
+      <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Unit Details</div>
+      ${isEdit ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:3px;">Sq Ft</div>
+          <input id="udSqft" type="number" value="${unit.sqft||''}" placeholder="—" style="${iS}" onfocus="${iF}" onblur="${iB}">
+        </div>
+        <div>
+          <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:3px;">Bedrooms</div>
+          <input id="udBeds" type="number" min="0" value="${unit.beds!=null?unit.beds:''}" placeholder="—" style="${iS}" onfocus="${iF}" onblur="${iB}">
+        </div>
+        <div>
+          <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:3px;">Bathrooms</div>
+          <input id="udBaths" type="number" min="0" step="0.5" value="${unit.baths!=null?unit.baths:''}" placeholder="—" style="${iS}" onfocus="${iF}" onblur="${iB}">
+        </div>
+        <div>
+          <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:3px;">Status</div>
+          <select id="udStatus" style="${iS}cursor:pointer;" onfocus="${iF}" onblur="${iB}">
+            <option value="">—</option>
+            ${STATUSES.map(s => `<option value="${s}" ${unit.status===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <button onclick="udSaveUnit('${unitName}')" style="margin-top:12px;width:100%;background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='#4338ca'" onmouseout="this.style.background='#4f46e5'">Save Changes</button>
+      ` : `
+      <div style="background:#f9fafb;border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><div style="font-size:10px;color:#9ca3af;font-weight:600;">Sq Ft</div><div style="font-size:16px;font-weight:700;color:#111827;margin-top:2px;">${unit.sqft ? Number(unit.sqft).toLocaleString() : '—'}</div></div>
+        <div><div style="font-size:10px;color:#9ca3af;font-weight:600;">Beds / Baths</div><div style="font-size:16px;font-weight:700;color:#111827;margin-top:2px;">${unit.beds||'—'} / ${unit.baths||'—'}</div></div>
+        <div><div style="font-size:10px;color:#9ca3af;font-weight:600;">Status</div><div style="font-size:13px;font-weight:600;margin-top:2px;color:${unit.status==='Active'||unit.status==='Occupied'?'#059669':unit.status==='Vacant'?'#d97706':'#6b7280'};">${unit.status||'—'}</div></div>
+        <div><div style="font-size:10px;color:#9ca3af;font-weight:600;">Unit ID</div><div style="font-size:13px;font-weight:600;margin-top:2px;color:#374151;">${unit.unit_id||'—'}</div></div>
+      </div>`}
+    </div>`;
+
+  // ─── Equipment & Captures ───
+  html += `<div style="padding:0 20px 16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Equipment & Captures</div>
+      ${captures.length > 0 ? `<span style="background:#eef2ff;color:#4f46e5;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;">${captures.length}</span>` : ''}
+    </div>`;
+
+  if (captures.length > 0) {
+    captures.forEach((c, ci) => {
+      const condBg = condColors[c.condition_rating] || '#f3f4f6';
+      const condLbl = condLabels[c.condition_rating] || '—';
+      const capDate = c.created_at ? new Date(c.created_at).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+      const updDate = c.updated_at ? new Date(c.updated_at).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+
+      html += `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:12px;overflow:hidden;">`;
+
+      // Photo
+      if (c.photo_url) {
+        html += `<div style="position:relative;">
+          <img src="${c.photo_url}" style="width:100%;max-height:220px;object-fit:cover;display:block;cursor:pointer;" onclick="window.open('${c.photo_url}','_blank')">
+          <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.65);color:#fff;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;backdrop-filter:blur(4px);">${c.equipment_type_name||'Equipment'}</div>
+        </div>`;
+      } else {
+        html += `<div style="height:56px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;padding:0 14px;gap:8px;">
+          <span style="font-size:20px;">📷</span>
+          <span style="font-size:13px;font-weight:600;color:#475569;">${c.equipment_type_name||'Equipment'}</span>
+        </div>`;
+      }
+
+      html += `<div style="padding:14px 16px;">`;
+
+      // Equipment header + condition badge
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:15px;font-weight:700;color:#111827;">${c.equipment_type_name||'Equipment'}</div>
+        <span style="font-size:11px;padding:3px 10px;border-radius:6px;background:${condBg};color:#374151;font-weight:600;">${condLbl}</span>
+      </div>`;
+
+      if (isEdit) {
+        // Editable fields
+        html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+          <div>
+            <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:2px;">Make</div>
+            <input data-cap="${ci}" data-cfield="make" value="${c.make||''}" placeholder="—" style="${iS}font-size:12px;padding:6px 8px;" onfocus="${iF}" onblur="${iB}">
+          </div>
+          <div>
+            <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:2px;">Model Name</div>
+            <input data-cap="${ci}" data-cfield="model_name" value="${c.model_name||''}" placeholder="—" style="${iS}font-size:12px;padding:6px 8px;" onfocus="${iF}" onblur="${iB}">
+          </div>
+          <div>
+            <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:2px;">Model #</div>
+            <input data-cap="${ci}" data-cfield="model_number" value="${c.model_number||''}" placeholder="—" style="${iS}font-size:12px;padding:6px 8px;" onfocus="${iF}" onblur="${iB}">
+          </div>
+          <div>
+            <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:2px;">Serial #</div>
+            <input data-cap="${ci}" data-cfield="serial_number" value="${c.serial_number||''}" placeholder="—" style="${iS}font-size:12px;padding:6px 8px;" onfocus="${iF}" onblur="${iB}">
+          </div>
+          <div>
+            <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:2px;">Year</div>
+            <input data-cap="${ci}" data-cfield="model_year" value="${c.model_year||''}" placeholder="—" type="number" style="${iS}font-size:12px;padding:6px 8px;" onfocus="${iF}" onblur="${iB}">
+          </div>
+          <div>
+            <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:2px;">Condition</div>
+            <select data-cap="${ci}" data-cfield="condition_rating" style="${iS}font-size:12px;padding:6px 8px;cursor:pointer;" onfocus="${iF}" onblur="${iB}">
+              <option value="">—</option>
+              ${['excellent','good','fair','poor','non_functional'].map(v => `<option value="${v}" ${c.condition_rating===v?'selected':''}>${condLabels[v]}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div style="font-size:10px;color:#9ca3af;font-weight:600;margin-bottom:2px;">Description / Notes</div>
+          <textarea data-cap="${ci}" data-cfield="description" rows="2" placeholder="Add notes…" style="${iS}font-size:12px;padding:6px 8px;resize:vertical;" onfocus="${iF}" onblur="${iB}">${c.description||''}</textarea>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button onclick="udSaveCapture('${unitName}',${ci})" style="flex:1;background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;">Save</button>
+          <button onclick="bpDeleteFieldCapture('${c.id}','${unitName}');_renderUnitPanel(fullBuildingProfile.units_list.find(u=>u.name==='${unitName}'),fullBuildingProfile)" style="background:#fff;color:#ef4444;border:1.5px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;">Delete</button>
+        </div>`;
+      } else {
+        // Read-only fields
+        const fields = [
+          c.make ? ['Make', c.make] : null,
+          c.model_name ? ['Model', c.model_name] : null,
+          c.model_number ? ['Model #', c.model_number] : null,
+          c.serial_number ? ['Serial #', c.serial_number] : null,
+          c.model_year ? ['Year', c.model_year] : null,
+        ].filter(Boolean);
+
+        if (fields.length > 0) {
+          html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-bottom:8px;">
+            ${fields.map(([lbl, val]) => `<div style="font-size:12px;"><span style="color:#9ca3af;">${lbl}:</span> <strong style="color:#374151;">${val}</strong></div>`).join('')}
+          </div>`;
+        }
+        if (c.description) {
+          html += `<div style="font-size:12px;color:#6b7280;line-height:1.5;margin-bottom:6px;"><span style="color:#9ca3af;">Notes:</span> ${c.description}</div>`;
+        }
+        if (c.quick_note) {
+          html += `<div style="font-size:12px;color:#6b7280;background:#fffbeb;padding:6px 10px;border-radius:6px;border:1px solid #fde68a;margin-bottom:6px;"><span style="font-weight:600;color:#d97706;">Note:</span> ${c.quick_note}</div>`;
+        }
+      }
+
+      // ─── Date / Attribution footer ───
+      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid #f3f4f6;display:flex;flex-direction:column;gap:3px;">`;
+      if (capDate) {
+        html += `<div style="font-size:10px;color:#9ca3af;display:flex;align-items:center;gap:4px;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Added ${capDate}${c.captured_by_name ? ` <span style="color:#6b7280;font-weight:600;">by ${c.captured_by_name}</span>` : ''}
+        </div>`;
+      }
+      if (updDate && updDate !== capDate) {
+        html += `<div style="font-size:10px;color:#9ca3af;display:flex;align-items:center;gap:4px;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edited ${updDate}${c.updated_by_name ? ` <span style="color:#6b7280;font-weight:600;">by ${c.updated_by_name}</span>` : ''}
+        </div>`;
+      }
+      html += `</div>`;
+
+      html += `</div></div>`; // close padding + card
+    });
+  } else {
+    html += `<div style="background:#f9fafb;border-radius:12px;padding:36px 20px;text-align:center;">
+      <div style="font-size:32px;margin-bottom:8px;">📷</div>
+      <div style="font-size:13px;font-weight:600;color:#6b7280;">No captures yet</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:4px;max-width:240px;margin-left:auto;margin-right:auto;">Use Field Capture on mobile to photograph equipment in this unit</div>
+    </div>`;
+  }
+
+  html += `</div>`; // close captures section
+
+  // ─── Unit metadata footer ───
+  html += `<div style="padding:0 20px 24px;">
+    <div style="border-top:1px solid #f3f4f6;padding-top:12px;display:flex;flex-direction:column;gap:3px;">`;
+  if (addedDate) {
+    html += `<div style="font-size:10px;color:#b0b5bf;">Unit added ${addedDate}${addedBy ? ' by <span style="color:#6b7280;font-weight:600;">'+addedBy+'</span>' : ''}</div>`;
+  }
+  if (editedDate) {
+    html += `<div style="font-size:10px;color:#b0b5bf;">Last edited ${editedDate}${editedBy ? ' by <span style="color:#6b7280;font-weight:600;">'+editedBy+'</span>' : ''}</div>`;
+  }
+  if (!addedDate && !editedDate) {
+    html += `<div style="font-size:10px;color:#d1d5db;">No edit history</div>`;
+  }
+  html += `</div></div>`;
+
+  document.getElementById('unitDetailContent').innerHTML = html;
+}
+
+function udSaveUnit(unitName) {
+  const bp = fullBuildingProfile || {};
+  const unit = (bp.units_list || []).find(u => u.name === unitName);
+  if (!unit) return;
+  unit.sqft = document.getElementById('udSqft')?.value || '';
+  unit.beds = document.getElementById('udBeds')?.value || '';
+  unit.baths = document.getElementById('udBaths')?.value || '';
+  unit.status = document.getElementById('udStatus')?.value || '';
+  unit._editedAt = new Date().toISOString();
+  unit._editedBy = currentUser?.name || 'Unknown';
+  if (!unit._addedAt) { unit._addedAt = unit._editedAt; unit._addedBy = unit._editedBy; }
+  saveBuildingProfile(activeBuildingId, bp);
+  _udEditMode = false;
+  _renderUnitPanel(unit, bp);
+  renderBuildingProfilePage();
+  showToast && showToast('Unit updated', 'success');
+}
+
+function udSaveCapture(unitName, capIdx) {
+  const captures = _fcCapturesByUnit[unitName] || [];
+  const c = captures[capIdx];
+  if (!c) return;
+  const panel = document.getElementById('unitDetailContent');
+  const fields = panel.querySelectorAll(`[data-cap="${capIdx}"]`);
+  fields.forEach(el => {
+    const field = el.dataset.cfield;
+    if (field) c[field] = el.value;
+  });
+  c.updated_at = new Date().toISOString();
+  c.updated_by_name = currentUser?.name || 'Unknown';
+  // Persist capture edits via the field capture API
+  if (FIELD_CAPTURE_API && c.id) {
+    fetch(`${FIELD_CAPTURE_API}/api/captures/${c.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ make: c.make, model_name: c.model_name, model_number: c.model_number, serial_number: c.serial_number, model_year: c.model_year, condition_rating: c.condition_rating, description: c.description })
+    }).catch(() => {});
+  }
+  const bp = fullBuildingProfile || {};
+  _renderUnitPanel((bp.units_list||[]).find(u => u.name === unitName), bp);
+  showToast && showToast('Capture updated', 'success');
 }
 
 function closeUnitDetail() {
   _bpSelectedUnit = null;
+  _udEditMode = false;
   const panel = document.getElementById('unitDetailPanel');
   if (panel) {
     panel.style.width = '0';
