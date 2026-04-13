@@ -5876,8 +5876,8 @@ async function bpDeleteFieldCapture(captureId, unitName) {
 }
 
 // ─── UNIT DETAIL PANEL ──────────────────────────────────
-let _bpSelectedUnit = null;
-let _udEditMode = false;
+var _bpSelectedUnit = null;
+var _udEditMode = false;
 
 function openUnitDetail(unitName) {
   const bp = fullBuildingProfile || {};
