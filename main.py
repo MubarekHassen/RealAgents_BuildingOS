@@ -1650,7 +1650,8 @@ def clear_errored_documents():
 
 @app.post("/documents/retry-errors")
 async def retry_errored_documents(background_tasks: BackgroundTasks):
-    """Re-index all documents with status='error' — processes sequentially to avoid rate limits."""
+    """Re-index all documents with status='error' or stuck 'processing' — processes sequentially to avoid rate limits.
+    Documents with no storage file (size_bytes=0, no storage_path) are deleted as orphans."""
     require_rag_configuration()
     rag_config = load_rag_config()
     client = get_supabase_client(rag_config)
@@ -1658,24 +1659,41 @@ async def retry_errored_documents(background_tasks: BackgroundTasks):
     if not api_key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured.")
 
-    response = client.table("documents").select("*").eq("status", "error").execute()
-    error_docs = response.data or []
-    if not error_docs:
-        return {"message": "No errored documents to retry", "count": 0}
+    # Find both errored and stuck-processing docs
+    error_resp = client.table("documents").select("*").eq("status", "error").execute()
+    stuck_resp = client.table("documents").select("*").eq("status", "processing").execute()
+    all_broken = (error_resp.data or []) + (stuck_resp.data or [])
+    if not all_broken:
+        return {"message": "No errored or stuck documents to retry", "count": 0}
+
+    # Separate orphans (no file stored) from retryable docs
+    retryable = []
+    deleted_orphans = 0
+    for doc in all_broken:
+        has_file = doc.get("storage_path") and doc.get("size_bytes", 0) > 0
+        if not has_file:
+            try:
+                delete_rag_document(client, rag_config, doc["id"])
+                deleted_orphans += 1
+                logger.info("Deleted orphan document %s (%s) — no stored file", doc["id"], doc.get("filename"))
+            except Exception as e:
+                logger.warning("Failed to delete orphan %s: %s", doc["id"], e)
+        else:
+            retryable.append(doc)
+
+    if not retryable:
+        return {"message": f"Cleaned up {deleted_orphans} orphan documents. Nothing left to retry.", "deleted_orphans": deleted_orphans, "count": 0}
 
     # Reset status to processing so frontend shows spinner
-    for doc in error_docs:
+    for doc in retryable:
         update_document_record(client, doc["id"], {"status": "processing", "error_message": None})
 
     async def _retry_in_background():
-        for idx, doc in enumerate(error_docs):
+        for idx, doc in enumerate(retryable):
             if idx > 0:
                 await asyncio.sleep(3)  # Stagger to avoid rate limits
             try:
                 storage_path = doc.get("storage_path", "")
-                if not storage_path:
-                    update_document_record(client, doc["id"], {"status": "error", "error_message": "No storage path — must re-upload"})
-                    continue
                 # Download file from Supabase storage
                 file_bytes = client.storage.from_(rag_config.supabase_storage_bucket).download(storage_path)
                 await asyncio.to_thread(
@@ -1694,7 +1712,7 @@ async def retry_errored_documents(background_tasks: BackgroundTasks):
                     pass
 
     asyncio.create_task(_retry_in_background())
-    return {"message": f"Retrying {len(error_docs)} errored documents", "count": len(error_docs)}
+    return {"message": f"Cleaned up {deleted_orphans} orphans. Retrying {len(retryable)} documents.", "deleted_orphans": deleted_orphans, "count": len(retryable)}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -2675,7 +2693,14 @@ async def import_shared_link(body: SharedLinkImportRequest):
             for idx, pending in enumerate(pending_docs):
                 if idx > 0:
                     await asyncio.sleep(2)  # Small delay between docs to avoid rate limits
-                await _process_single_bg_item(pending, client, rag_config, api_key, body)
+                try:
+                    await _process_single_bg_item(pending, client, rag_config, api_key, body)
+                except Exception as exc:
+                    logger.exception("Background item %d/%d failed: %s", idx + 1, len(pending_docs), exc)
+                    try:
+                        update_document_record(client, pending["document_id"], {"status": "error", "error_message": f"Import failed: {str(exc)[:400]}"})
+                    except Exception:
+                        pass
 
         async def _process_single_bg_item(pending, client, rag_config, api_key, body):
             doc_id = pending["document_id"]

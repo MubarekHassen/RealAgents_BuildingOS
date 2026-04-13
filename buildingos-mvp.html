@@ -5013,8 +5013,8 @@ function renderDocLibrary() {
   const list = document.getElementById('docLibList');
   document.getElementById('docLibCount').textContent = analyzedDocs.length + ' doc' + (analyzedDocs.length!==1?'s':'');
   const retryBtn = document.getElementById('retryErrorsBtn');
-  const hasErrors = analyzedDocs.some(d => d.status === 'error');
-  if (retryBtn) retryBtn.style.display = hasErrors ? '' : 'none';
+  const hasProblems = analyzedDocs.some(d => d.status === 'error' || (d.status === 'analyzing' && d.qaStatus !== 'ready'));
+  if (retryBtn) retryBtn.style.display = hasProblems ? '' : 'none';
   renderUploadInsights();
   if (!analyzedDocs.length) { list.innerHTML = '<div style="text-align:center;padding:28px 14px;color:#9ca3af"><div style="font-size:28px;margin-bottom:7px">📁</div><div style="font-size:12px">No documents yet.</div></div>'; return; }
 
