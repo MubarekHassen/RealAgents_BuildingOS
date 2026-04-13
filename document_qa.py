@@ -223,6 +223,72 @@ def match_document_chunks(
     return response.data or []
 
 
+def text_search_chunks(
+    client: Client,
+    *,
+    document_id: str,
+    query: str,
+    match_count: int = 12,
+) -> list[dict[str, Any]]:
+    """Keyword-based chunk search — no embeddings needed.
+    Splits query into words, finds chunks containing the most keywords."""
+    # Get all chunks for this document
+    response = (
+        client.table("document_chunks")
+        .select("chunk_index,content,token_count,page_refs")
+        .eq("document_id", document_id)
+        .order("chunk_index")
+        .execute()
+    )
+    all_chunks = response.data or []
+    if not all_chunks:
+        return []
+
+    # Score each chunk by keyword overlap
+    keywords = [w.lower() for w in re.split(r'\s+', query.strip()) if len(w) > 2]
+    if not keywords:
+        # No usable keywords — return first N chunks
+        return all_chunks[:match_count]
+
+    scored = []
+    for chunk in all_chunks:
+        content_lower = (chunk.get("content") or "").lower()
+        hits = sum(1 for kw in keywords if kw in content_lower)
+        if hits > 0:
+            scored.append((hits, chunk))
+
+    # Sort by most keyword hits, return top N
+    scored.sort(key=lambda x: x[0], reverse=True)
+    results = [chunk for _, chunk in scored[:match_count]]
+
+    # If not enough keyword matches, pad with first chunks for context
+    if len(results) < 3:
+        seen = {c.get("chunk_index") for c in results}
+        for chunk in all_chunks[:match_count]:
+            if chunk.get("chunk_index") not in seen:
+                results.append(chunk)
+                if len(results) >= match_count:
+                    break
+
+    return results
+
+
+def text_search_chunks_multi(
+    client: Client,
+    *,
+    document_ids: list[str],
+    query: str,
+    match_count_per_doc: int = 6,
+) -> dict[str, list[dict[str, Any]]]:
+    """Keyword search across multiple documents. Returns dict of doc_id -> matches."""
+    results = {}
+    for doc_id in document_ids:
+        matches = text_search_chunks(client, document_id=doc_id, query=query, match_count=match_count_per_doc)
+        if matches:
+            results[doc_id] = matches
+    return results
+
+
 def normalize_text(text: str) -> str:
     text = text.replace("\x00", " ")
     text = re.sub(r"\r\n?", "\n", text)

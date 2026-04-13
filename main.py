@@ -74,6 +74,8 @@ from document_qa import (
     load_rag_config,
     match_document_chunks,
     save_document_question,
+    text_search_chunks,
+    text_search_chunks_multi,
     update_document_record,
     upload_file_to_storage,
 )
@@ -1093,24 +1095,10 @@ def index_document_bytes(
                 detail="The document did not produce any searchable chunks.",
             )
 
-        # Batch generate embeddings for all chunks at once (much faster)
-        chunk_texts = [chunk["content"] for chunk in chunks]
-        embeddings = generate_embeddings_batch(chunk_texts, rag_config)
-
-        # If batch returned fewer embeddings than chunks, log and pad with empty
-        if len(embeddings) < len(chunks):
-            logger.warning("Batch embedding returned %d/%d — padding missing with individual calls", len(embeddings), len(chunks))
-
+        # Store chunks with zero-vector placeholder — text search handles Q&A (no OpenAI needed)
+        _zero_emb = [0.0] * 1536
         chunk_rows = []
         for i, chunk in enumerate(chunks):
-            if i < len(embeddings):
-                emb = embeddings[i]
-            else:
-                try:
-                    emb = generate_embedding(chunk["content"], rag_config)
-                except Exception:
-                    logger.error("Single embedding fallback also failed for chunk %d", i)
-                    emb = [0.0] * rag_config.embedding_dimensions
             chunk_rows.append(
                 {
                     "document_id": document_id,
@@ -1118,7 +1106,7 @@ def index_document_bytes(
                     "content": chunk["content"],
                     "token_count": chunk["token_count"],
                     "page_refs": chunk["page_refs"],
-                    "embedding": emb,
+                    "embedding": _zero_emb,
                 }
             )
         insert_document_chunks(client, chunk_rows)
@@ -1195,19 +1183,17 @@ def _index_existing_document(
             update_document_record(client, document_id, {"status": "error", "error_message": "No searchable chunks produced"})
             return {"status": "error"}
 
-        chunk_texts = [chunk["content"] for chunk in chunks]
-        embeddings = generate_embeddings_batch(chunk_texts, rag_config)
-
+        # Store chunks with zero-vector placeholder — text search handles Q&A
+        _zero_emb = [0.0] * 1536
         chunk_rows = []
-        for i, chunk in enumerate(chunks):
-            emb = embeddings[i] if i < len(embeddings) else [0.0] * rag_config.embedding_dimensions
+        for chunk in chunks:
             chunk_rows.append({
                 "document_id": document_id,
                 "chunk_index": chunk["chunk_index"],
                 "content": chunk["content"],
                 "token_count": chunk["token_count"],
                 "page_refs": chunk["page_refs"],
-                "embedding": emb,
+                "embedding": _zero_emb,
             })
         insert_document_chunks(client, chunk_rows)
         update_document_record(client, document_id, {
@@ -1539,11 +1525,7 @@ def require_rag_configuration() -> None:
             status_code=500,
             detail="Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, then apply supabase/schema.sql.",
         )
-    if not is_embeddings_configured(config):
-        raise HTTPException(
-            status_code=500,
-            detail="Embeddings are not configured. Set EMBEDDING_API_URL, EMBEDDING_API_KEY, EMBEDDING_MODEL, and EMBEDDING_DIMENSIONS.",
-        )
+    # Embeddings are optional — text search is used as fallback
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -2790,20 +2772,18 @@ def ask_document_question(document_id: str, body: DocumentQuestionRequest):
     if document.get("status") != "ready":
         raise HTTPException(status_code=409, detail="Document is still indexing. Try again shortly.")
 
-    question_embedding = generate_embedding(body.question, rag_config)
-    matches = match_document_chunks(
+    # Use text search (no embeddings needed)
+    matches = text_search_chunks(
         client,
         document_id=document_id,
-        query_embedding=question_embedding,
+        query=body.question,
         match_count=body.match_count,
-        match_threshold=body.match_threshold,
     )
     answer = answer_question_from_matches(question=body.question, matches=matches, api_key=api_key)
     sources = [
         {
             "chunk_index": match.get("chunk_index"),
             "page_refs": match.get("page_refs") or [],
-            "similarity": match.get("similarity"),
             "content": match.get("content"),
         }
         for match in matches
@@ -2840,11 +2820,9 @@ def ask_document_question_stream(document_id: str, body: DocumentQuestionRequest
     if document.get("status") != "ready":
         raise HTTPException(status_code=409, detail="Document is still indexing.")
 
-    question_embedding = generate_embedding(body.question, rag_config)
-    matches = match_document_chunks(
+    matches = text_search_chunks(
         sb_client, document_id=document_id,
-        query_embedding=question_embedding,
-        match_count=body.match_count, match_threshold=body.match_threshold,
+        query=body.question, match_count=body.match_count,
     )
 
     return StreamingResponse(
@@ -2878,19 +2856,17 @@ def ask_building_documents_stream(building_id: str, body: BuildingQuestionReques
         raise HTTPException(status_code=400, detail="No ready documents found.")
     document_map = filter_documents_for_question(body.question, document_map)
 
-    query_embedding = generate_embedding(body.question, rag_config)
+    # Text search across all docs
     matches: list[dict[str, Any]] = []
     per_doc_limit = max(2, min(4, body.match_count))
     for doc_id, doc_row in document_map.items():
-        doc_matches = match_document_chunks(
+        doc_matches = text_search_chunks(
             sb_client, document_id=doc_id,
-            query_embedding=query_embedding,
-            match_count=per_doc_limit, match_threshold=body.match_threshold,
+            query=body.question, match_count=per_doc_limit,
         )
         for match in doc_matches:
             match["source"] = doc_row.get("filename")
         matches.extend(doc_matches)
-    matches.sort(key=lambda item: item.get("similarity", 0), reverse=True)
     matches = matches[:body.match_count]
 
     prompt_prefix = (
@@ -2937,27 +2913,16 @@ def ask_building_deferred_question(building_id: str, body: BuildingQuestionReque
 
         if document_map:
             from concurrent.futures import ThreadPoolExecutor
-            query_embedding = generate_embedding(body.question, rag_config)
             per_doc_limit = max(2, min(4, body.match_count))
-
-            def _match_one_doc(doc_id_and_row):
-                d_id, d_row = doc_id_and_row
-                d_matches = match_document_chunks(
+            for d_id, d_row in document_map.items():
+                d_matches = text_search_chunks(
                     client, document_id=d_id,
-                    query_embedding=query_embedding,
-                    match_count=per_doc_limit,
-                    match_threshold=body.match_threshold,
+                    query=body.question, match_count=per_doc_limit,
                 )
                 for m in d_matches:
                     m["source"] = d_row.get("filename")
-                return d_matches
+                matches.extend(d_matches)
 
-            with ThreadPoolExecutor(max_workers=min(6, len(document_map))) as pool:
-                all_match_lists = list(pool.map(_match_one_doc, document_map.items()))
-            for match_list in all_match_lists:
-                matches.extend(match_list)
-
-            matches.sort(key=lambda item: item.get("similarity", 0), reverse=True)
             matches = matches[: body.match_count]
             sources = [
                 {
@@ -2965,7 +2930,6 @@ def ask_building_deferred_question(building_id: str, body: BuildingQuestionReque
                     "source": match.get("source"),
                     "chunk_index": match.get("chunk_index"),
                     "page_refs": match.get("page_refs") or [],
-                    "similarity": match.get("similarity"),
                     "content": match.get("content"),
                 }
                 for match in matches
@@ -3014,29 +2978,17 @@ def ask_building_documents_question(building_id: str, body: BuildingQuestionRequ
         raise HTTPException(status_code=400, detail="No ready documents were found for this question.")
     document_map = filter_documents_for_question(body.question, document_map)
 
-    from concurrent.futures import ThreadPoolExecutor
-    query_embedding = generate_embedding(body.question, rag_config)
     matches: list[dict[str, Any]] = []
     per_doc_limit = max(2, min(4, body.match_count))
-
-    def _match_one(doc_id_and_row):
-        d_id, d_row = doc_id_and_row
-        d_matches = match_document_chunks(
+    for d_id, d_row in document_map.items():
+        d_matches = text_search_chunks(
             client, document_id=d_id,
-            query_embedding=query_embedding,
-            match_count=per_doc_limit,
-            match_threshold=body.match_threshold,
+            query=body.question, match_count=per_doc_limit,
         )
         for m in d_matches:
             m["source"] = d_row.get("filename")
-        return d_matches
+        matches.extend(d_matches)
 
-    with ThreadPoolExecutor(max_workers=min(6, len(document_map))) as pool:
-        all_match_lists = list(pool.map(_match_one, document_map.items()))
-    for match_list in all_match_lists:
-        matches.extend(match_list)
-
-    matches.sort(key=lambda item: item.get("similarity", 0), reverse=True)
     matches = matches[: body.match_count]
     answer = answer_documents_question(question=body.question, matches=matches, api_key=api_key)
     sources = resolve_cited_sources(answer, matches)
@@ -3046,7 +2998,6 @@ def ask_building_documents_question(building_id: str, body: BuildingQuestionRequ
                 "source": match.get("source"),
                 "chunk_index": match.get("chunk_index"),
                 "page_refs": match.get("page_refs") or [],
-                "similarity": match.get("similarity"),
                 "content": match.get("content"),
             }
             for match in matches
