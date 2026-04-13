@@ -2802,8 +2802,8 @@ function showPage(id) {
   if (id === 'dashboard') renderDashboard();
   if (id === 'building-profile') {
     renderBuildingProfilePage();
-    // Auto-pull field captures silently
-    if (FIELD_CAPTURE_API) pullFieldCaptures({ silent: true });
+    // Auto-sync field captures and re-render with photos
+    if (FIELD_CAPTURE_API) pullFieldCaptures({ silent: true }).then(() => renderBuildingProfilePage());
   }
   if (id === 'deferred')  renderDeferredMaintenance();
   if (id === 'capital')   renderCapitalPlan();
@@ -5593,11 +5593,11 @@ function renderBuildingProfilePage() {
   const propName = bp.name || bld?.name || '';
   const propAddr = bp.address || bld?.address || '';
   const use = bp.building_use || '—';
+  const unitsList = bp.units_list || [];
   // Always calculate gross SF dynamically from units
   const calcGrossSF = unitsList.reduce((s, u) => s + (parseInt(u.sqft) || 0), 0);
   if (calcGrossSF > 0) bp.gross_sf = calcGrossSF; // keep in sync
   const grossSF = calcGrossSF > 0 ? calcGrossSF.toLocaleString() : (bp.gross_sf ? Number(bp.gross_sf).toLocaleString() : '—');
-  const unitsList = bp.units_list || [];
 
   // Group units by building prefix
   const buildings = {};
@@ -5616,6 +5616,10 @@ function renderBuildingProfilePage() {
   }
   const buildingKeys = Object.keys(buildings).sort();
   const totalUnits = unitsList.length;
+  // Auto-expand all complexes if none are manually expanded yet
+  if (_bpExpandedBuildings.size === 0 && buildingKeys.length > 0) {
+    for (const k of buildingKeys) _bpExpandedBuildings.add(k);
+  }
 
   // ─── Property Header ───
   const headerEdit = _bpEditBuildings.has('__header__');
