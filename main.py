@@ -1695,7 +1695,7 @@ async def retry_errored_documents(background_tasks: BackgroundTasks):
             try:
                 storage_path = doc.get("storage_path", "")
                 # Download file from Supabase storage
-                file_bytes = client.storage.from_(rag_config.supabase_storage_bucket).download(storage_path)
+                file_bytes = client.storage.from_(rag_config.supabase_bucket).download(storage_path)
                 await asyncio.to_thread(
                     _index_existing_document,
                     client=client, rag_config=rag_config, api_key=api_key,
