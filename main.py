@@ -1691,7 +1691,7 @@ async def retry_errored_documents(background_tasks: BackgroundTasks):
     async def _retry_in_background():
         for idx, doc in enumerate(retryable):
             if idx > 0:
-                await asyncio.sleep(3)  # Stagger to avoid rate limits
+                await asyncio.sleep(10)  # Stagger to avoid rate limits
             try:
                 storage_path = doc.get("storage_path", "")
                 # Download file from Supabase storage
@@ -2692,7 +2692,7 @@ async def import_shared_link(body: SharedLinkImportRequest):
             to avoid OpenAI embedding rate limits (429)."""
             for idx, pending in enumerate(pending_docs):
                 if idx > 0:
-                    await asyncio.sleep(2)  # Small delay between docs to avoid rate limits
+                    await asyncio.sleep(10)  # Delay between docs to avoid OpenAI rate limits
                 try:
                     await _process_single_bg_item(pending, client, rag_config, api_key, body)
                 except Exception as exc:

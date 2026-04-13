@@ -376,7 +376,7 @@ def chunk_text(text: str, max_chars: int = 1800, overlap: int = 250) -> list[dic
 
 
 def _embedding_request_with_retry(
-    url: str, headers: dict, payload: dict, timeout: float, max_retries: int = 5
+    url: str, headers: dict, payload: dict, timeout: float, max_retries: int = 8
 ) -> dict:
     """Make an embedding API request with exponential backoff on 429 rate limits."""
     for attempt in range(max_retries + 1):
@@ -385,8 +385,8 @@ def _embedding_request_with_retry(
             if response.status_code == 429:
                 if attempt == max_retries:
                     response.raise_for_status()
-                # Exponential backoff: 2s, 4s, 8s, 16s, 32s
-                wait = min(2 ** (attempt + 1), 60)
+                # Exponential backoff: 5s, 10s, 20s, 40s, 60s, 60s, 60s, 60s
+                wait = min(5 * (2 ** attempt), 60)
                 retry_after = response.headers.get("Retry-After")
                 if retry_after:
                     try:
