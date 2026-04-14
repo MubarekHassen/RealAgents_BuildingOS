@@ -1276,7 +1276,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
         <div class="upload-left-header">
           <span class="ul-heading">Library</span>
           <span class="ul-count" id="docLibCount">0 docs</span>
-          <button id="retryErrorsBtn" style="display:none;margin-left:auto;font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid #dc2626;background:#fef2f2;color:#dc2626;cursor:pointer" onclick="retryErroredDocuments()">Retry Failed</button>
         </div>
         <div class="upload-left-body" id="docLibList">
           <div style="text-align:center;padding:28px 14px;color:#9ca3af">
@@ -1343,6 +1342,201 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
                   </div>
                 </div>
                 <div id="yardiCardStatus" style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0f4ff;color:#003865;text-align:center">Coming soon</div>
+              </div>
+            </div>
+
+            <!-- BMS / Building Automation -->
+            <div style="font-size:12px;font-weight:700;color:#1e1b4b;margin:18px 0 10px;display:flex;align-items:center;gap:8px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+              Building Management Systems (BMS / BAS)
+              <span style="font-size:10px;font-weight:500;color:#6b7280;margin-left:auto">Live sensor + setpoint data via BACnet / Modbus / API</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px" id="bmsSourceCards">
+              <div onclick="handleIntegrationClick('Siemens Desigo CC','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#009999';this.style.boxShadow='0 4px 16px rgba(0,153,153,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#009999,#007a7a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">SIE</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Siemens Desigo CC</div><div style="font-size:10px;color:#6b7280">BACnet, points, trends</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#ecfeff;color:#0e7490;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Johnson Controls Metasys','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#d71920';this.style.boxShadow='0 4px 16px rgba(215,25,32,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#d71920,#9a1118);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">JCI</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">JCI Metasys</div><div style="font-size:10px;color:#6b7280">Equipment, alarms, trends</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fef2f2;color:#b91c1c;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Honeywell EBI / Niagara','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#e4002b';this.style.boxShadow='0 4px 16px rgba(228,0,43,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#e4002b,#a30020);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">HON</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Honeywell EBI</div><div style="font-size:10px;color:#6b7280">Niagara, Tridium, WEBs</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fef2f2;color:#b91c1c;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Schneider EcoStruxure','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#3dcd58';this.style.boxShadow='0 4px 16px rgba(61,205,88,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#3dcd58,#2a9e3f);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">SE</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Schneider EcoStruxure</div><div style="font-size:10px;color:#6b7280">Building Advisor, Power</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0fdf4;color:#16a34a;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Trane Tracer / Tracer SC','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#003da5';this.style.boxShadow='0 4px 16px rgba(0,61,165,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#003da5,#002d7c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">TR</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Trane Tracer SC+</div><div style="font-size:10px;color:#6b7280">HVAC, chillers, BrainBox</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Automated Logic WebCTRL','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#1f4e79';this.style.boxShadow='0 4px 16px rgba(31,78,121,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#1f4e79,#143657);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">ALC</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">ALC WebCTRL</div><div style="font-size:10px;color:#6b7280">Graphics, trends, schedules</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Delta Controls enteliWEB','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00a551';this.style.boxShadow='0 4px 16px rgba(0,165,81,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#00a551,#00713a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">DC</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Delta enteliWEB</div><div style="font-size:10px;color:#6b7280">BACnet native</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0fdf4;color:#16a34a;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Distech Controls EC-Net','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#6366f1';this.style.boxShadow='0 4px 16px rgba(99,102,241,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#4338ca);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">DT</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Distech EC-Net</div><div style="font-size:10px;color:#6b7280">Niagara-based BAS</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eef2ff;color:#4f46e5;text-align:center">Click to connect</div>
+              </div>
+            </div>
+
+            <!-- CMMS / Maintenance -->
+            <div style="font-size:12px;font-weight:700;color:#1e1b4b;margin:18px 0 10px;display:flex;align-items:center;gap:8px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              CMMS / Maintenance Platforms
+              <span style="font-size:10px;font-weight:500;color:#6b7280;margin-left:auto">Work orders, assets, PMs</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px" id="cmmsSourceCards">
+              <div onclick="handleIntegrationClick('IBM Maximo','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#0530ad';this.style.boxShadow='0 4px 16px rgba(5,48,173,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0530ad,#022078);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">IBM</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">IBM Maximo</div><div style="font-size:10px;color:#6b7280">Enterprise EAM</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Fiix (Rockwell)','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#0891b2';this.style.boxShadow='0 4px 16px rgba(8,145,178,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0891b2,#0e7490);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">FX</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Fiix</div><div style="font-size:10px;color:#6b7280">Rockwell Automation</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#ecfeff;color:#0e7490;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('UpKeep','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#3b82f6';this.style.boxShadow='0 4px 16px rgba(59,130,246,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">UK</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">UpKeep</div><div style="font-size:10px;color:#6b7280">Mobile-first CMMS</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('MaintainX','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#16a34a';this.style.boxShadow='0 4px 16px rgba(22,163,74,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#16a34a,#15803d);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">MX</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">MaintainX</div><div style="font-size:10px;color:#6b7280">Work orders, procedures</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0fdf4;color:#16a34a;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Limble CMMS','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#f97316';this.style.boxShadow='0 4px 16px rgba(249,115,22,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#f97316,#c2410c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">LM</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Limble</div><div style="font-size:10px;color:#6b7280">Assets, PMs, reports</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fff7ed;color:#c2410c;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('eMaint (Fluke)','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#fbbf24';this.style.boxShadow='0 4px 16px rgba(251,191,36,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#fbbf24,#d97706);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">eM</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">eMaint X5</div><div style="font-size:10px;color:#6b7280">Fluke Reliability</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fffbeb;color:#d97706;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Brightly (Dude Solutions)','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#7c3aed';this.style.boxShadow='0 4px 16px rgba(124,58,237,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#5b21b6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">BR</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Brightly</div><div style="font-size:10px;color:#6b7280">Dude Solutions Asset</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f5f3ff;color:#6d28d9;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Hippo CMMS','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#10b981';this.style.boxShadow='0 4px 16px rgba(16,185,129,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#10b981,#047857);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">HP</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Hippo CMMS</div><div style="font-size:10px;color:#6b7280">Work order + inventory</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#ecfdf5;color:#047857;text-align:center">Click to connect</div>
+              </div>
+            </div>
+
+            <!-- Documentation / Construction Platforms -->
+            <div style="font-size:12px;font-weight:700;color:#1e1b4b;margin:18px 0 10px;display:flex;align-items:center;gap:8px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              File Documentation & Construction Records
+              <span style="font-size:10px;font-weight:500;color:#6b7280;margin-left:auto">Drawings, submittals, O&M manuals, as-builts</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px" id="docSourceCards">
+              <div onclick="handleIntegrationClick('Procore','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#f37037';this.style.boxShadow='0 4px 16px rgba(243,112,55,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#f37037,#c2410c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">PC</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Procore</div><div style="font-size:10px;color:#6b7280">Project + closeout docs</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fff7ed;color:#c2410c;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Autodesk Construction Cloud','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#000';this.style.boxShadow='0 4px 16px rgba(0,0,0,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0696d7,#075985);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">ACC</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Autodesk ACC</div><div style="font-size:10px;color:#6b7280">BIM 360, Docs, Build</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0f9ff;color:#0369a1;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Bluebeam Studio','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#0054a4';this.style.boxShadow='0 4px 16px rgba(0,84,164,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0054a4,#003d7a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">BB</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Bluebeam Studio</div><div style="font-size:10px;color:#6b7280">Markups, sets</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('PlanGrid','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#f59e0b';this.style.boxShadow='0 4px 16px rgba(245,158,11,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#b45309);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">PG</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">PlanGrid</div><div style="font-size:10px;color:#6b7280">Sheets, RFIs (Autodesk)</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fffbeb;color:#b45309;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Dropbox / SharePoint','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#0061ff';this.style.boxShadow='0 4px 16px rgba(0,97,255,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0061ff,#0043b2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">DB</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Dropbox / SharePoint</div><div style="font-size:10px;color:#6b7280">O&M, as-builts, drawings</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Box','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#0072e5';this.style.boxShadow='0 4px 16px rgba(0,114,229,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0072e5,#0050a5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">BX</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Box</div><div style="font-size:10px;color:#6b7280">Enterprise content</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Egnyte','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00a0dc';this.style.boxShadow='0 4px 16px rgba(0,160,220,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#00a0dc,#0077a8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">EG</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Egnyte</div><div style="font-size:10px;color:#6b7280">AEC file sync</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0f9ff;color:#0369a1;text-align:center">Click to connect</div>
+              </div>
+              <div onclick="handleIntegrationClick('Newforma','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#1e40af';this.style.boxShadow='0 4px 16px rgba(30,64,175,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#1e40af,#1e3a8a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">NF</div>
+                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Newforma</div><div style="font-size:10px;color:#6b7280">Project info mgmt</div></div>
+                </div>
+                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
               </div>
             </div>
 
@@ -1934,11 +2128,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <div class="ob-section-label" style="margin-top:10px;">Property type</div>
       <select class="ob-input" id="obBuildingType" onchange="obTypeChanged()" style="padding:10px 12px;background:#fff;cursor:pointer;">
         <option value="" disabled selected>— Select property type —</option>
-        <option value="single">Single Building (office, retail, industrial)</option>
-        <option value="multifamily">Multifamily Apartment</option>
-        <option value="townhomes">Townhomes / Multi-Building Campus</option>
-        <option value="hoa">HOA / Condo Association</option>
-        <option value="other">Other</option>
+        <optgroup label="Residential">
+          <option value="multifamily">Multifamily Apartment</option>
+          <option value="townhomes">Townhomes / Multi-Building Campus</option>
+          <option value="hoa">HOA / Condo Association</option>
+        </optgroup>
+        <optgroup label="Commercial & Office">
+          <option value="office">Office Building</option>
+          <option value="retail">Retail / Shopping Center</option>
+          <option value="mixed_use">Mixed-Use Development</option>
+          <option value="hotel">Hotel / Hospitality</option>
+        </optgroup>
+        <optgroup label="Mission-Critical & Specialty">
+          <option value="data_center">Data Center</option>
+          <option value="hospital">Hospital / Healthcare</option>
+          <option value="energy">Energy Facility (power, substation, renewables)</option>
+          <option value="lab">Laboratory / Life Sciences</option>
+        </optgroup>
+        <optgroup label="Industrial & Institutional">
+          <option value="industrial">Industrial / Warehouse / Logistics</option>
+          <option value="manufacturing">Manufacturing / Plant</option>
+          <option value="education">Educational (K-12, University)</option>
+          <option value="government">Government / Municipal</option>
+        </optgroup>
+        <optgroup label="Other">
+          <option value="single">Single Building (generic)</option>
+          <option value="other">Other</option>
+        </optgroup>
       </select>
       <div id="obTypeExtra" style="display:none;margin-top:10px;background:#f9fafb;border-radius:10px;padding:14px;border:1px solid #e5e7eb;">
         <div id="obTypeExtraContent"></div>
@@ -3160,6 +3376,50 @@ function obTypeChanged() {
           <input class="ob-input" id="obHoaBuildings" type="number" min="1" max="500" placeholder="e.g. 10" style="width:100%;">
         </div>
       </div>`;
+  } else if (type === 'data_center') {
+    extra.style.display = 'block';
+    content.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">Data center details</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">IT load (MW)</div><input class="ob-input" id="obDcLoad" type="number" step="0.1" min="0" placeholder="e.g. 8.5" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Halls / data rooms</div><input class="ob-input" id="obDcHalls" type="number" min="1" placeholder="e.g. 4" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Racks</div><input class="ob-input" id="obDcRacks" type="number" min="1" placeholder="e.g. 350" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Tier (I-IV)</div><select class="ob-input" id="obDcTier" style="width:100%;"><option value="">—</option><option>Tier I</option><option>Tier II</option><option>Tier III</option><option>Tier IV</option></select></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Gross sqft</div><input class="ob-input" id="obDcSqft" type="number" min="0" placeholder="e.g. 120000" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">PUE target</div><input class="ob-input" id="obDcPue" type="number" step="0.01" placeholder="e.g. 1.35" style="width:100%;"></div>
+      </div>
+      <div style="font-size:10px;color:#9ca3af;margin-top:6px;">We'll pre-wire Uptime Institute, ASHRAE TC 9.9, and DCIM registers.</div>`;
+  } else if (type === 'hospital') {
+    extra.style.display = 'block';
+    content.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">Healthcare facility details</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Licensed beds</div><input class="ob-input" id="obHosBeds" type="number" min="0" placeholder="e.g. 220" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Gross sqft</div><input class="ob-input" id="obHosSqft" type="number" min="0" placeholder="e.g. 450000" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;"># Floors</div><input class="ob-input" id="obHosFloors" type="number" min="1" placeholder="e.g. 6" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Type</div><select class="ob-input" id="obHosType" style="width:100%;"><option>Acute care</option><option>Specialty</option><option>Outpatient / MOB</option><option>Long-term care</option></select></div>
+      </div>
+      <div style="font-size:10px;color:#9ca3af;margin-top:6px;">We'll pre-wire Joint Commission, NFPA 99, and CMS compliance registers.</div>`;
+  } else if (type === 'energy') {
+    extra.style.display = 'block';
+    content.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">Energy facility details</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Facility type</div><select class="ob-input" id="obEnType" style="width:100%;"><option>Substation</option><option>Power plant (gas)</option><option>Solar farm</option><option>Wind farm</option><option>Battery storage (BESS)</option><option>Hydro</option><option>Cogeneration / CHP</option></select></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Capacity (MW)</div><input class="ob-input" id="obEnCap" type="number" step="0.1" placeholder="e.g. 120" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Site acreage</div><input class="ob-input" id="obEnAcres" type="number" step="0.1" placeholder="e.g. 45" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">NERC region</div><select class="ob-input" id="obEnNerc" style="width:100%;"><option value="">—</option><option>WECC</option><option>ERCOT</option><option>MRO</option><option>NPCC</option><option>RFC</option><option>SERC</option><option>SPP</option><option>TRE</option></select></div>
+      </div>`;
+  } else if (type === 'office' || type === 'retail' || type === 'hotel' || type === 'mixed_use' || type === 'lab' || type === 'industrial' || type === 'manufacturing' || type === 'education' || type === 'government' || type === 'single') {
+    extra.style.display = 'block';
+    const labels = {office:'Office',retail:'Retail',hotel:'Hotel',mixed_use:'Mixed-use',lab:'Lab',industrial:'Industrial',manufacturing:'Manufacturing',education:'Educational',government:'Government',single:'Building'};
+    content.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">${labels[type]} details</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Gross sqft</div><input class="ob-input" id="obGenSqft" type="number" min="0" placeholder="e.g. 85000" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;"># Floors</div><input class="ob-input" id="obGenFloors" type="number" min="1" placeholder="e.g. 4" style="width:100%;"></div>
+        <div><div style="font-size:11px;color:#6b7280;margin-bottom:4px;">Year built</div><input class="ob-input" id="obGenYear" type="number" min="1800" max="2030" placeholder="e.g. 1998" style="width:100%;"></div>
+      </div>`;
   } else {
     extra.style.display = 'none';
     content.innerHTML = '';
@@ -3198,7 +3458,38 @@ function obRenderBuildingRows() {
 
 function seedBuildingsFromOnboarding(propertyName, addr, type) {
   const bp = fullBuildingProfile;
-  bp.building_use = type === 'townhomes' ? 'Townhomes' : type === 'multifamily' ? 'Multifamily' : type === 'hoa' ? 'HOA/Condo' : type === 'single' ? 'Commercial' : 'Other';
+  const useMap = {
+    townhomes:'Townhomes', multifamily:'Multifamily', hoa:'HOA/Condo',
+    office:'Office', retail:'Retail', mixed_use:'Mixed-Use', hotel:'Hospitality',
+    data_center:'Data Center', hospital:'Healthcare', energy:'Energy / Utility', lab:'Life Sciences',
+    industrial:'Industrial / Warehouse', manufacturing:'Manufacturing', education:'Educational', government:'Government',
+    single:'Commercial', other:'Other'
+  };
+  bp.building_use = useMap[type] || 'Other';
+
+  // Capture commercial-type specific details onto the building profile
+  if (type === 'data_center') {
+    bp.dc_it_load_mw = parseFloat(document.getElementById('obDcLoad')?.value) || null;
+    bp.dc_halls = parseInt(document.getElementById('obDcHalls')?.value) || null;
+    bp.dc_racks = parseInt(document.getElementById('obDcRacks')?.value) || null;
+    bp.dc_tier = document.getElementById('obDcTier')?.value || null;
+    bp.gross_sqft = parseInt(document.getElementById('obDcSqft')?.value) || null;
+    bp.dc_pue_target = parseFloat(document.getElementById('obDcPue')?.value) || null;
+  } else if (type === 'hospital') {
+    bp.hospital_beds = parseInt(document.getElementById('obHosBeds')?.value) || null;
+    bp.gross_sqft = parseInt(document.getElementById('obHosSqft')?.value) || null;
+    bp.stories = parseInt(document.getElementById('obHosFloors')?.value) || null;
+    bp.hospital_type = document.getElementById('obHosType')?.value || null;
+  } else if (type === 'energy') {
+    bp.energy_facility_type = document.getElementById('obEnType')?.value || null;
+    bp.energy_capacity_mw = parseFloat(document.getElementById('obEnCap')?.value) || null;
+    bp.site_acres = parseFloat(document.getElementById('obEnAcres')?.value) || null;
+    bp.nerc_region = document.getElementById('obEnNerc')?.value || null;
+  } else if (['office','retail','hotel','mixed_use','lab','industrial','manufacturing','education','government','single'].includes(type)) {
+    bp.gross_sqft = parseInt(document.getElementById('obGenSqft')?.value) || bp.gross_sqft || null;
+    bp.stories = parseInt(document.getElementById('obGenFloors')?.value) || bp.stories || null;
+    bp.year_built = parseInt(document.getElementById('obGenYear')?.value) || bp.year_built || null;
+  }
 
   if (type === 'townhomes') {
     const rows = document.querySelectorAll('#obBuildingRows .ob-bldg-row');
@@ -8180,6 +8471,15 @@ function handleAppFolioClick() {
 
 function handleYardiClick() {
   alert('Yardi integration coming soon. Contact support@buildingos.com to request early access.');
+}
+
+function handleIntegrationClick(name, category) {
+  const messages = {
+    BMS: `Connecting to ${name}\n\nWe'll set up a BACnet/Modbus gateway or REST API link to stream:\n  • Live sensor trends (temps, pressures, flow, kW)\n  • Alarm + event history\n  • Setpoints and schedules\n  • Equipment registers and points\n\nBuildingOS uses read-only access by default. Contact support@buildingos.com to provision a site gateway.`,
+    CMMS: `Connecting to ${name}\n\nWe'll sync:\n  • Open/closed work orders\n  • Asset register + nameplate data\n  • PM schedules and compliance\n  • Labor and parts history\n\nBuildingOS supports API, CSV, or SFTP exports. Contact support@buildingos.com to set up credentials.`,
+    Docs: `Connecting to ${name}\n\nWe'll index:\n  • Drawings, as-builts, submittals\n  • O&M manuals and closeout packages\n  • RFIs, punch lists, inspection reports\n  • Warranty and commissioning documents\n\nDocuments are OCR'd and routed to the right building profile. Contact support@buildingos.com to scope access.`
+  };
+  alert(messages[category] || `${name} integration coming soon.`);
 }
 
 async function connectAppFolio() {
