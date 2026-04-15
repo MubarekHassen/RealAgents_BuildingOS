@@ -1581,6 +1581,23 @@ def health():
     }
 
 
+@app.get("/config/public")
+def public_config():
+    """Public config values safe to expose to the browser.
+
+    Exposes the Supabase project URL and the ANON key so the frontend
+    can initialize the supabase-js client for Supabase Auth and
+    user-scoped RLS-protected queries. Never exposes the service role key.
+    """
+    rag_config = load_rag_config()
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
+    return {
+        "supabase_url": rag_config.supabase_url or None,
+        "supabase_anon_key": anon_key or None,
+        "auth_enabled": bool(rag_config.supabase_url and anon_key),
+    }
+
+
 _api_key_cache: dict[str, Any] = {"result": None, "tested_key": None, "ts": 0}
 
 @app.get("/test-api-key")

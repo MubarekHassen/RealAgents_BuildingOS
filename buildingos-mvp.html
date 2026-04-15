@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BuildingOS</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;background:#f4f5f7;color:#1a1a2e;display:flex;height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
@@ -1055,7 +1056,69 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
         <button class="login-btn login-btn-primary" onclick="submitSignIn()" style="margin-top:4px">
           Sign In
         </button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+          <button type="button" onclick="showLoginState('landing')" style="background:none;border:none;color:rgba(255,255,255,0.55);font-size:12px;cursor:pointer;padding:8px;font-family:inherit">← Back</button>
+          <button type="button" onclick="showLoginState('forgot')" style="background:none;border:none;color:rgba(129,140,248,0.95);font-size:12px;cursor:pointer;padding:8px;font-family:inherit;font-weight:600">Forgot password?</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── STATE 5: Create Account ─── -->
+    <div id="loginStateCreate" style="display:none">
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:6px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Full name</label>
+          <input type="text" id="caName" placeholder="Jane Smith" autocomplete="name"
+            style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Email</label>
+          <input type="email" id="caEmail" placeholder="you@company.com" autocomplete="email"
+            style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Company <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:0.5">(optional)</span></label>
+          <input type="text" id="caCompany" placeholder="Acme Properties" autocomplete="organization"
+            style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Password</label>
+          <div style="position:relative">
+            <input type="password" id="caPassword" placeholder="At least 8 characters" autocomplete="new-password"
+              style="width:100%;padding:13px 48px 13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;box-sizing:border-box"
+              oninput="updateCaStrength()">
+            <button type="button" onclick="togglePasswordVisibility('caPassword')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:rgba(255,255,255,0.55);font-size:11px;font-weight:600;cursor:pointer;padding:4px 8px">Show</button>
+          </div>
+          <div id="caStrength" style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Use 8+ chars with a mix of letters, numbers, and symbols.</div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Confirm password</label>
+          <input type="password" id="caConfirm" placeholder="Re-enter password" autocomplete="new-password"
+            style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;box-sizing:border-box"
+            onkeydown="if(event.key==='Enter')submitCreateAccount()">
+        </div>
+        <div id="caError" style="font-size:12px;color:#fca5a5;display:none;padding:4px 2px"></div>
+        <button class="login-btn login-btn-primary" onclick="submitCreateAccount()" style="margin-top:4px">Create Account</button>
         <button type="button" onclick="showLoginState('landing')" style="background:none;border:none;color:rgba(255,255,255,0.55);font-size:12px;cursor:pointer;padding:8px;font-family:inherit">← Back</button>
+      </div>
+    </div>
+
+    <!-- ─── STATE 6: Forgot Password ─── -->
+    <div id="loginStateForgot" style="display:none">
+      <div style="padding:14px;border-radius:12px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);margin-bottom:14px;font-size:12px;color:rgba(255,255,255,0.8);line-height:1.5">
+        Enter your email and we'll send you a link to reset your password.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Email</label>
+          <input type="email" id="fpEmail" placeholder="you@company.com" autocomplete="email"
+            style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;box-sizing:border-box"
+            onkeydown="if(event.key==='Enter')submitForgotPassword()">
+        </div>
+        <div id="fpError" style="font-size:12px;color:#fca5a5;display:none;padding:4px 2px"></div>
+        <div id="fpSuccess" style="font-size:12px;color:#a7f3d0;display:none;padding:10px 12px;background:rgba(16,185,129,0.1);border-radius:10px;border:1px solid rgba(16,185,129,0.3)"></div>
+        <button class="login-btn login-btn-primary" onclick="submitForgotPassword()">Send reset link</button>
+        <button type="button" onclick="showLoginState('signin')" style="background:none;border:none;color:rgba(255,255,255,0.55);font-size:12px;cursor:pointer;padding:8px;font-family:inherit">← Back to sign in</button>
       </div>
     </div>
 
@@ -2405,7 +2468,10 @@ function loadUser() {
   } catch(e) { return null; }
 }
 
-function saveBuildings(b) { try { localStorage.setItem(userKey('buildings'), JSON.stringify(b)); } catch(e){} }
+function saveBuildings(b) {
+  try { localStorage.setItem(userKey('buildings'), JSON.stringify(b)); } catch(e){}
+  try { if (typeof cloudSync !== 'undefined') cloudSync.schedulePushAll(); } catch(e){}
+}
 function loadBuildings() {
   try {
     if (_activeUserId) {
@@ -5754,6 +5820,7 @@ function renderDocDetail(doc) {
 // so it persists with user-entered values
 function saveBuildingProfile(bid, profile) {
   try { localStorage.setItem('bos_bp_' + bid, JSON.stringify(profile)); } catch(e) {}
+  try { if (typeof cloudSync !== 'undefined') cloudSync.schedulePushAll(); } catch(e) {}
 }
 function loadBuildingProfile(bid) {
   try {
@@ -7471,10 +7538,11 @@ function fcCopyInviteCode(code) {
 // Persisted equipment register — enriched by user input post-upload
 const EQ_CACHE_VERSION = 4; // Increment to force cache clear
 function saveEquipment(bid, items) {
-  try { 
-    localStorage.setItem('bos_eq_' + bid, JSON.stringify(items)); 
+  try {
+    localStorage.setItem('bos_eq_' + bid, JSON.stringify(items));
     localStorage.setItem('bos_eq_version_' + bid, EQ_CACHE_VERSION);
   } catch(e) {}
+  try { if (typeof cloudSync !== 'undefined') cloudSync.schedulePushAll(); } catch(e) {}
 }
 function loadEquipment(bid) {
   try { 
@@ -9712,6 +9780,8 @@ function confirmDeleteAccount() {
 
 function logoutUser() {
   if (!confirm('Log out of BuildingOS? Your data will be preserved and available when you return.')) return;
+  // Sign out of cloud auth (non-blocking)
+  try { cloudAuth.signOut(); } catch(e) {}
   // Clear active session but keep all user data intact for return
   clearActiveSession();
   currentUser = null;
@@ -9797,6 +9867,176 @@ function hideLoginScreen() {
   document.querySelector('.main').style.display = '';
 }
 
+// ─── Cloud Auth (Supabase) ─────────────────────────────────────
+// Best-effort cross-device auth. If Supabase is not configured or offline,
+// we fall back to local SHA-256 auth so the app keeps working.
+const cloudAuth = (function() {
+  let client = null;
+  let config = null;
+  let initPromise = null;
+  let currentSession = null;
+
+  async function init() {
+    if (initPromise) return initPromise;
+    initPromise = (async () => {
+      try {
+        const r = await fetch('/config/public');
+        if (!r.ok) return null;
+        const cfg = await r.json();
+        if (!cfg.supabase_url || !cfg.supabase_anon_key) return null;
+        if (typeof window.supabase === 'undefined' || !window.supabase.createClient) return null;
+        config = cfg;
+        client = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key, {
+          auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage, storageKey: 'bos_supabase_auth' }
+        });
+        const { data } = await client.auth.getSession();
+        currentSession = data?.session || null;
+        client.auth.onAuthStateChange((_evt, sess) => { currentSession = sess; });
+        return client;
+      } catch(e) { console.warn('[cloudAuth] init failed:', e); return null; }
+    })();
+    return initPromise;
+  }
+
+  async function ready() { await init(); return !!client; }
+  function getClient() { return client; }
+  function getSession() { return currentSession; }
+  function getUserId() { return currentSession?.user?.id || null; }
+  function getEmail() { return currentSession?.user?.email || null; }
+
+  async function signIn(email, password) {
+    if (!(await ready())) return { ok:false, error:'Cloud auth unavailable', offline:true };
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) return { ok:false, error: error.message };
+    currentSession = data.session;
+    return { ok:true, user: data.user, session: data.session };
+  }
+
+  async function signUp(email, password, meta) {
+    if (!(await ready())) return { ok:false, error:'Cloud auth unavailable', offline:true };
+    const { data, error } = await client.auth.signUp({
+      email, password,
+      options: { data: meta || {}, emailRedirectTo: window.location.origin }
+    });
+    if (error) return { ok:false, error: error.message };
+    currentSession = data.session;
+    return { ok:true, user: data.user, session: data.session, needsVerify: !data.session };
+  }
+
+  async function sendResetEmail(email) {
+    if (!(await ready())) return { ok:false, error:'Cloud auth unavailable', offline:true };
+    const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    if (error) return { ok:false, error: error.message };
+    return { ok:true };
+  }
+
+  async function updatePassword(newPassword) {
+    if (!(await ready())) return { ok:false, error:'Cloud auth unavailable', offline:true };
+    const { error } = await client.auth.updateUser({ password: newPassword });
+    if (error) return { ok:false, error: error.message };
+    return { ok:true };
+  }
+
+  async function signOut() {
+    if (!client) return;
+    try { await client.auth.signOut(); } catch(e) {}
+    currentSession = null;
+  }
+
+  return { init, ready, getClient, getSession, getUserId, getEmail, signIn, signUp, sendResetEmail, updatePassword, signOut };
+})();
+
+// ─── Cloud Sync (buildings + profile) ──────────────────────────
+const cloudSync = (function() {
+  async function pullBuildings() {
+    if (!(await cloudAuth.ready())) return null;
+    const client = cloudAuth.getClient();
+    const uid = cloudAuth.getUserId();
+    if (!uid) return null;
+    const { data, error } = await client.from('buildings').select('*').eq('owner_id', uid);
+    if (error) { console.warn('[cloudSync] pull failed:', error.message); return null; }
+    return data || [];
+  }
+
+  async function pushBuilding(b) {
+    if (!(await cloudAuth.ready())) return false;
+    const client = cloudAuth.getClient();
+    const uid = cloudAuth.getUserId();
+    if (!uid || !b || !b.id) return false;
+    // Assemble per-building blob from localStorage
+    let profile_json = {}, equipment_json = [], captures_json = [], maintenance_json = {}, units_json = [];
+    try { profile_json = JSON.parse(localStorage.getItem('bos_bp_' + b.id) || '{}'); } catch(e) {}
+    try { equipment_json = JSON.parse(localStorage.getItem('bos_eq_' + b.id) || '[]'); } catch(e) {}
+    try { captures_json = JSON.parse(localStorage.getItem('bos_captures_' + b.id) || '[]'); } catch(e) {}
+    try { maintenance_json = JSON.parse(localStorage.getItem('bos_dm_updates_' + b.id) || '{}'); } catch(e) {}
+    try { units_json = JSON.parse(localStorage.getItem('bos_units_' + b.id) || '[]'); } catch(e) {}
+    const row = {
+      id: b.id,
+      owner_id: uid,
+      name: b.name || 'Untitled',
+      address: b.address || null,
+      use_type: b.useType || b.type || null,
+      profile_json,
+      equipment_json,
+      captures_json,
+      maintenance_json,
+      units_json,
+      extra_json: { flat: b }
+    };
+    const { error } = await client.from('buildings').upsert(row, { onConflict: 'id' });
+    if (error) { console.warn('[cloudSync] upsert failed:', error.message); return false; }
+    return true;
+  }
+
+  async function pushAllLocal() {
+    if (!(await cloudAuth.ready())) return 0;
+    const uid = cloudAuth.getUserId();
+    if (!uid || !_activeUserId) return 0;
+    let blds = [];
+    try { blds = JSON.parse(localStorage.getItem('bos_' + _activeUserId + '_buildings') || '[]'); } catch(e) {}
+    let n = 0;
+    for (const b of blds) { if (await pushBuilding(b)) n++; }
+    return n;
+  }
+
+  async function pullAndMerge() {
+    const cloud = await pullBuildings();
+    if (!cloud) return { pulled: 0, pushed: 0 };
+    if (!cloud.length) {
+      // Cloud empty → push local as first-time migration
+      const pushed = await pushAllLocal();
+      return { pulled: 0, pushed };
+    }
+    // Cloud has data → hydrate localStorage
+    const localBlds = cloud.map(r => ({
+      id: r.id, name: r.name, address: r.address, useType: r.use_type,
+      _owner: _activeUserId,
+      ...(r.extra_json?.flat || {})
+    }));
+    try { localStorage.setItem('bos_' + _activeUserId + '_buildings', JSON.stringify(localBlds)); } catch(e) {}
+    for (const r of cloud) {
+      try { if (r.profile_json && Object.keys(r.profile_json).length) localStorage.setItem('bos_bp_' + r.id, JSON.stringify(r.profile_json)); } catch(e) {}
+      try { if (Array.isArray(r.equipment_json) && r.equipment_json.length) localStorage.setItem('bos_eq_' + r.id, JSON.stringify(r.equipment_json)); } catch(e) {}
+      try { if (Array.isArray(r.captures_json) && r.captures_json.length) localStorage.setItem('bos_captures_' + r.id, JSON.stringify(r.captures_json)); } catch(e) {}
+      try { if (r.maintenance_json && Object.keys(r.maintenance_json).length) localStorage.setItem('bos_dm_updates_' + r.id, JSON.stringify(r.maintenance_json)); } catch(e) {}
+      try { if (Array.isArray(r.units_json) && r.units_json.length) localStorage.setItem('bos_units_' + r.id, JSON.stringify(r.units_json)); } catch(e) {}
+    }
+    return { pulled: cloud.length, pushed: 0 };
+  }
+
+  // Debounced pushAll — call after any write
+  let _pushTimer = null;
+  function schedulePushAll() {
+    if (_pushTimer) clearTimeout(_pushTimer);
+    _pushTimer = setTimeout(() => { pushAllLocal().catch(()=>{}); }, 1500);
+  }
+
+  return { pullBuildings, pushBuilding, pushAllLocal, pullAndMerge, schedulePushAll };
+})();
+
+// Kick off supabase init early
+try { cloudAuth.init(); } catch(e) {}
+
 // ─── Auth helpers (SHA-256 password hashing, consistent with profile modal) ───
 async function hashPassword(password) {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
@@ -9823,23 +10063,26 @@ async function verifyPassword(userId, password) {
 let _pendingLoginUserId = null;
 
 function showLoginState(state) {
-  ['Landing','Signin','PasswordPrompt','SetPassword'].forEach(s => {
+  ['Landing','Signin','PasswordPrompt','SetPassword','Create','Forgot'].forEach(s => {
     const el = document.getElementById('loginState' + s);
     if (el) el.style.display = 'none';
   });
-  const map = { landing:'Landing', signin:'Signin', prompt:'PasswordPrompt', setpw:'SetPassword' };
+  const map = { landing:'Landing', signin:'Signin', prompt:'PasswordPrompt', setpw:'SetPassword', create:'Create', forgot:'Forgot' };
   const el = document.getElementById('loginState' + (map[state] || 'Landing'));
   if (el) el.style.display = '';
   // Clear any error banners
-  ['siError','ppError','spError'].forEach(id => {
+  ['siError','ppError','spError','caError','fpError'].forEach(id => {
     const e = document.getElementById(id);
     if (e) { e.style.display = 'none'; e.textContent = ''; }
   });
+  const fpSuccess = document.getElementById('fpSuccess'); if (fpSuccess) fpSuccess.style.display = 'none';
   // Autofocus first input
   setTimeout(() => {
     if (state === 'signin') document.getElementById('siEmail')?.focus();
     else if (state === 'prompt') document.getElementById('ppPassword')?.focus();
     else if (state === 'setpw') document.getElementById('spPassword')?.focus();
+    else if (state === 'create') document.getElementById('caName')?.focus();
+    else if (state === 'forgot') document.getElementById('fpEmail')?.focus();
   }, 40);
 }
 
@@ -9960,6 +10203,86 @@ async function submitSignIn() {
   }
   if (!pw) { err.textContent = 'Enter your password.'; err.style.display = 'block'; return; }
 
+  // ─── Cloud-first sign in (Supabase Auth) ───
+  if (await cloudAuth.ready()) {
+    const result = await cloudAuth.signIn(email, pw);
+    if (result.ok) {
+      // Find or create local user record for this email
+      let user = Object.values(getUserRegistry()).find(u => (u.email || '').toLowerCase().trim() === email);
+      if (!user) {
+        // Scan orphan profiles
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('bos_') && k.endsWith('_profile')) {
+            try {
+              const u = JSON.parse(localStorage.getItem(k) || '{}');
+              if ((u.email || '').toLowerCase().trim() === email) { saveUserToRegistry(u); user = u; break; }
+            } catch(e) {}
+          }
+        }
+      }
+      if (!user) {
+        // First login on this device for a cloud account — create local record
+        const meta = result.user?.user_metadata || {};
+        const userId = 'u_' + (result.user?.id || '').replace(/-/g, '').slice(0, 12) || ('u_' + Date.now().toString(36));
+        user = {
+          userId,
+          name: meta.name || email.split('@')[0],
+          email,
+          company: meta.company || '',
+          role: meta.role || 'owner',
+          createdAt: new Date().toISOString()
+        };
+        saveUserToRegistry(user);
+        localStorage.setItem('bos_' + userId + '_profile', JSON.stringify(user));
+      }
+      // Mark auth as cloud-backed
+      const auth = getAuthData(user.userId) || {};
+      auth.cloudLinked = true; auth.loginAttempts = 0; auth.lockedUntil = null;
+      saveAuthData(user.userId, auth);
+      _finalizeLogin(user.userId);
+      // Pull cloud data & hydrate
+      try {
+        const sync = await cloudSync.pullAndMerge();
+        if (sync.pulled > 0) {
+          buildings = loadBuildings();
+          const savedId = loadActiveId();
+          activeBuildingId = (savedId && buildings.find(b=>b.id===savedId)) ? savedId : (buildings[0]?.id || null);
+          if (typeof updateSidebar === 'function') updateSidebar();
+          if (typeof renderDashboard === 'function') renderDashboard();
+        }
+      } catch(e) { console.warn('[sync] failed:', e); }
+      return;
+    }
+    // Cloud rejected — if not a recognized credential issue, fall back to local
+    const msg = (result.error || '').toLowerCase();
+    const isBadCred = msg.includes('invalid') || msg.includes('credential') || msg.includes('not found') || msg.includes('confirm');
+    if (!result.offline && isBadCred) {
+      // Check if there's a local account we can verify against (legacy migration path)
+      const localUser = Object.values(getUserRegistry()).find(u => (u.email || '').toLowerCase().trim() === email);
+      if (localUser && getAuthData(localUser.userId)?.passwordHash) {
+        const localResult = await verifyPassword(localUser.userId, pw);
+        if (localResult.ok) {
+          // Password matches local. Try to create a cloud account so future logins sync.
+          const signup = await cloudAuth.signUp(email, pw, { name: localUser.name, company: localUser.company });
+          if (signup.ok && !signup.needsVerify) {
+            const auth = getAuthData(localUser.userId) || {};
+            auth.cloudLinked = true; saveAuthData(localUser.userId, auth);
+            _finalizeLogin(localUser.userId);
+            try { await cloudSync.pushAllLocal(); } catch(e) {}
+            return;
+          }
+          _finalizeLogin(localUser.userId);
+          return;
+        }
+      }
+      err.textContent = 'Incorrect email or password.';
+      err.style.display = 'block';
+      return;
+    }
+    // offline / other — fall through to local auth
+  }
+
   // Find user by email (registry first, then orphan scan)
   let user = Object.values(getUserRegistry()).find(u => (u.email || '').toLowerCase().trim() === email);
   if (!user) {
@@ -10031,8 +10354,122 @@ async function submitSetPassword() {
   auth.loginAttempts = 0;
   auth.lockedUntil = null;
   saveAuthData(_pendingLoginUserId, auth);
+
+  // Also create a Supabase Auth account so this password works across devices
+  try {
+    const reg = getUserRegistry();
+    const user = reg[_pendingLoginUserId];
+    if (user?.email && await cloudAuth.ready()) {
+      const signup = await cloudAuth.signUp(user.email, pw, { name: user.name, company: user.company });
+      if (signup.ok) {
+        auth.cloudLinked = true;
+        saveAuthData(_pendingLoginUserId, auth);
+      } else if (/already|exists|registered/i.test(signup.error || '')) {
+        // Email already exists in Supabase — try to sign in (password might match)
+        const si = await cloudAuth.signIn(user.email, pw);
+        if (si.ok) { auth.cloudLinked = true; saveAuthData(_pendingLoginUserId, auth); }
+      }
+    }
+  } catch(e) { console.warn('[cloud signup] failed:', e); }
+
   _finalizeLogin(_pendingLoginUserId);
+  // Best-effort push local data to cloud
+  try { cloudSync.pushAllLocal(); } catch(e) {}
   _pendingLoginUserId = null;
+}
+
+// ─── Create Account flow (full Supabase signup) ───
+async function submitCreateAccount() {
+  const err = document.getElementById('caError');
+  const name = (document.getElementById('caName')?.value || '').trim();
+  const email = (document.getElementById('caEmail')?.value || '').trim().toLowerCase();
+  const company = (document.getElementById('caCompany')?.value || '').trim();
+  const pw = document.getElementById('caPassword')?.value || '';
+  const confirm = document.getElementById('caConfirm')?.value || '';
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+  function fail(msg) { if (err) { err.textContent = msg; err.style.display = 'block'; } }
+  if (!name) return fail('Enter your name.');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('Enter a valid email address.');
+  if (pw.length < 8) return fail('Password must be at least 8 characters.');
+  if (pw !== confirm) return fail('Passwords do not match.');
+
+  const cloudReady = await cloudAuth.ready();
+  let userId = null;
+
+  if (cloudReady) {
+    const signup = await cloudAuth.signUp(email, pw, { name, company });
+    if (!signup.ok) {
+      if (/already|exists|registered/i.test(signup.error || '')) {
+        return fail('An account with that email already exists. Try signing in instead.');
+      }
+      return fail(signup.error || 'Could not create account.');
+    }
+    const uid = signup.user?.id || '';
+    userId = 'u_' + uid.replace(/-/g, '').slice(0, 12) || ('u_' + Date.now().toString(36));
+  } else {
+    userId = 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  const user = {
+    userId, name, email, company,
+    role: 'owner',
+    createdAt: new Date().toISOString()
+  };
+  saveUserToRegistry(user);
+  localStorage.setItem('bos_' + userId + '_profile', JSON.stringify(user));
+  const hash = await hashPassword(pw);
+  saveAuthData(userId, {
+    passwordHash: hash,
+    passwordSetAt: new Date().toISOString(),
+    loginAttempts: 0,
+    lockedUntil: null,
+    cloudLinked: cloudReady
+  });
+
+  _activeUserId = userId;
+  _finalizeLogin(userId);
+}
+
+function updateCaStrength() {
+  const pw = document.getElementById('caPassword')?.value || '';
+  const el = document.getElementById('caStrength');
+  if (!el) return;
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const labels = ['Too short', 'Weak', 'Fair', 'Good', 'Strong', 'Excellent'];
+  const colors = ['rgba(255,255,255,0.45)', '#f87171', '#fbbf24', '#a3e635', '#34d399', '#34d399'];
+  el.textContent = pw ? ('Strength: ' + labels[Math.min(score, 5)]) : 'Use 8+ chars with a mix of letters, numbers, and symbols.';
+  el.style.color = pw ? colors[Math.min(score, 5)] : 'rgba(255,255,255,0.45)';
+}
+
+// ─── Forgot password ───
+async function submitForgotPassword() {
+  const err = document.getElementById('fpError');
+  const ok = document.getElementById('fpSuccess');
+  const email = (document.getElementById('fpEmail')?.value || '').trim().toLowerCase();
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+  if (ok) { ok.style.display = 'none'; }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (err) { err.textContent = 'Enter a valid email address.'; err.style.display = 'block'; }
+    return;
+  }
+  if (!(await cloudAuth.ready())) {
+    if (err) { err.textContent = 'Password reset requires internet connection.'; err.style.display = 'block'; }
+    return;
+  }
+  const result = await cloudAuth.sendResetEmail(email);
+  if (!result.ok) {
+    if (err) { err.textContent = result.error || 'Could not send reset email.'; err.style.display = 'block'; }
+    return;
+  }
+  if (ok) {
+    ok.innerHTML = 'Check your inbox — we sent a password reset link to <b>' + email + '</b>.';
+    ok.style.display = 'block';
+  }
 }
 
 function updateSpStrength() {
@@ -10649,12 +11086,10 @@ function continueAsUser() {
 }
 
 function startCreateAccount() {
-  // Create a brand new account (new userId, new storage namespace)
-  // NOTE: Do NOT remove legacy 'bos_user' — it may be the only copy of an existing user's profile
+  // Route to the in-login-card Create Account state (collects name/email/password/company)
   _activeUserId = null;
   currentUser = null;
-  hideLoginScreen();
-  showUserProfileModal();
+  showLoginState('create');
 }
 
 function signInExisting() {
