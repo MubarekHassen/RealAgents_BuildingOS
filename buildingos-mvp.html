@@ -1013,60 +1013,116 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <p>Turn your building documents into actionable intelligence — capital plans, maintenance registers, equipment tracking, and more.</p>
     </div>
 
-    <!-- Existing accounts list (populated dynamically) -->
-    <div id="loginAccountsList" class="login-accounts-list" style="display:none"></div>
-
-    <!-- Returning user banner (legacy compat) -->
-    <div class="login-returning" id="loginReturning" style="display:none">
-      <div class="login-returning-avatar" id="loginRetAvatar">?</div>
-      <div class="login-returning-info">
-        <div class="login-returning-name" id="loginRetName">Welcome back</div>
-        <div class="login-returning-meta" id="loginRetMeta"></div>
-      </div>
-      <button class="login-returning-btn" onclick="continueAsUser()">Continue</button>
-    </div>
-
-    <div class="login-divider" id="loginDivider" style="display:none"><span>or sign in with email</span></div>
-
-    <!-- Email sign-in form -->
-    <div id="loginEmailForm" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">
-      <input type="email" id="loginEmailInput" placeholder="you@company.com" autocomplete="email"
-        style="padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;transition:all 0.15s"
-        onfocus="this.style.borderColor='rgba(99,102,241,0.6)';this.style.background='rgba(255,255,255,0.08)'"
-        onblur="this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='rgba(255,255,255,0.05)'"
-        onkeydown="if(event.key==='Enter')signInWithEmail()">
-      <button class="login-btn login-btn-primary" onclick="signInWithEmail()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-        Sign In
-      </button>
-      <div id="loginEmailError" style="font-size:12px;color:#fca5a5;display:none;padding:6px 4px"></div>
-    </div>
-
-    <div class="login-divider"><span>new here?</span></div>
-
-    <div class="login-actions">
-      <button class="login-btn login-btn-secondary" onclick="startCreateAccount()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-        Create New Account
-      </button>
-    </div>
-
-    <!-- Recovery / demo tools -->
-    <div style="margin-top:18px;padding:12px 14px;border-radius:12px;background:rgba(99,102,241,0.08);border:1px dashed rgba(99,102,241,0.3)">
-      <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Pilot & Recovery</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <button onclick="restoreMarquisVillaAccount()" style="text-align:left;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;transition:all 0.15s" onmouseover="this.style.background='rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(255,255,255,0.08)'">
-          <span style="font-size:14px">🏘️</span>
-          <span><b style="color:#fff">Load EF Capital Pilot — Marquis Villa</b><br><span style="font-size:10px;color:rgba(255,255,255,0.5)">6 buildings, 76 units, AppFolio-synced</span></span>
+    <!-- ─── STATE 1: Landing (choose sign in / create account) ─── -->
+    <div id="loginStateLanding">
+      <div id="loginAccountsList" class="login-accounts-list" style="display:none"></div>
+      <div class="login-divider" id="loginDivider" style="display:none"><span>or</span></div>
+      <div class="login-actions">
+        <button class="login-btn login-btn-primary" onclick="showLoginState('signin')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Sign In
         </button>
-        <button onclick="recoverAccountsFromStorage()" style="text-align:left;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;transition:all 0.15s" onmouseover="this.style.background='rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(255,255,255,0.08)'">
-          <span style="font-size:14px">🔍</span>
-          <span><b style="color:#fff">Scan device for existing accounts</b><br><span style="font-size:10px;color:rgba(255,255,255,0.5)">Recover data from earlier sessions</span></span>
+        <button class="login-btn login-btn-secondary" onclick="startCreateAccount()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          Create Account
         </button>
       </div>
     </div>
 
-    <div class="login-footer" style="margin-top:16px">
+    <!-- ─── STATE 2: Sign In form (email + password) ─── -->
+    <div id="loginStateSignin" style="display:none">
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:6px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Email</label>
+          <input type="email" id="siEmail" placeholder="you@company.com" autocomplete="email"
+            style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;transition:all 0.15s;box-sizing:border-box"
+            onfocus="this.style.borderColor='rgba(99,102,241,0.6)';this.style.background='rgba(255,255,255,0.08)'"
+            onblur="this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='rgba(255,255,255,0.05)'"
+            onkeydown="if(event.key==='Enter')document.getElementById('siPassword').focus()">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Password</label>
+          <div style="position:relative">
+            <input type="password" id="siPassword" placeholder="••••••••" autocomplete="current-password"
+              style="width:100%;padding:13px 48px 13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;transition:all 0.15s;box-sizing:border-box"
+              onfocus="this.style.borderColor='rgba(99,102,241,0.6)';this.style.background='rgba(255,255,255,0.08)'"
+              onblur="this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='rgba(255,255,255,0.05)'"
+              onkeydown="if(event.key==='Enter')submitSignIn()">
+            <button type="button" onclick="togglePasswordVisibility('siPassword')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:rgba(255,255,255,0.55);font-size:11px;font-weight:600;cursor:pointer;padding:4px 8px">Show</button>
+          </div>
+        </div>
+        <div id="siError" style="font-size:12px;color:#fca5a5;display:none;padding:4px 2px"></div>
+        <button class="login-btn login-btn-primary" onclick="submitSignIn()" style="margin-top:4px">
+          Sign In
+        </button>
+        <button type="button" onclick="showLoginState('landing')" style="background:none;border:none;color:rgba(255,255,255,0.55);font-size:12px;cursor:pointer;padding:8px;font-family:inherit">← Back</button>
+      </div>
+    </div>
+
+    <!-- ─── STATE 3: Password prompt for remembered account ─── -->
+    <div id="loginStatePasswordPrompt" style="display:none">
+      <div style="display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);margin-bottom:14px">
+        <div class="login-returning-avatar" id="ppAvatar" style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#6366f1,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px">?</div>
+        <div style="flex:1;min-width:0">
+          <div id="ppName" style="font-size:14px;font-weight:700;color:#fff"></div>
+          <div id="ppEmail" style="font-size:12px;color:rgba(255,255,255,0.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Enter your password</label>
+          <div style="position:relative">
+            <input type="password" id="ppPassword" placeholder="••••••••" autocomplete="current-password"
+              style="width:100%;padding:13px 48px 13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;transition:all 0.15s;box-sizing:border-box"
+              onfocus="this.style.borderColor='rgba(99,102,241,0.6)';this.style.background='rgba(255,255,255,0.08)'"
+              onblur="this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='rgba(255,255,255,0.05)'"
+              onkeydown="if(event.key==='Enter')submitPasswordPrompt()">
+            <button type="button" onclick="togglePasswordVisibility('ppPassword')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:rgba(255,255,255,0.55);font-size:11px;font-weight:600;cursor:pointer;padding:4px 8px">Show</button>
+          </div>
+        </div>
+        <div id="ppError" style="font-size:12px;color:#fca5a5;display:none;padding:4px 2px"></div>
+        <button class="login-btn login-btn-primary" onclick="submitPasswordPrompt()">Continue</button>
+        <button type="button" onclick="showLoginState('landing')" style="background:none;border:none;color:rgba(255,255,255,0.55);font-size:12px;cursor:pointer;padding:8px;font-family:inherit">← Use a different account</button>
+      </div>
+    </div>
+
+    <!-- ─── STATE 4: Set password for legacy account ─── -->
+    <div id="loginStateSetPassword" style="display:none">
+      <div style="padding:14px;border-radius:12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);margin-bottom:14px;font-size:12px;color:rgba(255,255,255,0.8);line-height:1.5">
+        <b style="color:#fbbf24">🔐 Secure this account</b><br>
+        This account doesn't have a password yet. Create one now to protect your buildings data.
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;padding:14px;border-radius:12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);margin-bottom:14px">
+        <div id="spAvatar" style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:16px">?</div>
+        <div style="flex:1;min-width:0">
+          <div id="spName" style="font-size:13px;font-weight:700;color:#fff"></div>
+          <div id="spEmail" style="font-size:11px;color:rgba(255,255,255,0.55)"></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">New password</label>
+          <div style="position:relative">
+            <input type="password" id="spPassword" placeholder="At least 8 characters" autocomplete="new-password"
+              style="width:100%;padding:13px 48px 13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;box-sizing:border-box"
+              oninput="updateSpStrength()"
+              onkeydown="if(event.key==='Enter')document.getElementById('spConfirm').focus()">
+            <button type="button" onclick="togglePasswordVisibility('spPassword')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:rgba(255,255,255,0.55);font-size:11px;font-weight:600;cursor:pointer;padding:4px 8px">Show</button>
+          </div>
+          <div id="spStrength" style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:6px">Use 8+ chars with a mix of letters, numbers, and symbols.</div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Confirm password</label>
+          <input type="password" id="spConfirm" placeholder="Re-enter password" autocomplete="new-password"
+            style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;box-sizing:border-box"
+            onkeydown="if(event.key==='Enter')submitSetPassword()">
+        </div>
+        <div id="spError" style="font-size:12px;color:#fca5a5;display:none;padding:4px 2px"></div>
+        <button class="login-btn login-btn-primary" onclick="submitSetPassword()">Set Password & Continue</button>
+      </div>
+    </div>
+
+    <div class="login-footer" style="margin-top:22px">
       <div>Each account has its own buildings and data, stored on your device.</div>
     </div>
   </div>
@@ -9681,6 +9737,12 @@ function showLoginScreen() {
   const welcomeText = document.getElementById('loginWelcomeText');
   const accountsList = document.getElementById('loginAccountsList');
 
+  // Silent recovery — rebuild registry from orphaned per-user profiles
+  try { _silentAccountRecovery(); } catch(e) {}
+
+  // Always reset to the landing state when re-opening
+  try { showLoginState('landing'); } catch(e) {}
+
   // Find all known accounts from the user registry
   const registry = getUserRegistry();
   const knownAccounts = Object.values(registry).filter(u => u.name);
@@ -9693,7 +9755,7 @@ function showLoginScreen() {
     // Show known accounts for quick login
     if (welcomeText) {
       const h2 = welcomeText.querySelector('h2'); if (h2) h2.textContent = 'Welcome to BuildingOS';
-      const p = welcomeText.querySelector('p'); if (p) p.textContent = 'Sign in to your account or create a new one. Each account has its own buildings and data.';
+      const p = welcomeText.querySelector('p'); if (p) p.textContent = 'Click your account to sign in, or use the buttons below to sign in with email or create a new account.';
     }
 
     // Build account selection list
@@ -9735,17 +9797,104 @@ function hideLoginScreen() {
   document.querySelector('.main').style.display = '';
 }
 
+// ─── Auth helpers (SHA-256 password hashing, consistent with profile modal) ───
+async function hashPassword(password) {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function getAuthData(userId) {
+  try { return JSON.parse(localStorage.getItem('bos_' + userId + '_auth') || 'null'); }
+  catch(e) { return null; }
+}
+
+function saveAuthData(userId, authData) {
+  try { localStorage.setItem('bos_' + userId + '_auth', JSON.stringify(authData)); } catch(e) {}
+}
+
+async function verifyPassword(userId, password) {
+  const auth = getAuthData(userId);
+  if (!auth || !auth.passwordHash) return { ok: false, reason: 'no_password' };
+  const hash = await hashPassword(password);
+  return { ok: hash === auth.passwordHash, reason: hash === auth.passwordHash ? 'ok' : 'wrong' };
+}
+
+// ─── Login state machine ───
+let _pendingLoginUserId = null;
+
+function showLoginState(state) {
+  ['Landing','Signin','PasswordPrompt','SetPassword'].forEach(s => {
+    const el = document.getElementById('loginState' + s);
+    if (el) el.style.display = 'none';
+  });
+  const map = { landing:'Landing', signin:'Signin', prompt:'PasswordPrompt', setpw:'SetPassword' };
+  const el = document.getElementById('loginState' + (map[state] || 'Landing'));
+  if (el) el.style.display = '';
+  // Clear any error banners
+  ['siError','ppError','spError'].forEach(id => {
+    const e = document.getElementById(id);
+    if (e) { e.style.display = 'none'; e.textContent = ''; }
+  });
+  // Autofocus first input
+  setTimeout(() => {
+    if (state === 'signin') document.getElementById('siEmail')?.focus();
+    else if (state === 'prompt') document.getElementById('ppPassword')?.focus();
+    else if (state === 'setpw') document.getElementById('spPassword')?.focus();
+  }, 40);
+}
+
+// Clicking a remembered account → prompt for password (or set-password if none)
 function loginAsExistingUser(userId) {
-  // Log in as a specific existing user
+  _pendingLoginUserId = userId;
+  const reg = getUserRegistry();
+  const user = reg[userId];
+  if (!user) {
+    // Profile missing from registry — try to repair from per-user store
+    try {
+      const fallback = JSON.parse(localStorage.getItem('bos_' + userId + '_profile') || 'null');
+      if (fallback) { saveUserToRegistry(fallback); return loginAsExistingUser(userId); }
+    } catch(e) {}
+    alert('Account data could not be loaded.');
+    return;
+  }
+  const auth = getAuthData(userId);
+  if (!auth || !auth.passwordHash) {
+    // Legacy account without a password — force setup
+    const initial = (user.name || '?').charAt(0).toUpperCase();
+    document.getElementById('spAvatar').textContent = initial;
+    document.getElementById('spName').textContent = user.name || '';
+    document.getElementById('spEmail').textContent = user.email || '';
+    showLoginState('setpw');
+    return;
+  }
+  // Show password prompt
+  const initial = (user.name || '?').charAt(0).toUpperCase();
+  document.getElementById('ppAvatar').textContent = initial;
+  document.getElementById('ppName').textContent = user.name || '';
+  document.getElementById('ppEmail').textContent = user.email || '';
+  document.getElementById('ppPassword').value = '';
+  showLoginState('prompt');
+}
+
+// Actually complete the login once authenticated
+function _finalizeLogin(userId) {
   _activeUserId = userId;
   saveActiveSession(userId);
   currentUser = loadUser();
   if (!currentUser) {
-    // User data missing — fall back to profile creation
     hideLoginScreen();
     showUserProfileModal();
     return;
   }
+  // Update login history
+  const auth = getAuthData(userId) || {};
+  auth.lastLogin = new Date().toISOString();
+  auth.loginHistory = (auth.loginHistory || []).slice(-9);
+  auth.loginHistory.push({ timestamp: auth.lastLogin, device: navigator.userAgent?.slice(0, 80) || 'Browser' });
+  auth.loginAttempts = 0;
+  auth.lockedUntil = null;
+  saveAuthData(userId, auth);
+
   buildings = loadBuildings();
   const savedId = loadActiveId();
   activeBuildingId = (savedId && buildings.find(b=>b.id===savedId)) ? savedId : (buildings[0]?.id || null);
@@ -9759,11 +9908,147 @@ function loginAsExistingUser(userId) {
   }
   hideLoginScreen();
   updateSidebar();
+  if (typeof updateAdminNav === 'function') updateAdminNav();
   renderDashboard();
   checkBackend();
   checkIntegrationStatus();
-  // If no buildings, prompt setup
   if (!buildings.length) setTimeout(() => showBuildingSetup(), 400);
+}
+
+// Submit the remembered-account password prompt
+async function submitPasswordPrompt() {
+  const err = document.getElementById('ppError');
+  const pw = document.getElementById('ppPassword').value;
+  err.style.display = 'none';
+  if (!_pendingLoginUserId) { showLoginState('landing'); return; }
+  if (!pw) { err.textContent = 'Enter your password.'; err.style.display = 'block'; return; }
+
+  // Check lockout
+  const auth = getAuthData(_pendingLoginUserId) || {};
+  if (auth.lockedUntil && new Date(auth.lockedUntil) > new Date()) {
+    const mins = Math.ceil((new Date(auth.lockedUntil) - new Date()) / 60000);
+    err.textContent = `Too many failed attempts. Try again in ${mins} min.`;
+    err.style.display = 'block';
+    return;
+  }
+
+  const result = await verifyPassword(_pendingLoginUserId, pw);
+  if (result.ok) {
+    _finalizeLogin(_pendingLoginUserId);
+    _pendingLoginUserId = null;
+  } else {
+    auth.loginAttempts = (auth.loginAttempts || 0) + 1;
+    if (auth.loginAttempts >= 5) {
+      auth.lockedUntil = new Date(Date.now() + 15 * 60000).toISOString();
+      err.textContent = 'Too many failed attempts. Account locked for 15 minutes.';
+    } else {
+      err.textContent = `Incorrect password. ${5 - auth.loginAttempts} attempt${5-auth.loginAttempts===1?'':'s'} remaining.`;
+    }
+    saveAuthData(_pendingLoginUserId, auth);
+    err.style.display = 'block';
+  }
+}
+
+// Submit the email + password sign-in form
+async function submitSignIn() {
+  const err = document.getElementById('siError');
+  const email = (document.getElementById('siEmail').value || '').trim().toLowerCase();
+  const pw = document.getElementById('siPassword').value;
+  err.style.display = 'none';
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    err.textContent = 'Enter a valid email address.'; err.style.display = 'block'; return;
+  }
+  if (!pw) { err.textContent = 'Enter your password.'; err.style.display = 'block'; return; }
+
+  // Find user by email (registry first, then orphan scan)
+  let user = Object.values(getUserRegistry()).find(u => (u.email || '').toLowerCase().trim() === email);
+  if (!user) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('bos_') && k.endsWith('_profile')) {
+        try {
+          const u = JSON.parse(localStorage.getItem(k) || '{}');
+          if ((u.email || '').toLowerCase().trim() === email) {
+            saveUserToRegistry(u); user = u; break;
+          }
+        } catch(e) {}
+      }
+    }
+  }
+  if (!user) {
+    err.textContent = 'No account found for that email. Create an account instead?';
+    err.style.display = 'block'; return;
+  }
+
+  // Check for password, fall through to set-password if missing
+  const auth = getAuthData(user.userId);
+  if (!auth || !auth.passwordHash) {
+    _pendingLoginUserId = user.userId;
+    const initial = (user.name || '?').charAt(0).toUpperCase();
+    document.getElementById('spAvatar').textContent = initial;
+    document.getElementById('spName').textContent = user.name || '';
+    document.getElementById('spEmail').textContent = user.email || '';
+    showLoginState('setpw');
+    return;
+  }
+
+  if (auth.lockedUntil && new Date(auth.lockedUntil) > new Date()) {
+    const mins = Math.ceil((new Date(auth.lockedUntil) - new Date()) / 60000);
+    err.textContent = `Too many failed attempts. Try again in ${mins} min.`;
+    err.style.display = 'block'; return;
+  }
+
+  const result = await verifyPassword(user.userId, pw);
+  if (result.ok) {
+    _finalizeLogin(user.userId);
+  } else {
+    auth.loginAttempts = (auth.loginAttempts || 0) + 1;
+    if (auth.loginAttempts >= 5) {
+      auth.lockedUntil = new Date(Date.now() + 15 * 60000).toISOString();
+      err.textContent = 'Too many failed attempts. Account locked for 15 minutes.';
+    } else {
+      err.textContent = `Incorrect password. ${5 - auth.loginAttempts} attempt${5-auth.loginAttempts===1?'':'s'} remaining.`;
+    }
+    saveAuthData(user.userId, auth);
+    err.style.display = 'block';
+  }
+}
+
+// Submit the "set password" form for legacy/password-less accounts
+async function submitSetPassword() {
+  const err = document.getElementById('spError');
+  const pw = document.getElementById('spPassword').value;
+  const confirm = document.getElementById('spConfirm').value;
+  err.style.display = 'none';
+  if (!_pendingLoginUserId) { showLoginState('landing'); return; }
+  if (pw.length < 8) { err.textContent = 'Password must be at least 8 characters.'; err.style.display = 'block'; return; }
+  if (pw !== confirm) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; return; }
+
+  const hash = await hashPassword(pw);
+  const auth = getAuthData(_pendingLoginUserId) || {};
+  auth.passwordHash = hash;
+  auth.passwordSetAt = new Date().toISOString();
+  auth.loginAttempts = 0;
+  auth.lockedUntil = null;
+  saveAuthData(_pendingLoginUserId, auth);
+  _finalizeLogin(_pendingLoginUserId);
+  _pendingLoginUserId = null;
+}
+
+function updateSpStrength() {
+  const pw = document.getElementById('spPassword').value;
+  const el = document.getElementById('spStrength');
+  if (!el) return;
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const labels = ['Too short', 'Weak', 'Fair', 'Good', 'Strong', 'Excellent'];
+  const colors = ['rgba(255,255,255,0.45)', '#f87171', '#fbbf24', '#a3e635', '#34d399', '#34d399'];
+  el.textContent = pw ? ('Strength: ' + labels[Math.min(score, 5)]) : 'Use 8+ chars with a mix of letters, numbers, and symbols.';
+  el.style.color = pw ? colors[Math.min(score, 5)] : 'rgba(255,255,255,0.45)';
 }
 
 // ─── ADMIN DASHBOARD ──────────────────────────────────────────
@@ -10378,58 +10663,8 @@ function signInExisting() {
 }
 
 // ─── Email-based sign-in (lightweight, no password) ─────────
-function signInWithEmail() {
-  const input = document.getElementById('loginEmailInput');
-  const errEl = document.getElementById('loginEmailError');
-  const email = (input?.value || '').trim().toLowerCase();
-  errEl.style.display = 'none';
-  errEl.textContent = '';
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    errEl.textContent = 'Enter a valid email address.';
-    errEl.style.display = 'block';
-    return;
-  }
-  const registry = getUserRegistry();
-  let match = Object.values(registry).find(u => (u.email || '').toLowerCase().trim() === email);
-  if (!match) {
-    // Fallback: scan orphaned per-user profiles (legacy accounts missing from registry)
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.endsWith('_profile') && k.startsWith('bos_')) {
-        try {
-          const u = JSON.parse(localStorage.getItem(k) || '{}');
-          if ((u.email || '').toLowerCase().trim() === email) {
-            saveUserToRegistry(u);
-            match = u;
-            break;
-          }
-        } catch(e) {}
-      }
-    }
-  }
-  if (match) {
-    loginAsExistingUser(match.userId);
-    return;
-  }
-  // No existing account → offer to create one with this email
-  if (confirm(`No account found for ${email}. Create a new account with this email?`)) {
-    _activeUserId = null;
-    currentUser = null;
-    hideLoginScreen();
-    showUserProfileModal();
-    // Prefill email in the profile modal if it exposes a field
-    setTimeout(() => {
-      const ef = document.getElementById('profileEmail') || document.getElementById('upEmail');
-      if (ef) ef.value = email;
-    }, 60);
-  } else {
-    errEl.textContent = 'No account matches that email on this device.';
-    errEl.style.display = 'block';
-  }
-}
-
-// ─── Recovery: scan localStorage and rebuild user registry ───
-function recoverAccountsFromStorage() {
+// ─── Silent recovery: auto-rebuild registry from per-user profiles on load ───
+function _silentAccountRecovery() {
   let recovered = 0;
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
@@ -10452,15 +10687,10 @@ function recoverAccountsFromStorage() {
       recovered++;
     }
   } catch(e) {}
-  if (recovered > 0) {
-    alert(`Found ${recovered} account${recovered===1?'':'s'} on this device. They should now appear in the login list.`);
-    showLoginScreen();
-  } else {
-    alert('No existing accounts found on this device. Use "Create New Account" to start fresh, or load the EF Capital Pilot demo.');
-  }
+  return recovered;
 }
 
-// ─── Restore / seed the EF Capital Pilot (Marquis Villa) account ───
+// ─── Restore / seed the EF Capital Pilot (Marquis Villa) account (admin use only) ───
 function restoreMarquisVillaAccount() {
   // Check if it already exists
   const registry = getUserRegistry();
