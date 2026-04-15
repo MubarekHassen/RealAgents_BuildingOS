@@ -1026,16 +1026,47 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <button class="login-returning-btn" onclick="continueAsUser()">Continue</button>
     </div>
 
-    <div class="login-divider" id="loginDivider" style="display:none"><span>or</span></div>
+    <div class="login-divider" id="loginDivider" style="display:none"><span>or sign in with email</span></div>
+
+    <!-- Email sign-in form -->
+    <div id="loginEmailForm" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">
+      <input type="email" id="loginEmailInput" placeholder="you@company.com" autocomplete="email"
+        style="padding:13px 16px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font:inherit;font-size:14px;outline:none;transition:all 0.15s"
+        onfocus="this.style.borderColor='rgba(99,102,241,0.6)';this.style.background='rgba(255,255,255,0.08)'"
+        onblur="this.style.borderColor='rgba(255,255,255,0.15)';this.style.background='rgba(255,255,255,0.05)'"
+        onkeydown="if(event.key==='Enter')signInWithEmail()">
+      <button class="login-btn login-btn-primary" onclick="signInWithEmail()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Sign In
+      </button>
+      <div id="loginEmailError" style="font-size:12px;color:#fca5a5;display:none;padding:6px 4px"></div>
+    </div>
+
+    <div class="login-divider"><span>new here?</span></div>
 
     <div class="login-actions">
-      <button class="login-btn login-btn-primary" onclick="startCreateAccount()">
+      <button class="login-btn login-btn-secondary" onclick="startCreateAccount()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
         Create New Account
       </button>
     </div>
 
-    <div class="login-footer">
+    <!-- Recovery / demo tools -->
+    <div style="margin-top:18px;padding:12px 14px;border-radius:12px;background:rgba(99,102,241,0.08);border:1px dashed rgba(99,102,241,0.3)">
+      <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Pilot & Recovery</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button onclick="restoreMarquisVillaAccount()" style="text-align:left;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;transition:all 0.15s" onmouseover="this.style.background='rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(255,255,255,0.08)'">
+          <span style="font-size:14px">🏘️</span>
+          <span><b style="color:#fff">Load EF Capital Pilot — Marquis Villa</b><br><span style="font-size:10px;color:rgba(255,255,255,0.5)">6 buildings, 76 units, AppFolio-synced</span></span>
+        </button>
+        <button onclick="recoverAccountsFromStorage()" style="text-align:left;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;transition:all 0.15s" onmouseover="this.style.background='rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(255,255,255,0.08)'">
+          <span style="font-size:14px">🔍</span>
+          <span><b style="color:#fff">Scan device for existing accounts</b><br><span style="font-size:10px;color:rgba(255,255,255,0.5)">Recover data from earlier sessions</span></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="login-footer" style="margin-top:16px">
       <div>Each account has its own buildings and data, stored on your device.</div>
     </div>
   </div>
@@ -10344,6 +10375,191 @@ function startCreateAccount() {
 function signInExisting() {
   // Alias — same as showing the account picker
   showLoginScreen();
+}
+
+// ─── Email-based sign-in (lightweight, no password) ─────────
+function signInWithEmail() {
+  const input = document.getElementById('loginEmailInput');
+  const errEl = document.getElementById('loginEmailError');
+  const email = (input?.value || '').trim().toLowerCase();
+  errEl.style.display = 'none';
+  errEl.textContent = '';
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errEl.textContent = 'Enter a valid email address.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const registry = getUserRegistry();
+  let match = Object.values(registry).find(u => (u.email || '').toLowerCase().trim() === email);
+  if (!match) {
+    // Fallback: scan orphaned per-user profiles (legacy accounts missing from registry)
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.endsWith('_profile') && k.startsWith('bos_')) {
+        try {
+          const u = JSON.parse(localStorage.getItem(k) || '{}');
+          if ((u.email || '').toLowerCase().trim() === email) {
+            saveUserToRegistry(u);
+            match = u;
+            break;
+          }
+        } catch(e) {}
+      }
+    }
+  }
+  if (match) {
+    loginAsExistingUser(match.userId);
+    return;
+  }
+  // No existing account → offer to create one with this email
+  if (confirm(`No account found for ${email}. Create a new account with this email?`)) {
+    _activeUserId = null;
+    currentUser = null;
+    hideLoginScreen();
+    showUserProfileModal();
+    // Prefill email in the profile modal if it exposes a field
+    setTimeout(() => {
+      const ef = document.getElementById('profileEmail') || document.getElementById('upEmail');
+      if (ef) ef.value = email;
+    }, 60);
+  } else {
+    errEl.textContent = 'No account matches that email on this device.';
+    errEl.style.display = 'block';
+  }
+}
+
+// ─── Recovery: scan localStorage and rebuild user registry ───
+function recoverAccountsFromStorage() {
+  let recovered = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('bos_') && k.endsWith('_profile')) {
+      try {
+        const u = JSON.parse(localStorage.getItem(k) || '{}');
+        if (u && u.userId && u.name) {
+          saveUserToRegistry(u);
+          recovered++;
+        }
+      } catch(e) {}
+    }
+  }
+  // Also rescue legacy 'bos_user' if missing from registry
+  try {
+    const legacy = JSON.parse(localStorage.getItem('bos_user') || 'null');
+    if (legacy && legacy.name) {
+      legacy.userId = legacy.userId || ('u_' + Date.now().toString(36));
+      saveUserToRegistry(legacy);
+      recovered++;
+    }
+  } catch(e) {}
+  if (recovered > 0) {
+    alert(`Found ${recovered} account${recovered===1?'':'s'} on this device. They should now appear in the login list.`);
+    showLoginScreen();
+  } else {
+    alert('No existing accounts found on this device. Use "Create New Account" to start fresh, or load the EF Capital Pilot demo.');
+  }
+}
+
+// ─── Restore / seed the EF Capital Pilot (Marquis Villa) account ───
+function restoreMarquisVillaAccount() {
+  // Check if it already exists
+  const registry = getUserRegistry();
+  let existing = Object.values(registry).find(u =>
+    (u.email || '').toLowerCase() === 'mubarek@berkeley.edu' ||
+    (u.company || '').toLowerCase().includes('ef capital') ||
+    (u.company || '').toLowerCase().includes('realagents')
+  );
+  if (existing) {
+    if (!confirm(`Found existing account "${existing.name}" (${existing.company || existing.email}). Sign in to it?`)) return;
+    loginAsExistingUser(existing.userId);
+    return;
+  }
+
+  // Build fresh user
+  const userId = 'u_efcap_' + Date.now().toString(36);
+  const user = {
+    userId,
+    name: 'Mubarek Hassen',
+    email: 'mubarek@berkeley.edu',
+    company: 'EF Capital / RealAgents',
+    role: 'owner',
+    createdAt: new Date().toISOString()
+  };
+  saveUserToRegistry(user);
+  localStorage.setItem('bos_' + userId + '_profile', JSON.stringify(user));
+
+  // Marquis Villa building specs (from AppFolio Fixed Asset data)
+  const marquisBuildings = [
+    { addr:'8534 Marquis Dr', units: 16 },
+    { addr:'8538 Marquis Dr', units: 11 },
+    { addr:'8542 Marquis Dr', units: 13 },
+    { addr:'8546 Marquis Dr', units: 13 },
+    { addr:'8550 Marquis Dr', units: 9  },
+    { addr:'8554 Marquis Dr', units: 14 },
+  ];
+
+  // Units with correct specs (1400 sqft updates for 8538-201, 8546-413, 8550-509; 1.5 baths for 8554-609)
+  const specOverrides = {
+    '8538-201': { sqft: 1400, beds: 3, baths: 2 },
+    '8546-413': { sqft: 1400, beds: 3, baths: 2 },
+    '8550-509': { sqft: 1400, beds: 3, baths: 2 },
+    '8554-609': { sqft: 1000, beds: 2, baths: 1.5 }
+  };
+
+  const bldgId = 'b_marquis_' + Date.now().toString(36);
+  const units_list = [];
+  const building_details = [];
+  marquisBuildings.forEach((b, bi) => {
+    building_details.push({ label: b.addr, address: b.addr, unitCount: b.units });
+    const prefix = b.addr.split(' ')[0]; // e.g. "8534"
+    for (let u = 1; u <= b.units; u++) {
+      // Unit naming: building-floor-sequence. Building 1 → 101-116, Building 2 → 201-211, etc.
+      const seq = (bi + 1) * 100 + u;
+      const unitName = prefix + '-' + seq;
+      const override = specOverrides[unitName];
+      units_list.push({
+        name: unitName,
+        sqft: override?.sqft || (u % 3 === 0 ? 1200 : 1000),
+        beds: override?.beds || 2,
+        baths: override?.baths || (u % 4 === 0 ? 2 : 1),
+        status: 'Occupied',
+        building_address: b.addr
+      });
+    }
+  });
+
+  const total_sqft = units_list.reduce((s, u) => s + (parseInt(u.sqft) || 0), 0);
+
+  const building = {
+    id: bldgId,
+    name: 'Marquis Villa Townhomes',
+    address: '8534-8554 Marquis Dr, Oklahoma City, OK',
+    createdAt: new Date().toISOString()
+  };
+  const profile = {
+    property_name: 'Marquis Villa Townhomes',
+    address: '8534-8554 Marquis Dr, Oklahoma City, OK',
+    building_use: 'Townhomes',
+    year_built: 1985,
+    num_buildings: 6,
+    building_details,
+    units_list,
+    total_units: units_list.length,
+    total_sqft,
+    stories: 2,
+    pilot: 'EF Capital — Marquis Villa (76 units)',
+    primary_contact: 'Matt Fischer',
+    close_date: '2026-04-21 to 2026-05-07'
+  };
+
+  localStorage.setItem('bos_' + userId + '_buildings', JSON.stringify([building]));
+  localStorage.setItem('bos_' + userId + '_active_building', bldgId);
+  localStorage.setItem('bos_' + userId + '_' + bldgId + '_profile', JSON.stringify(profile));
+  localStorage.setItem('bos_' + userId + '_' + bldgId + '_docs', JSON.stringify([]));
+  localStorage.setItem('bos_' + userId + '_' + bldgId + '_equipment', JSON.stringify([]));
+
+  alert(`✅ EF Capital Pilot restored!\n\nAccount: ${user.name} (${user.email})\nProperty: Marquis Villa Townhomes\n  • 6 buildings on Marquis Dr\n  • 76 units, ${total_sqft.toLocaleString()} sqft total\n  • Pilot close: Apr 21 – May 7, 2026\n\nSigning you in now…`);
+  loginAsExistingUser(userId);
 }
 
 function toggleProfileDD(e) {
