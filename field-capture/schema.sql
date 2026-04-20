@@ -1,6 +1,12 @@
 -- ============================================================================
--- BuildingOS Field Capture — Database Schema
+-- BuildingOS Field Capture v1.3 — Database Schema
 -- Run in Supabase project: MVP-mvp (ffbqtumxbtrowgaciegx)
+--
+-- CHANGES FROM v1.2:
+--   • fc_equipment_types: added sub_types JSONB for HVAC sub-type dropdown
+--   • fc_captures: added brand, sub_type, captured_by_name timestamp stamping
+--   • fc_capture_photos: NEW table — multiple photos per capture (tag + unit)
+--   • fc_custom_equipment_types: NEW table — user-defined equipment types
 -- ============================================================================
 
 -- 1. Field Users — people who do walks (Eric, etc.)
@@ -59,14 +65,17 @@ CREATE TABLE IF NOT EXISTS fc_units (
 CREATE INDEX IF NOT EXISTS idx_fc_units_building ON fc_units(building_id);
 
 -- 5. Equipment Types — configurable per building (Matt picks HVAC, Water Heater, Electrical Panel)
+--    v1.3: added sub_types JSONB for HVAC sub-type selection (condenser, air handler, PTAC, etc.)
 CREATE TABLE IF NOT EXISTS fc_equipment_types (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     building_id TEXT NOT NULL,
     name TEXT NOT NULL,                    -- "HVAC System", "Water Heater", "Electrical Panel"
     icon TEXT DEFAULT '🔧',
     description TEXT,
+    sub_types JSONB DEFAULT '[]',          -- v1.3: e.g. ["Condenser","Air Handler","PTAC","Package Unit"]
     fields_config JSONB DEFAULT '[]',      -- custom fields beyond standard make/model/serial
     sort_order INTEGER DEFAULT 0,
+    is_custom BOOLEAN DEFAULT false,       -- v1.3: user-created equipment type
     created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_fc_equip_types_building ON fc_equipment_types(building_id);
@@ -102,6 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_fc_visits_walk ON fc_unit_visits(walk_session_id)
 CREATE INDEX IF NOT EXISTS idx_fc_visits_unit ON fc_unit_visits(unit_id);
 
 -- 8. Equipment Captures — the core data: photo + AI extraction per equipment per unit
+--    v1.3: added brand (distinct from make/manufacturer), sub_type
 CREATE TABLE IF NOT EXISTS fc_captures (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     building_id TEXT NOT NULL,
@@ -112,13 +122,17 @@ CREATE TABLE IF NOT EXISTS fc_captures (
     captured_by UUID REFERENCES fc_users(id),
     captured_by_name TEXT,
 
-    -- Photo
+    -- v1.3: HVAC sub-type (condenser, air handler, PTAC, package unit)
+    sub_type TEXT,
+
+    -- Photo (primary tag photo — additional photos in fc_capture_photos)
     photo_url TEXT,                         -- Supabase Storage URL
     photo_storage_path TEXT,                -- storage bucket path
-    photo_filename TEXT,                    -- cleaned filename: {building}_{unit}_{type}_{timestamp}.jpg
+    photo_filename TEXT,                    -- cleaned filename
 
     -- AI-extracted data
-    make TEXT,
+    brand TEXT,                             -- v1.3: brand name (e.g. "Goodman")
+    make TEXT,                              -- manufacturer (e.g. "Daikin")
     model_name TEXT,
     model_number TEXT,
     serial_number TEXT,
@@ -137,11 +151,11 @@ CREATE TABLE IF NOT EXISTS fc_captures (
     -- Equipment condition
     condition_rating TEXT,                  -- excellent, good, fair, poor, non_functional
     condition_notes TEXT,
-    tag_readable BOOLEAN DEFAULT true,      -- was the equipment tag readable?
+    tag_readable BOOLEAN DEFAULT true,
 
     -- Status
     status TEXT DEFAULT 'captured',         -- captured, verified, synced_to_buildingos
-    synced_at TIMESTAMPTZ,                  -- when data flowed into main platform
+    synced_at TIMESTAMPTZ,
 
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -150,6 +164,19 @@ CREATE INDEX IF NOT EXISTS idx_fc_captures_building ON fc_captures(building_id);
 CREATE INDEX IF NOT EXISTS idx_fc_captures_unit ON fc_captures(unit_id);
 CREATE INDEX IF NOT EXISTS idx_fc_captures_type ON fc_captures(equipment_type_id);
 CREATE INDEX IF NOT EXISTS idx_fc_captures_walk ON fc_captures(walk_session_id);
+
+-- 9. Capture Photos — v1.3 NEW: multiple photos per capture (tag photo, unit photo, etc.)
+CREATE TABLE IF NOT EXISTS fc_capture_photos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    capture_id UUID REFERENCES fc_captures(id) ON DELETE CASCADE,
+    photo_type TEXT NOT NULL DEFAULT 'tag',  -- 'tag', 'unit', 'detail', 'condition'
+    photo_url TEXT NOT NULL,
+    photo_storage_path TEXT,
+    photo_filename TEXT,
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fc_capture_photos_capture ON fc_capture_photos(capture_id);
 
 -- ============================================================================
 -- Row Level Security
@@ -162,6 +189,7 @@ ALTER TABLE fc_equipment_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fc_walk_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fc_unit_visits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fc_captures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fc_capture_photos ENABLE ROW LEVEL SECURITY;
 
 -- Service role gets full access (our backend uses service role key)
 CREATE POLICY "Service role full access" ON fc_users FOR ALL USING (true) WITH CHECK (true);
@@ -172,6 +200,7 @@ CREATE POLICY "Service role full access" ON fc_equipment_types FOR ALL USING (tr
 CREATE POLICY "Service role full access" ON fc_walk_sessions FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON fc_unit_visits FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON fc_captures FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access" ON fc_capture_photos FOR ALL USING (true) WITH CHECK (true);
 
 -- Grant access to roles
 GRANT ALL ON fc_users TO anon, authenticated, service_role;
@@ -182,6 +211,7 @@ GRANT ALL ON fc_equipment_types TO anon, authenticated, service_role;
 GRANT ALL ON fc_walk_sessions TO anon, authenticated, service_role;
 GRANT ALL ON fc_unit_visits TO anon, authenticated, service_role;
 GRANT ALL ON fc_captures TO anon, authenticated, service_role;
+GRANT ALL ON fc_capture_photos TO anon, authenticated, service_role;
 
 -- Reload schema cache
 NOTIFY pgrst, 'reload schema';
