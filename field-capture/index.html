@@ -18,7 +18,6 @@
             overflow-x: hidden;
         }
 
-        /* ── Layout ─────────────────────────── */
         .app-header {
             background: #1e293b;
             color: white;
@@ -38,30 +37,11 @@
         .screen.active { display: block; }
         .screen-pad { padding: 16px; }
 
-        /* ── Cards ──────────────────────────── */
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-        }
+        .card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
         .card-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
         .card-sub { font-size: 13px; color: #64748b; }
 
-        /* ── Buttons ────────────────────────── */
-        .btn {
-            display: block;
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 10px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            text-align: center;
-            margin-bottom: 10px;
-        }
+        .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-align: center; margin-bottom: 10px; }
         .btn-primary { background: #4f46e5; color: white; }
         .btn-primary:active { background: #4338ca; }
         .btn-success { background: #059669; color: white; }
@@ -70,50 +50,20 @@
         .btn-danger { background: #ef4444; color: white; }
         .btn-secondary { background: #e2e8f0; color: #475569; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-sm { padding: 8px 14px; font-size: 13px; width: auto; display: inline-block; margin-bottom: 0; }
 
-        /* ── Inputs ─────────────────────────── */
         .input-group { margin-bottom: 16px; }
         .input-group label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #475569; }
         .input-group input, .input-group select, .input-group textarea {
-            width: 100%;
-            padding: 12px;
-            border: 1.5px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 15px;
-            background: white;
-            -webkit-appearance: none;
+            width: 100%; padding: 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 15px; background: white; -webkit-appearance: none;
         }
         .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
-            outline: none;
-            border-color: #4f46e5;
-            box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+            outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
         }
 
-        /* ── Unit list ──────────────────────── */
-        .unit-card {
-            background: white;
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            cursor: pointer;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-            transition: background 0.1s;
-        }
+        .unit-card { background: white; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
         .unit-card:active { background: #f8fafc; }
-        .unit-status {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 700;
-            flex-shrink: 0;
-        }
+        .unit-status { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
         .status-pending { background: #fef3c7; color: #92400e; }
         .status-partial { background: #dbeafe; color: #1e40af; }
         .status-complete { background: #d1fae5; color: #065f46; }
@@ -122,223 +72,102 @@
         .unit-meta { font-size: 12px; color: #94a3b8; }
         .unit-arrow { color: #cbd5e1; font-size: 18px; }
 
-        /* ── Equipment checklist ────────────── */
-        .equip-item {
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            cursor: pointer;
-        }
+        .equip-item { background: white; border-radius: 12px; padding: 16px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
         .equip-item:active { background: #f8fafc; }
-        .equip-icon { font-size: 28px; width: 44px; text-align: center; }
+        .equip-icon { font-size: 28px; width: 44px; text-align: center; padding-top: 2px; }
         .equip-info { flex: 1; }
         .equip-name { font-weight: 600; font-size: 15px; }
         .equip-status { font-size: 12px; margin-top: 2px; }
         .equip-status.done { color: #059669; }
         .equip-status.pending { color: #f59e0b; }
-        .equip-capture-btn {
-            background: #4f46e5;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .equip-done-badge {
-            background: #d1fae5;
-            color: #065f46;
-            padding: 6px 12px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-        }
+        .equip-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+        .equip-capture-btn { background: #4f46e5; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .equip-done-badge { background: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+        .equip-edit-btn { background: #eef2ff; color: #4f46e5; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .equip-photo-btn { background: #f0fdf4; color: #059669; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
 
-        /* ── Camera ─────────────────────────── */
-        .camera-area {
-            background: #1e293b;
-            border-radius: 12px;
-            min-height: 200px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            margin-bottom: 16px;
-            overflow: hidden;
-            position: relative;
-        }
-        .camera-area img {
-            max-width: 100%;
-            max-height: 300px;
-            border-radius: 8px;
-        }
-        /* ── Annotation canvas ─────────────────── */
-        .annotation-wrap {
-            position: relative;
-            display: inline-block;
-            max-width: 100%;
-            touch-action: none;
-        }
-        .annotation-wrap canvas {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            cursor: crosshair;
-        }
-        .photo-confirm-bar {
-            display: flex; gap: 8px; margin-top: 12px;
-        }
-        .photo-confirm-bar button { flex: 1; }
-        .camera-placeholder {
-            text-align: center;
-            padding: 40px 20px;
-        }
+        .camera-area { background: #1e293b; border-radius: 12px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; margin-bottom: 16px; overflow: hidden; position: relative; }
+        .camera-area img { max-width: 100%; max-height: 300px; border-radius: 8px; }
+        .camera-placeholder { text-align: center; padding: 40px 20px; }
         .camera-placeholder .icon { font-size: 48px; margin-bottom: 12px; }
         .camera-placeholder p { font-size: 14px; color: #94a3b8; }
 
-        /* ── AI Results ─────────────────────── */
-        .ai-result {
-            background: #f0fdf4;
-            border: 1.5px solid #bbf7d0;
-            border-radius: 10px;
-            padding: 14px;
-            margin-bottom: 16px;
-        }
-        .ai-result-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-            font-weight: 600;
-            font-size: 14px;
-            color: #065f46;
-        }
+        .ai-result { background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+        .ai-result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 600; font-size: 14px; color: #065f46; }
         .ai-field { margin-bottom: 8px; }
         .ai-field label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
         .ai-field .value { font-size: 14px; font-weight: 500; }
 
-        .confidence-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
+        /* AI identification confirmation box */
+        .ai-identify { background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+        .ai-identify-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #1e40af; }
+        .ai-identify p { font-size: 13px; color: #475569; margin-bottom: 8px; }
+        .ai-identify-type { font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+        .ai-identify-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+        .confidence-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
         .conf-high { background: #d1fae5; color: #065f46; }
         .conf-medium { background: #fef3c7; color: #92400e; }
         .conf-low { background: #fee2e2; color: #991b1b; }
 
-        /* ── Progress ring ──────────────────── */
-        .progress-bar {
-            height: 6px;
-            background: #e2e8f0;
-            border-radius: 3px;
-            overflow: hidden;
-            margin-top: 6px;
-        }
+        .progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 6px; }
         .progress-fill { height: 100%; background: #4f46e5; border-radius: 3px; transition: width 0.3s; }
 
-        /* ── Loading ────────────────────────── */
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2.5px solid rgba(255,255,255,0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.6s linear infinite;
-        }
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .loading-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 200;
-            color: white;
-            gap: 16px;
-        }
+        .loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; color: white; gap: 16px; }
         .loading-overlay .spinner { width: 40px; height: 40px; border-width: 3px; }
         .loading-overlay p { font-size: 15px; }
 
-        /* ── Toast ──────────────────────────── */
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1e293b;
-            color: white;
-            padding: 12px 20px;
-            border-radius: 10px;
-            font-size: 14px;
-            z-index: 300;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 300; box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s; }
         .toast.show { opacity: 1; }
 
-        /* ── Section titles ─────────────────── */
-        .section-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin: 20px 0 10px;
-        }
+        .section-title { font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 10px; }
 
-        /* ── Invite code big display ───────── */
-        .invite-code-display {
-            font-size: 36px;
-            font-weight: 700;
-            letter-spacing: 6px;
-            text-align: center;
-            color: #4f46e5;
-            padding: 20px;
-            background: #eef2ff;
-            border-radius: 12px;
-            font-family: monospace;
-        }
+        .capture-stamp { font-size: 11px; color: #94a3b8; margin-top: 4px; }
 
-        /* Hide file input */
+        /* Photo thumbnails */
+        .photo-thumbs { display: flex; gap: 8px; margin: 12px 0; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+        .photo-thumb { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; border: 2px solid #e2e8f0; flex-shrink: 0; cursor: pointer; }
+        .photo-thumb.active { border-color: #4f46e5; }
+        .add-photo-btn { width: 64px; height: 64px; border-radius: 8px; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #94a3b8; cursor: pointer; flex-shrink: 0; background: #f8fafc; }
+        .add-photo-btn:active { background: #e2e8f0; }
+
+        /* Specs grid */
+        .specs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+        .spec-item { background: #f8fafc; border-radius: 8px; padding: 8px 10px; }
+        .spec-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .spec-value { font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px; }
+
+        /* Sub-type chips */
+        .subtype-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .subtype-chip { padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1.5px solid #e2e8f0; background: white; color: #475569; transition: all 0.15s; }
+        .subtype-chip.selected { background: #4f46e5; color: white; border-color: #4f46e5; }
+        .subtype-chip:active { transform: scale(0.97); }
+        .subtype-custom-input { display: none; margin-top: 8px; }
+        .subtype-custom-input.visible { display: block; }
+
         .hidden-input { display: none; }
     </style>
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- HEADER                                                                  -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- HEADER -->
 <div class="app-header" id="appHeader">
     <div class="header-back" id="headerBack" onclick="goBack()" style="display:none;">&#8592;</div>
     <h1 id="headerTitle">BuildingOS Field Capture</h1>
     <button class="header-action" id="headerAction" style="display:none;"></button>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SCREEN: Welcome / Login                                                 -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Login -->
 <div class="screen active" id="screenLogin">
     <div class="screen-pad" style="display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 48px);">
         <div style="text-align:center;margin-bottom:32px;">
             <div style="font-size:48px;margin-bottom:8px;">&#9881;&#65039;</div>
             <h2 style="font-size:22px;margin-bottom:4px;">BuildingOS</h2>
-            <p style="color:#64748b;font-size:14px;">Field Capture</p>
+            <p style="color:#64748b;font-size:14px;">Field Capture v1.3</p>
         </div>
-
         <div class="card">
             <div class="input-group">
                 <label>Full Name</label>
@@ -350,45 +179,37 @@
             </div>
             <button class="btn btn-primary" onclick="handleLogin()">Continue</button>
         </div>
-
         <div style="text-align:center;margin-top:16px;">
-            <p style="font-size:13px;color:#94a3b8;">Enter your name and email to get started.</p>
-            <input type="hidden" id="loginInviteCode" value="">
-        </div>
-    </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SCREEN: Building List (field user's buildings)                          -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<div class="screen" id="screenBuildings">
-    <div class="screen-pad">
-        <h2 style="margin-bottom:16px;">Your Buildings</h2>
-        <div id="buildingList"></div>
-
-        <div id="joinSection">
-            <div class="section-title" style="margin-top:24px;">Join a Building</div>
-            <div class="card">
-                <div class="input-group" style="margin-bottom:8px;">
-                    <label style="font-size:12px;color:#64748b;margin-bottom:4px;">Enter an invite code</label>
-                    <input type="text" id="joinCode" placeholder="e.g. ABC123"
-                           style="text-align:center;font-size:16px;letter-spacing:2px;text-transform:uppercase;">
-                </div>
-                <button class="btn btn-outline" onclick="joinBuilding()">Join Building</button>
+            <p style="font-size:13px;color:#94a3b8;">Have an invite code?</p>
+            <div class="input-group" style="margin-top:8px;">
+                <input type="text" id="loginInviteCode" placeholder="Enter 6-character code" maxlength="6"
+                       style="text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase;">
             </div>
         </div>
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SCREEN: Building Dashboard                                              -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Building List -->
+<div class="screen" id="screenBuildings">
+    <div class="screen-pad">
+        <h2 style="margin-bottom:16px;">Your Buildings</h2>
+        <div id="buildingList"></div>
+        <div class="section-title" style="margin-top:24px;">Join Another Building</div>
+        <div class="card">
+            <div class="input-group" style="margin-bottom:8px;">
+                <input type="text" id="joinCode" placeholder="Enter invite code" maxlength="6"
+                       style="text-align:center;font-size:18px;letter-spacing:3px;text-transform:uppercase;">
+            </div>
+            <button class="btn btn-outline" onclick="joinBuilding()">Join Building</button>
+        </div>
+    </div>
+</div>
+
+<!-- SCREEN: Dashboard -->
 <div class="screen" id="screenDashboard">
     <div class="screen-pad">
         <div id="dashboardBuildingName" style="font-size:18px;font-weight:700;margin-bottom:4px;"></div>
         <div id="dashboardBuildingAddr" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
-
-        <!-- Progress overview -->
         <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <span class="card-title">Capture Progress</span>
@@ -401,30 +222,16 @@
                 <span><strong id="dashPending">0</strong> pending</span>
             </div>
         </div>
-
-        <!-- Actions -->
-        <div style="margin-top:8px;">
-            <button class="btn btn-success" onclick="startWalk()" style="font-size:17px;padding:16px;">
-                &#128694; Start Walk
-            </button>
-        </div>
-
-        <!-- Spaces -->
-        <div class="section-title">Spaces</div>
-        <div id="dashSpaceList"></div>
-        <div id="dashSpaceEmpty" style="display:none;" class="card"><p style="text-align:center;color:#94a3b8;font-size:13px;">No spaces configured yet.</p></div>
-
-        <!-- Equipment type progress -->
         <div class="section-title">Equipment Types</div>
         <div id="dashTypeProgress"></div>
-
-        <button class="btn btn-outline" onclick="exportCSV()" style="margin-top:12px;">Export CSV</button>
+        <div style="margin-top:20px;">
+            <button class="btn btn-success" onclick="startWalk()" style="font-size:17px;padding:16px;">&#128694; Start Walk</button>
+            <button class="btn btn-outline" onclick="exportCSV()">Export CSV</button>
+        </div>
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SCREEN: Space List (during walk)                                        -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Unit List -->
 <div class="screen" id="screenUnits">
     <div class="screen-pad">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -432,82 +239,46 @@
                 <div style="font-weight:700;font-size:16px;" id="walkTitle">Walk in Progress</div>
                 <div style="font-size:12px;color:#64748b;" id="walkSubtitle"></div>
             </div>
-            <button class="btn-outline" style="width:auto;padding:6px 14px;font-size:12px;border-radius:6px;border:1.5px solid #ef4444;color:#ef4444;background:white;cursor:pointer;" onclick="endWalk()">End Walk</button>
+            <button style="width:auto;padding:6px 14px;font-size:12px;border-radius:6px;border:1.5px solid #ef4444;color:#ef4444;background:white;cursor:pointer;" onclick="endWalk()">End Walk</button>
         </div>
-
-        <input type="text" id="unitSearch" placeholder="Search spaces..." oninput="renderUnits()"
+        <input type="text" id="unitSearch" placeholder="Search units..." oninput="renderUnits()"
                style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:12px;">
-
         <div id="unitList"></div>
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SCREEN: Unit Detail (equipment checklist for one unit)                  -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Unit Detail -->
 <div class="screen" id="screenUnitDetail">
     <div class="screen-pad">
         <div id="unitDetailName" style="font-size:18px;font-weight:700;margin-bottom:4px;"></div>
         <div id="unitDetailMeta" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
-
         <div class="section-title">Equipment to Capture</div>
         <div id="equipChecklist"></div>
-
-        <!-- Photo Gallery for this unit -->
-        <div id="unitPhotoGallery" style="display:none;margin-top:16px;">
-            <div class="section-title">&#128248; Captured Photos</div>
-            <div id="unitPhotos" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;"></div>
+        <div style="margin-top:12px;">
+            <button class="btn btn-secondary" onclick="showAddCustomType()" style="font-size:13px;padding:10px;">+ Add Other Equipment Type</button>
         </div>
-
-        <!-- Notes section -->
-        <div style="margin-top:16px;">
-            <div class="section-title">&#128221; Notes</div>
-            <div id="unitNotesList"></div>
-            <div id="addNoteForm" style="display:none;margin-bottom:12px;">
-                <textarea id="noteText" rows="3" placeholder="Add a note about this space..." style="width:100%;padding:12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;resize:vertical;font-family:inherit;"></textarea>
-                <div style="display:flex;gap:8px;margin-top:8px;">
-                    <button class="btn btn-success" onclick="saveNote()" style="flex:1;padding:10px;">Save Note</button>
-                    <button class="btn btn-secondary" onclick="document.getElementById('addNoteForm').style.display='none'" style="flex:1;padding:10px;">Cancel</button>
-                </div>
-            </div>
-            <button class="btn btn-outline" onclick="document.getElementById('addNoteForm').style.display='block';document.getElementById('noteText').focus();" style="padding:10px;font-size:13px;">&#128221; Add Note</button>
-        </div>
-
         <div style="margin-top:20px;">
-            <div id="skipForm" style="display:none;margin-bottom:12px;">
-                <div class="card" style="border:1.5px solid #fde68a;background:#fffef5;">
-                    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:8px;">Why are you skipping this space?</div>
-                    <select id="skipReason" style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:8px;">
-                        <option value="">— Select reason —</option>
-                        <option value="no_access">No access / Locked</option>
-                        <option value="tenant_refused">Tenant refused entry</option>
-                        <option value="unsafe">Unsafe conditions</option>
-                        <option value="under_renovation">Under renovation</option>
-                        <option value="not_applicable">Not applicable</option>
-                        <option value="other">Other</option>
-                    </select>
-                    <textarea id="skipNote" rows="2" placeholder="Additional details (optional)..." style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;resize:vertical;font-family:inherit;margin-bottom:8px;"></textarea>
-                    <div style="display:flex;gap:8px;">
-                        <button class="btn btn-danger" onclick="confirmSkip()" style="flex:1;padding:10px;">Skip Space</button>
-                        <button class="btn btn-secondary" onclick="document.getElementById('skipForm').style.display='none'" style="flex:1;padding:10px;">Cancel</button>
-                    </div>
-                </div>
-            </div>
-            <button class="btn btn-secondary" onclick="document.getElementById('skipForm').style.display='block'" id="btnSkipSpace">Skip Space</button>
-            <button class="btn btn-success" id="btnCompleteUnit" onclick="completeUnit()" disabled>
-                &#10003; Mark Complete
-            </button>
+            <button class="btn btn-secondary" onclick="skipUnit()">Skip Unit (Access Issue)</button>
+            <button class="btn btn-success" id="btnCompleteUnit" onclick="completeUnit()" disabled>&#10003; Mark Unit Complete</button>
         </div>
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SCREEN: Capture (photo + AI extraction)                                 -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SCREEN: Capture -->
 <div class="screen" id="screenCapture">
     <div class="screen-pad">
         <div id="captureEquipName" style="font-size:16px;font-weight:700;margin-bottom:2px;"></div>
-        <div id="captureUnitName" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
+        <div id="captureUnitName" style="font-size:13px;color:#64748b;margin-bottom:8px;"></div>
+
+        <!-- Sub-type selector with chips -->
+        <div id="subTypeSection" style="display:none;margin-bottom:16px;">
+            <label style="display:block;font-weight:600;font-size:13px;margin-bottom:8px;color:#475569;">Equipment Sub-Type</label>
+            <div class="subtype-chips" id="subTypeChips"></div>
+            <div class="subtype-custom-input" id="subTypeCustomWrap">
+                <input type="text" id="subTypeCustomInput" placeholder="Type equipment sub-type..."
+                       style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;">
+            </div>
+        </div>
 
         <!-- Step 1: Take Photo -->
         <div id="captureStep1">
@@ -516,70 +287,48 @@
                     <div class="icon">&#128247;</div>
                     <p>Tap to photograph equipment tag</p>
                 </div>
+                <img id="photoPreview" style="display:none;">
             </div>
-
             <input type="file" accept="image/*" capture="environment" id="photoInput" class="hidden-input" onchange="onPhotoSelected(event)">
+            <button class="btn btn-primary" onclick="document.getElementById('photoInput').click()">&#128247; Take Photo of Tag</button>
 
-            <button class="btn btn-primary" onclick="document.getElementById('photoInput').click()">
-                &#128247; Take Photo of Tag
-            </button>
-            <button class="btn btn-secondary" onclick="tagNotReadable()">
-                Tag Not Readable / No Tag
-            </button>
-        </div>
+            <input type="file" accept="image/*" capture="environment" id="noTagPhotoInput" class="hidden-input" onchange="onNoTagPhotoSelected(event)">
+            <button class="btn btn-secondary" onclick="document.getElementById('noTagPhotoInput').click()">&#128270; No Tag — Take Photo of Equipment</button>
 
-        <!-- Step 1.5: Confirm Photo -->
-        <div id="captureStepConfirm" style="display:none;">
-            <div style="background:#f0f9ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
-                <span style="font-size:14px;font-weight:600;color:#1e40af;">Is the photo clear enough?</span>
-            </div>
-            <div class="annotation-wrap" id="annotationWrap">
-                <img id="photoPreview" style="max-width:100%;border-radius:10px;display:block;">
-                <canvas id="annotationCanvas" style="display:none;"></canvas>
-            </div>
-
-            <!-- Drawing tools — hidden by default, shown when Draw mode is active -->
-            <div id="drawingTools" style="display:none;margin-top:10px;">
-                <div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:8px;text-align:center;font-size:12px;color:#92400e;font-weight:600;">
-                    &#9998; Drawing mode — draw on the photo to highlight areas
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <button onclick="undoAnnotation()" style="flex:1;background:#fff;color:#4f46e5;border:2px solid #4f46e5;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">&#8630; Undo</button>
-                    <button onclick="clearAnnotation()" style="flex:1;background:#fff;color:#ef4444;border:2px solid #ef4444;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">&#10005; Clear All</button>
-                </div>
-                <button class="btn btn-primary" onclick="exitDrawMode()" style="margin-top:8px;">&#10003; Done Drawing</button>
-            </div>
-
-            <!-- Action buttons — shown when NOT drawing -->
-            <div id="confirmActions" style="margin-top:10px;">
-                <div class="input-group" style="margin-bottom:10px;">
-                    <label style="font-size:12px;">Quick note (optional)</label>
-                    <input type="text" id="captureQuickNote" placeholder="e.g. rust on bottom, hard to reach, etc." style="font-size:14px;">
-                </div>
-                <button class="btn btn-outline" onclick="enterDrawMode()" style="padding:10px;font-size:13px;margin-bottom:8px;">&#9998; Draw / Annotate on Photo</button>
-                <div class="photo-confirm-bar">
-                    <button class="btn btn-secondary" onclick="retakePhoto()">&#128247; Retake</button>
-                    <button class="btn btn-success" onclick="confirmPhoto()">&#10003; Looks Good — Analyze</button>
-                </div>
-            </div>
+            <button class="btn btn-secondary" onclick="tagNotReadable()" style="background:transparent;color:#94a3b8;font-weight:400;">Skip — Enter Data Manually</button>
         </div>
 
         <!-- Step 2: AI Processing -->
         <div id="captureStep2" style="display:none;">
             <div style="text-align:center;padding:40px 0;">
                 <div class="spinner" style="width:40px;height:40px;border-color:rgba(79,70,229,0.2);border-top-color:#4f46e5;margin:0 auto 16px;"></div>
-                <p style="font-size:15px;font-weight:600;">Analyzing equipment tag...</p>
-                <p style="font-size:13px;color:#64748b;margin-top:4px;">AI is reading make, model, serial number</p>
+                <p style="font-size:15px;font-weight:600;" id="aiProcessingText">Analyzing equipment tag...</p>
+                <p style="font-size:13px;color:#64748b;margin-top:4px;" id="aiProcessingSub">AI is reading brand, model, serial number</p>
             </div>
         </div>
 
-        <!-- Step 3: Verify AI + Add Details -->
-        <div id="captureStep3" style="display:none;">
-            <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px;margin-bottom:14px;">
-                <div style="font-size:14px;font-weight:700;color:#92400e;">&#9888;&#65039; Please verify the information below</div>
-                <p style="font-size:12px;color:#a16207;margin:4px 0 0;">AI extracted this data from the photo. Correct anything that's wrong and add condition details.</p>
+        <!-- Step 2b: AI Identification (no tag) -->
+        <div id="captureStep2b" style="display:none;">
+            <div class="ai-identify" id="aiIdentifyBox">
+                <div class="ai-identify-header">
+                    <span>&#128270; AI Equipment Identification</span>
+                    <span class="confidence-badge" id="aiIdentifyConf"></span>
+                </div>
+                <div class="ai-identify-type" id="aiIdentifyType"></div>
+                <p id="aiIdentifyDesc"></p>
+                <div class="ai-identify-actions">
+                    <button class="btn btn-success btn-sm" onclick="confirmIdentification()">&#10003; Yes, that's correct</button>
+                    <button class="btn btn-secondary btn-sm" onclick="rejectIdentification()">&#10007; No, let me specify</button>
+                </div>
             </div>
+            <!-- Photo preview -->
+            <div class="camera-area" style="min-height:150px;">
+                <img id="noTagPhotoPreview" style="max-width:100%;max-height:200px;border-radius:8px;">
+            </div>
+        </div>
 
+        <!-- Step 3: Review & Confirm -->
+        <div id="captureStep3" style="display:none;">
             <div class="ai-result" id="aiResultBox">
                 <div class="ai-result-header">
                     <span>&#10003; AI Extracted Data</span>
@@ -587,16 +336,28 @@
                 </div>
             </div>
 
-            <!-- Thumbnail of captured photo -->
-            <div id="captureThumbWrap" style="margin-bottom:14px;">
-                <img id="captureThumb" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid #e2e8f0;">
+            <!-- Photo thumbnails -->
+            <div id="photoThumbsArea" style="display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div class="section-title" style="margin-top:0;">Photos</div>
+                </div>
+                <div class="photo-thumbs" id="photoThumbs"></div>
+            </div>
+
+            <!-- Technical specs from AI (read-only summary) -->
+            <div id="specsArea" style="display:none;">
+                <div class="section-title">Technical Specs (from tag)</div>
+                <div class="specs-grid" id="specsGrid"></div>
             </div>
 
             <div class="card">
-                <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;">Equipment Details</div>
                 <div class="input-group">
-                    <label>Make / Manufacturer</label>
-                    <input type="text" id="fieldMake">
+                    <label>Brand</label>
+                    <input type="text" id="fieldBrand" placeholder="e.g. Goodman, Carrier, Rheem">
+                </div>
+                <div class="input-group">
+                    <label>Manufacturer</label>
+                    <input type="text" id="fieldMake" placeholder="e.g. Daikin (if different from brand)">
                 </div>
                 <div class="input-group">
                     <label>Model Name</label>
@@ -614,30 +375,102 @@
                     <label>Year</label>
                     <input type="text" id="fieldYear" inputmode="numeric">
                 </div>
-            </div>
-
-            <div class="card" style="border:1.5px solid #fde68a;background:#fffef5;">
-                <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:10px;">&#9888;&#65039; Condition Assessment <span style="color:#ef4444;font-size:11px;">(Required)</span></div>
                 <div class="input-group">
-                    <label>Overall Condition</label>
-                    <select id="fieldCondition" style="border-color:#fde68a;">
-                        <option value="">— Select condition —</option>
-                        <option value="excellent">&#127775; Excellent — Like new, no issues</option>
-                        <option value="good">&#9989; Good — Minor wear, fully functional</option>
-                        <option value="fair">&#9888;&#65039; Fair — Aging, may need attention soon</option>
-                        <option value="poor">&#9940; Poor — Significant issues, needs repair</option>
-                        <option value="non_functional">&#10060; Non-functional — Not operating</option>
+                    <label>Condition</label>
+                    <select id="fieldCondition">
+                        <option value="">Select...</option>
+                        <option value="excellent">Excellent</option>
+                        <option value="good">Good</option>
+                        <option value="fair">Fair</option>
+                        <option value="poor">Poor</option>
+                        <option value="non_functional">Non-functional</option>
                     </select>
                 </div>
                 <div class="input-group">
-                    <label>Condition Details</label>
-                    <textarea id="fieldNotes" rows="3" placeholder="Describe what you see: rust, leaks, noise, damage, age signs, recent repairs..."></textarea>
+                    <label>Notes</label>
+                    <textarea id="fieldNotes" rows="2" placeholder="Any additional notes..."></textarea>
                 </div>
             </div>
 
-            <button class="btn btn-success" onclick="saveCapture()" style="font-size:16px;padding:14px;">&#10003; Confirm & Save</button>
-            <button class="btn btn-secondary" onclick="retakePhoto()">&#128247; Retake Photo</button>
+            <!-- Add more photos -->
+            <input type="file" accept="image/*" capture="environment" id="addPhotoInput" class="hidden-input" onchange="onAdditionalPhotoSelected(event)">
+            <button class="btn btn-outline" onclick="document.getElementById('addPhotoInput').click()" style="margin-bottom:10px;">
+                &#128247; Add Another Photo
+            </button>
+
+            <button class="btn btn-success" onclick="saveCapture()">&#10003; Save & Continue</button>
+            <button class="btn btn-secondary" onclick="retakePhoto()">Retake Photo</button>
         </div>
+    </div>
+</div>
+
+<!-- SCREEN: Edit Capture (edit-after-save + add photos) -->
+<div class="screen" id="screenEditCapture">
+    <div class="screen-pad">
+        <div id="editCaptureTitle" style="font-size:16px;font-weight:700;margin-bottom:2px;"></div>
+        <div id="editCaptureMeta" style="font-size:13px;color:#64748b;margin-bottom:12px;"></div>
+
+        <!-- Existing photos + add more -->
+        <div class="photo-thumbs" id="editPhotoThumbs" style="margin-bottom:4px;"></div>
+        <input type="file" accept="image/*" capture="environment" id="editAddPhotoInput" class="hidden-input" onchange="onEditAddPhoto(event)">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('editAddPhotoInput').click()" style="margin-bottom:16px;font-size:12px;">
+            &#128247; Add Photo
+        </button>
+
+        <!-- Specs summary if available -->
+        <div id="editSpecsArea" style="display:none;">
+            <div class="section-title" style="margin-top:0;">Technical Specs</div>
+            <div class="specs-grid" id="editSpecsGrid"></div>
+        </div>
+
+        <div class="card">
+            <div class="input-group">
+                <label>Sub-Type</label>
+                <input type="text" id="editSubType" placeholder="e.g. Condenser, Tankless, Main Panel">
+            </div>
+            <div class="input-group">
+                <label>Brand</label>
+                <input type="text" id="editBrand">
+            </div>
+            <div class="input-group">
+                <label>Manufacturer</label>
+                <input type="text" id="editMake">
+            </div>
+            <div class="input-group">
+                <label>Model Name</label>
+                <input type="text" id="editModelName">
+            </div>
+            <div class="input-group">
+                <label>Model Number</label>
+                <input type="text" id="editModelNumber">
+            </div>
+            <div class="input-group">
+                <label>Serial Number</label>
+                <input type="text" id="editSerial">
+            </div>
+            <div class="input-group">
+                <label>Year</label>
+                <input type="text" id="editYear" inputmode="numeric">
+            </div>
+            <div class="input-group">
+                <label>Condition</label>
+                <select id="editCondition">
+                    <option value="">Select...</option>
+                    <option value="excellent">Excellent</option>
+                    <option value="good">Good</option>
+                    <option value="fair">Fair</option>
+                    <option value="poor">Poor</option>
+                    <option value="non_functional">Non-functional</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Notes</label>
+                <textarea id="editNotes" rows="2"></textarea>
+            </div>
+        </div>
+
+        <button class="btn btn-success" onclick="saveEditCapture()">&#10003; Save Changes</button>
+        <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
     </div>
 </div>
 
@@ -650,13 +483,10 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- JavaScript                                                              -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
 <script>
     const API = window.location.origin;
 
-    // ─── App State ──────────────────────────
+    // ── State ──────────────────────────────
     const state = {
         user: null,
         buildings: [],
@@ -670,110 +500,58 @@
         currentUnit: null,
         currentEquipType: null,
         capturePhoto: null,
+        capturePhotos: [],       // [{file, type, url?}]
         lastCaptureId: null,
+        lastCaptureData: null,   // full AI response for specs display
+        editingCapture: null,
         progress: null,
+        selectedSubType: '',
+        noTagIdentification: null,
+        equipSubTypes: {},       // loaded from server
     };
 
-    // ─── Navigation ─────────────────────────
+    // ── Navigation ─────────────────────────
     let screenStack = ['screenLogin'];
 
     function showScreen(id, opts = {}) {
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         document.getElementById(id).classList.add('active');
-
         const back = document.getElementById('headerBack');
         const title = document.getElementById('headerTitle');
-
-        const act = document.getElementById('headerAction');
-        act.style.display = 'none';
-        act.onclick = null;
-
-        if (id === 'screenLogin') {
-            back.style.display = 'none';
-            title.textContent = 'BuildingOS Field Capture';
-        } else if (id === 'screenBuildings') {
-            back.style.display = 'none';
-            title.textContent = 'Your Buildings';
-            act.textContent = 'Log Out';
-            act.style.display = 'block';
-            act.onclick = logout;
-        } else if (id === 'screenDashboard') {
-            back.style.display = 'block';
-            act.textContent = 'Log Out';
-            act.style.display = 'block';
-            act.onclick = logout;
-        } else {
-            back.style.display = 'block';
-        }
-
+        if (id === 'screenLogin') { back.style.display = 'none'; title.textContent = 'BuildingOS Field Capture'; }
+        else if (id === 'screenBuildings') { back.style.display = 'none'; title.textContent = 'Your Buildings'; }
+        else { back.style.display = 'block'; }
         if (opts.title) title.textContent = opts.title;
-        if (!opts.noStack && screenStack[screenStack.length - 1] !== id) {
-            screenStack.push(id);
-        }
+        if (!opts.noStack && screenStack[screenStack.length - 1] !== id) screenStack.push(id);
         window.scrollTo(0, 0);
     }
 
     function goBack() {
-        if (screenStack.length > 1) {
-            screenStack.pop();
-            const prev = screenStack[screenStack.length - 1];
-            showScreen(prev, { noStack: true });
-        }
+        if (screenStack.length > 1) { screenStack.pop(); showScreen(screenStack[screenStack.length - 1], { noStack: true }); }
     }
 
-    // ─── Auth ───────────────────────────────
+    // ── Auth ───────────────────────────────
     async function handleLogin() {
         const name = document.getElementById('loginName').value.trim();
         const email = document.getElementById('loginEmail').value.trim();
         const code = document.getElementById('loginInviteCode').value.trim().toUpperCase();
-
-        if (!name || !email) {
-            toast('Please enter your name and email');
-            return;
-        }
-
+        if (!name || !email) { toast('Please enter your name and email'); return; }
         showLoading('Signing in...');
         try {
             const r = await api('/api/auth/register', { name, email });
             state.user = r.user;
             localStorage.setItem('fc_user', JSON.stringify(r.user));
-
-            if (code) {
-                try {
-                    await api(`/api/join/${code}`, { user_id: state.user.id });
-                    toast('Joined building successfully!');
-                } catch (e) {
-                    toast('Invalid invite code, but account created');
-                }
-            }
-
+            if (code) { try { await api(`/api/join/${code}`, { user_id: state.user.id }); toast('Joined building!'); } catch (e) { toast('Invalid invite code, but account created'); } }
             await loadBuildings();
+            // Load sub-types config
+            try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
             hideLoading();
-
-            if (state.buildings.length === 1) {
-                selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
-            } else {
-                showScreen('screenBuildings');
-            }
-        } catch (e) {
-            hideLoading();
-            toast('Error: ' + e.message);
-        }
+            if (state.buildings.length === 1) selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
+            else showScreen('screenBuildings');
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
     }
 
-    function logout() {
-        localStorage.removeItem('fc_user');
-        state.user = null;
-        state.buildings = [];
-        state.currentBuilding = null;
-        state.walkSession = null;
-        document.getElementById('loginName').value = '';
-        document.getElementById('loginEmail').value = '';
-        screenStack = ['screenLogin'];
-        showScreen('screenLogin', { noStack: true });
-    }
-
-    // ─── Buildings ──────────────────────────
+    // ── Buildings ──────────────────────────
     async function loadBuildings() {
         if (!state.user) return;
         const r = await api(`/api/users/${state.user.id}/buildings`);
@@ -783,38 +561,24 @@
 
     function renderBuildings() {
         const el = document.getElementById('buildingList');
-        const joinEl = document.getElementById('joinSection');
-        if (!state.buildings.length) {
-            el.innerHTML = '<div class="card"><p style="text-align:center;color:#94a3b8;">No buildings yet. Enter an invite code below.</p></div>';
-            if (joinEl) joinEl.style.display = '';
-            return;
-        }
-        // Hide join section once user has buildings
-        if (joinEl) joinEl.style.display = 'none';
-
-        let html = '';
-        for (const b of state.buildings) {
+        if (!state.buildings.length) { el.innerHTML = '<div class="card"><p style="text-align:center;color:#94a3b8;">No buildings yet. Enter an invite code below.</p></div>'; return; }
+        el.innerHTML = state.buildings.map(b => {
             const pct = b.captures_total > 0 ? Math.round(b.captures_done / b.captures_total * 100) : 0;
-            html += `
-                <div class="card" onclick="selectBuilding('${b.building_id}', '${(b.building_name || '').replace(/'/g, "\\'")}', '${(b.building_address || '').replace(/'/g, "\\'")}')">
-                    <div class="card-title">${b.building_name || 'Building'}</div>
-                    ${b.building_address ? '<div class="card-sub">' + b.building_address + '</div>' : ''}
-                    <div style="margin-top:8px;display:flex;gap:12px;font-size:12px;color:#64748b;">
-                        <span>${b.unit_count} spaces</span>
-                        <span>${b.equipment_type_count} equip types</span>
-                        <span style="font-weight:600;color:${pct >= 100 ? '#059669' : '#4f46e5'}">${pct}%</span>
-                    </div>
-                    <div class="progress-bar" style="margin-top:6px;"><div class="progress-fill" style="width:${pct}%;${pct >= 100 ? 'background:#059669;' : ''}"></div></div>
-                </div>`;
-        }
-        el.innerHTML = html;
+            return `<div class="card" onclick="selectBuilding('${b.building_id}', '${(b.building_name||'').replace(/'/g,"\\'")}', '${(b.building_address||'').replace(/'/g,"\\'")}')">
+                <div class="card-title">${b.building_name || 'Building'}</div>
+                <div class="card-sub">${b.building_address || ''}</div>
+                <div style="margin-top:8px;display:flex;gap:12px;font-size:12px;color:#64748b;">
+                    <span>${b.unit_count} units</span><span>${b.equipment_type_count} types</span><span>${pct}%</span>
+                </div>
+                <div class="progress-bar" style="margin-top:6px;"><div class="progress-fill" style="width:${pct}%"></div></div>
+            </div>`;
+        }).join('');
     }
 
     async function selectBuilding(buildingId, name, address) {
         state.currentBuilding = buildingId;
         state.currentBuildingName = name || '';
         state.currentBuildingAddr = address || '';
-
         showLoading('Loading building...');
         try {
             const [unitsR, typesR, progressR] = await Promise.all([
@@ -825,40 +589,29 @@
             state.units = unitsR.units || [];
             state.equipTypes = typesR.equipment_types || [];
             state.progress = progressR;
-
+            // Load sub-types if not loaded
+            if (!Object.keys(state.equipSubTypes).length) {
+                try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
+            }
             renderDashboard();
             hideLoading();
             showScreen('screenDashboard', { title: name || 'Building' });
-        } catch (e) {
-            hideLoading();
-            toast('Error loading building: ' + e.message);
-        }
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
     }
 
     async function joinBuilding() {
-        const raw = document.getElementById('joinCode').value.trim().toUpperCase();
-        if (!raw) { toast('Enter an invite code'); return; }
-
+        const code = document.getElementById('joinCode').value.trim().toUpperCase();
+        if (!code) { toast('Enter an invite code'); return; }
         showLoading('Joining...');
         try {
-            const r = await api(`/api/join/${raw}`, { user_id: state.user.id });
+            const r = await api(`/api/join/${code}`, { user_id: state.user.id });
             toast('Joined ' + (r.building_name || 'building') + '!');
-            hideLoading();
-            document.getElementById('joinCode').value = '';
-            await loadBuildings();
-            if (state.buildings.length === 1) {
-                selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
-                screenStack = ['screenBuildings'];
-            } else {
-                showScreen('screenBuildings', { noStack: true });
-            }
-        } catch (e) {
-            hideLoading();
-            toast(e.message);
-        }
+            await loadBuildings(); hideLoading();
+            if (r.building_id) selectBuilding(r.building_id, r.building_name, r.building_address);
+        } catch (e) { hideLoading(); toast(e.message); }
     }
 
-    // ─── Dashboard ──────────────────────────
+    // ── Dashboard ──────────────────────────
     function renderDashboard() {
         const p = state.progress || {};
         document.getElementById('dashboardBuildingName').textContent = state.currentBuildingName;
@@ -868,497 +621,349 @@
         document.getElementById('dashComplete').textContent = p.units_complete || 0;
         document.getElementById('dashPartial').textContent = p.units_partial || 0;
         document.getElementById('dashPending').textContent = p.units_pending || 0;
-
-        const typeEl = document.getElementById('dashTypeProgress');
-        typeEl.innerHTML = (p.type_progress || []).map(t => `
+        document.getElementById('dashTypeProgress').innerHTML = (p.type_progress || []).map(t => `
             <div class="card" style="padding:12px 16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span>${t.icon || '🔧'} ${t.name}</span>
+                    <span>${t.icon||'🔧'} ${t.name}</span>
                     <span style="font-weight:600;font-size:13px;">${t.captured}/${t.total}</span>
                 </div>
-                <div class="progress-bar"><div class="progress-fill" style="width:${t.pct}%;background:${t.pct >= 100 ? '#059669' : '#4f46e5'}"></div></div>
-            </div>
-        `).join('');
-
-        // Spaces list on dashboard — grouped by complex prefix
-        const spaceListEl = document.getElementById('dashSpaceList');
-        const spaceEmptyEl = document.getElementById('dashSpaceEmpty');
-        const units = state.units || [];
-        if (units.length > 0) {
-            if (spaceEmptyEl) spaceEmptyEl.style.display = 'none';
-
-            // Group units by complex prefix (e.g., "8534" from "8534-101")
-            const complexes = {};
-            for (const u of units) {
-                const name = u.unit_name || '';
-                const prefix = name.includes('-') ? name.split('-')[0] : 'Main';
-                if (!complexes[prefix]) complexes[prefix] = [];
-                complexes[prefix].push(u);
-            }
-            const complexKeys = Object.keys(complexes).sort();
-            const hasMultipleComplexes = complexKeys.length > 1;
-
-            let html = '';
-            for (const prefix of complexKeys) {
-                const cUnits = complexes[prefix];
-                const cDone = cUnits.filter(u => (u.captures_done || 0) >= (u.captures_total || 1) && (u.captures_total || 0) > 0).length;
-
-                if (hasMultipleComplexes) {
-                    html += `<div style="margin:16px 0 8px;padding:0 4px;display:flex;align-items:center;justify-content:space-between;">
-                        <div style="font-weight:700;font-size:14px;color:#1e293b;">Complex ${prefix}</div>
-                        <div style="font-size:12px;color:#64748b;">${cDone}/${cUnits.length} complete</div>
-                    </div>`;
-                }
-
-                html += cUnits.map(u => {
-                    const done = u.captures_done || 0;
-                    const total = u.captures_total || 0;
-                    const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
-                    const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
-                    const meta = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
-                    return `
-                        <div class="unit-card">
-                            <div class="unit-status ${statusClass}">${label}</div>
-                            <div class="unit-info">
-                                <div class="unit-name">${u.unit_name}</div>
-                                <div class="unit-meta">${meta || ''}${u.floor ? (meta ? ' · ' : '') + 'Floor ' + u.floor : ''}</div>
-                            </div>
-                        </div>`;
-                }).join('');
-            }
-            spaceListEl.innerHTML = html;
-        } else {
-            spaceListEl.innerHTML = '';
-            if (spaceEmptyEl) spaceEmptyEl.style.display = 'block';
-        }
+                <div class="progress-bar"><div class="progress-fill" style="width:${t.pct}%;background:${t.pct>=100?'#059669':'#4f46e5'}"></div></div>
+            </div>`).join('');
     }
 
-    // ─── Walk Session ───────────────────────
+    // ── Walk ───────────────────────────────
     async function startWalk() {
         showLoading('Starting walk...');
         try {
-            const r = await api(`/api/buildings/${state.currentBuilding}/walks`, {
-                user_id: state.user.id,
-                user_name: state.user.name,
-            });
+            const r = await api(`/api/buildings/${state.currentBuilding}/walks`, { user_id: state.user.id, user_name: state.user.name });
             state.walkSession = r.walk;
-
-            // Reload captures for this building
             const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
             state.captures = capsR.captures || [];
-
-            hideLoading();
-            renderUnits();
+            hideLoading(); renderUnits();
             showScreen('screenUnits', { title: 'Walk: ' + state.currentBuildingName });
-        } catch (e) {
-            hideLoading();
-            toast('Error: ' + e.message);
-        }
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
     }
 
     async function endWalk() {
         if (!confirm('End this walk session?')) return;
-        if (state.walkSession) {
-            await api(`/api/walks/${state.walkSession.id}`, { status: 'completed' }).catch(() => {});
-        }
+        if (state.walkSession) await api(`/api/walks/${state.walkSession.id}`, { status: 'completed' }).catch(() => {});
         state.walkSession = null;
-
-        // Refresh progress
         const progressR = await api(`/api/buildings/${state.currentBuilding}/progress`).catch(() => ({}));
-        state.progress = progressR;
-        renderDashboard();
+        state.progress = progressR; renderDashboard();
         screenStack = ['screenBuildings', 'screenDashboard'];
         showScreen('screenDashboard', { title: state.currentBuildingName, noStack: true });
     }
 
-    // ─── Space List (during walk) ──────────
+    // ── Unit List ──────────────────────────
     function renderUnits() {
         const search = (document.getElementById('unitSearch').value || '').toLowerCase();
         const filtered = state.units.filter(u => u.unit_name.toLowerCase().includes(search));
-
-        document.getElementById('walkSubtitle').textContent =
-            state.units.filter(u => u.is_complete).length + ' of ' + state.units.length + ' spaces complete';
-
+        document.getElementById('walkSubtitle').textContent = state.units.filter(u => u.is_complete).length + ' of ' + state.units.length + ' units complete';
         document.getElementById('unitList').innerHTML = filtered.map(u => {
-            const done = u.captures_done || 0;
-            const total = u.captures_total || 0;
-            const statusClass = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
+            const done = u.captures_done || 0, total = u.captures_total || 0;
+            const cls = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
             const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
-
-            const details = [u.sqft ? u.sqft + ' SF' : null, u.bedrooms ? u.bedrooms + ' bed' : null, u.bathrooms ? u.bathrooms + ' bath' : null].filter(Boolean).join(' · ');
-            return `
-                <div class="unit-card" onclick="openUnit('${u.id}')">
-                    <div class="unit-status ${statusClass}">${label}</div>
-                    <div class="unit-info">
-                        <div class="unit-name">${u.unit_name}</div>
-                        <div class="unit-meta">${details || ''}${u.floor ? (details ? ' · ' : '') + 'Floor ' + u.floor : ''}${u.unit_type && u.unit_type !== 'residential' ? ' · ' + u.unit_type : ''}</div>
-                    </div>
-                    <div class="unit-arrow">&#8250;</div>
-                </div>
-            `;
+            return `<div class="unit-card" onclick="openUnit('${u.id}')">
+                <div class="unit-status ${cls}">${label}</div>
+                <div class="unit-info"><div class="unit-name">${u.unit_name}</div>
+                <div class="unit-meta">${u.floor ? 'Floor '+u.floor+' · ' : ''}${u.unit_type||''}</div></div>
+                <div class="unit-arrow">&#8250;</div></div>`;
         }).join('');
     }
 
-    // ─── Unit Detail ────────────────────────
+    // ── Unit Detail ────────────────────────
     async function openUnit(unitId) {
         const unit = state.units.find(u => u.id === unitId);
         if (!unit) return;
         state.currentUnit = unit;
-
-        // Create a visit record
         if (state.walkSession) {
-            try {
-                const v = await api(`/api/buildings/${state.currentBuilding}/units/${unitId}/visit`, {
-                    walk_session_id: state.walkSession.id,
-                    user_id: state.user.id,
-                });
-                state.currentVisit = v.visit;
-            } catch (e) { state.currentVisit = null; }
+            try { const v = await api(`/api/buildings/${state.currentBuilding}/units/${unitId}/visit`, { walk_session_id: state.walkSession.id, user_id: state.user.id }); state.currentVisit = v.visit; }
+            catch (e) { state.currentVisit = null; }
         }
-
         document.getElementById('unitDetailName').textContent = unit.unit_name;
-        document.getElementById('unitDetailMeta').textContent =
-            [unit.floor ? 'Floor ' + unit.floor : '', unit.sqft ? unit.sqft + ' sq ft' : ''].filter(Boolean).join(' · ');
+        document.getElementById('unitDetailMeta').textContent = [unit.floor ? 'Floor '+unit.floor : '', unit.sqft ? unit.sqft+' sq ft' : ''].filter(Boolean).join(' · ');
 
-        // Get captures for this unit
         const unitCaptures = state.captures.filter(c => c.unit_id === unitId);
-
-        const checklist = state.equipTypes.map(et => {
+        document.getElementById('equipChecklist').innerHTML = state.equipTypes.map(et => {
             const capture = unitCaptures.find(c => c.equipment_type_id === et.id);
             const isDone = !!capture;
-
-            return `
-                <div class="equip-item" onclick="${isDone ? '' : `startCapture('${et.id}')`}">
-                    <div class="equip-icon">${et.icon || '🔧'}</div>
-                    <div class="equip-info">
-                        <div class="equip-name">${et.name}</div>
-                        <div class="equip-status ${isDone ? 'done' : 'pending'}">
-                            ${isDone ? '&#10003; ' + (capture.make || 'Captured') + (capture.model_name ? ' ' + capture.model_name : '') : 'Not yet captured'}
-                        </div>
-                    </div>
-                    ${isDone
-                        ? '<span class="equip-done-badge">Done</span>'
-                        : `<button class="equip-capture-btn" onclick="event.stopPropagation();startCapture('${et.id}')">Capture</button>`
-                    }
+            let statusText = 'Not yet captured', stampHtml = '';
+            if (isDone) {
+                const parts = [capture.brand, capture.make].filter(Boolean);
+                const display = parts.length ? parts.join(' / ') : 'Captured';
+                const sub = capture.sub_type ? ` (${capture.sub_type})` : '';
+                statusText = '&#10003; ' + display + (capture.model_name ? ' ' + capture.model_name : '') + sub;
+                const who = capture.captured_by_name || 'Unknown';
+                const when = capture.created_at ? new Date(capture.created_at).toLocaleString() : '';
+                stampHtml = `<div class="capture-stamp">${who} &middot; ${when}</div>`;
+            }
+            return `<div class="equip-item" onclick="${isDone ? `editCapture('${capture.id}')` : `startCapture('${et.id}')`}">
+                <div class="equip-icon">${et.icon||'🔧'}</div>
+                <div class="equip-info">
+                    <div class="equip-name">${et.name}</div>
+                    <div class="equip-status ${isDone?'done':'pending'}">${statusText}</div>
+                    ${stampHtml}
                 </div>
-            `;
+                <div class="equip-actions">
+                    ${isDone
+                        ? `<span class="equip-done-badge">Done</span>
+                           <button class="equip-edit-btn" onclick="event.stopPropagation();editCapture('${capture.id}')">Edit</button>
+                           <button class="equip-photo-btn" onclick="event.stopPropagation();addPhotoToCapture('${capture.id}')">+ Photo</button>`
+                        : `<button class="equip-capture-btn" onclick="event.stopPropagation();startCapture('${et.id}')">Capture</button>`}
+                </div>
+            </div>`;
         }).join('');
 
-        document.getElementById('equipChecklist').innerHTML = checklist;
-
-        // Photo gallery — show all captured photos for this unit
-        const photosWithData = unitCaptures.filter(c => c.photo_url);
-        const galleryEl = document.getElementById('unitPhotoGallery');
-        const photosEl = document.getElementById('unitPhotos');
-        if (photosWithData.length > 0) {
-            galleryEl.style.display = 'block';
-            photosEl.innerHTML = photosWithData.map(c => {
-                const etName = (state.equipTypes.find(t => t.id === c.equipment_type_id) || {}).name || 'Equipment';
-                const condBadge = c.condition_rating ? `<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:${c.condition_rating==='excellent'||c.condition_rating==='good'?'#dcfce7':'#fef3c7'};color:${c.condition_rating==='excellent'||c.condition_rating==='good'?'#166534':'#92400e'};">${c.condition_rating}</span>` : '';
-                return `<div style="border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;background:#fff;">
-                    <img src="${c.photo_url}" style="width:100%;height:80px;object-fit:cover;" onclick="window.open('${c.photo_url}','_blank')">
-                    <div style="padding:4px 6px;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;">
-                            <div style="font-size:10px;font-weight:600;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${etName}</div>
-                            <button onclick="event.stopPropagation();deleteCapture('${c.id}')" style="background:none;border:none;color:#d1d5db;cursor:pointer;padding:0 2px;font-size:12px;" title="Delete">✕</button>
-                        </div>
-                        <div style="font-size:9px;color:#64748b;">${c.make||''} ${c.model_name||''}</div>
-                        ${condBadge}
-                    </div>
-                </div>`;
-            }).join('');
-        } else {
-            galleryEl.style.display = 'none';
-        }
-
-        // Enable complete button if all equipment captured
-        const allDone = state.equipTypes.every(et => unitCaptures.some(c => c.equipment_type_id === et.id));
-        document.getElementById('btnCompleteUnit').disabled = !allDone;
-
-        // Reset skip/note forms
-        document.getElementById('skipForm').style.display = 'none';
-        document.getElementById('addNoteForm').style.display = 'none';
-        document.getElementById('skipReason').value = '';
-        document.getElementById('skipNote').value = '';
-
-        // Load notes
-        refreshUnitNotes();
-
+        document.getElementById('btnCompleteUnit').disabled = !state.equipTypes.every(et => unitCaptures.some(c => c.equipment_type_id === et.id));
         showScreen('screenUnitDetail', { title: unit.unit_name });
     }
 
     function completeUnit() {
-        if (state.currentVisit) {
-            api(`/api/visits/${state.currentVisit.id}`, { status: 'completed' }).catch(() => {});
-        }
+        if (state.currentVisit) api(`/api/visits/${state.currentVisit.id}`, { status: 'completed' }).catch(() => {});
         toast(state.currentUnit.unit_name + ' completed!');
-        // Update local state
         const u = state.units.find(u => u.id === state.currentUnit.id);
         if (u) { u.is_complete = true; u.captures_done = u.captures_total; }
-        renderUnits();
-        goBack();
+        renderUnits(); goBack();
     }
 
-    function confirmSkip() {
-        const reason = document.getElementById('skipReason').value;
-        const note = document.getElementById('skipNote').value.trim();
-        if (!reason) { toast('Please select a reason'); return; }
+    function skipUnit() {
+        const note = prompt('Reason for skipping:');
+        if (note === null) return;
+        if (state.currentVisit) api(`/api/visits/${state.currentVisit.id}`, { status: 'access_issue', access_note: note }).catch(() => {});
+        toast('Unit skipped'); goBack();
+    }
 
-        const fullNote = reason.replace(/_/g, ' ') + (note ? ': ' + note : '');
+    // ── Custom Equipment Type ──────────────
+    function showAddCustomType() {
+        const name = prompt('Enter equipment type name (e.g., "Smoke Detector"):');
+        if (!name || !name.trim()) return;
+        showLoading('Adding...');
+        api(`/api/buildings/${state.currentBuilding}/equipment-types/custom`, { name: name.trim(), icon: '🔧' })
+        .then(r => { hideLoading(); toast(r.already_exists ? 'Already exists' : 'Added: ' + name.trim()); return api(`/api/buildings/${state.currentBuilding}/equipment-types`); })
+        .then(typesR => { if (typesR) { state.equipTypes = typesR.equipment_types || []; openUnit(state.currentUnit.id); } })
+        .catch(e => { hideLoading(); toast('Error: ' + e.message); });
+    }
 
-        // Save as a note with skip attribution
-        api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/note`, {
-            user_id: state.user.id,
-            user_name: state.user.name,
-            note_text: 'SKIPPED — ' + fullNote,
-            note_type: 'skip',
-        }).catch(() => {});
+    // ── Sub-Type Chips ─────────────────────
+    function renderSubTypeChips(equipTypeName) {
+        const section = document.getElementById('subTypeSection');
+        const chipsEl = document.getElementById('subTypeChips');
+        const customWrap = document.getElementById('subTypeCustomWrap');
 
-        if (state.currentVisit) {
-            api(`/api/visits/${state.currentVisit.id}`, { status: 'skipped', access_note: fullNote }).catch(() => {});
+        // Find matching category
+        let subTypes = [];
+        for (const [cat, types] of Object.entries(state.equipSubTypes)) {
+            if (equipTypeName.toLowerCase().includes(cat.toLowerCase())) { subTypes = types; break; }
         }
-        toast('Space skipped: ' + reason.replace(/_/g, ' '));
-        goBack();
+
+        if (subTypes.length === 0) { section.style.display = 'none'; return; }
+        section.style.display = 'block';
+        state.selectedSubType = '';
+
+        chipsEl.innerHTML = subTypes.map(st =>
+            `<div class="subtype-chip" onclick="selectSubType(this, '${st.replace(/'/g,"\\'")}')">${st}</div>`
+        ).join('') + `<div class="subtype-chip" onclick="selectSubTypeOther(this)">Other...</div>`;
+
+        customWrap.className = 'subtype-custom-input';
+        document.getElementById('subTypeCustomInput').value = '';
     }
 
-    async function saveNote() {
-        const text = document.getElementById('noteText').value.trim();
-        if (!text) { toast('Please enter a note'); return; }
-
-        showLoading('Saving note...');
-        try {
-            await api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/note`, {
-                user_id: state.user.id,
-                user_name: state.user.name,
-                note_text: text,
-                note_type: 'general',
-            });
-            document.getElementById('noteText').value = '';
-            document.getElementById('addNoteForm').style.display = 'none';
-
-            // Refresh notes
-            await refreshUnitNotes();
-            hideLoading();
-            toast('Note saved');
-        } catch (e) {
-            hideLoading();
-            toast('Error saving note');
-        }
+    function selectSubType(el, value) {
+        document.querySelectorAll('#subTypeChips .subtype-chip').forEach(c => c.classList.remove('selected'));
+        el.classList.add('selected');
+        state.selectedSubType = value;
+        document.getElementById('subTypeCustomWrap').className = 'subtype-custom-input';
     }
 
-    async function refreshUnitNotes() {
-        if (!state.currentUnit) return;
-        try {
-            const r = await api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/notes`);
-            renderUnitNotes(r.notes || []);
-        } catch (e) { renderUnitNotes([]); }
+    function selectSubTypeOther(el) {
+        document.querySelectorAll('#subTypeChips .subtype-chip').forEach(c => c.classList.remove('selected'));
+        el.classList.add('selected');
+        state.selectedSubType = '__custom__';
+        document.getElementById('subTypeCustomWrap').className = 'subtype-custom-input visible';
+        document.getElementById('subTypeCustomInput').focus();
     }
 
-    function renderUnitNotes(notes) {
-        const el = document.getElementById('unitNotesList');
-        if (!notes.length) {
-            el.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:4px 0 8px;">No notes yet</div>';
-            return;
-        }
-        el.innerHTML = notes.map(n => {
-            const date = n.created_at ? new Date(n.created_at) : new Date();
-            const dateStr = date.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' + date.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-            const isSkip = n.note_type === 'skip';
-            return `<div style="background:${isSkip ? '#fef3c7' : '#f8fafc'};border:1px solid ${isSkip ? '#fde68a' : '#e2e8f0'};border-radius:8px;padding:10px 12px;margin-bottom:6px;">
-                <div style="font-size:13px;color:#1e293b;">${n.note_text}</div>
-                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
-                    <strong>${n.user_name || 'Unknown'}</strong> · ${dateStr}
-                </div>
-            </div>`;
-        }).join('');
+    function getSelectedSubType() {
+        if (state.selectedSubType === '__custom__') return document.getElementById('subTypeCustomInput').value.trim();
+        return state.selectedSubType;
     }
 
-    // ─── Capture Flow ───────────────────────
+    // ── Capture Flow ───────────────────────
     function startCapture(equipTypeId) {
         const et = state.equipTypes.find(t => t.id === equipTypeId);
         if (!et) return;
         state.currentEquipType = et;
         state.capturePhoto = null;
+        state.capturePhotos = [];
+        state.lastCaptureId = null;
+        state.lastCaptureData = null;
+        state.noTagIdentification = null;
 
-        document.getElementById('captureEquipName').textContent = (et.icon || '🔧') + ' ' + et.name;
-        document.getElementById('captureUnitName').textContent = 'Space: ' + state.currentUnit.unit_name;
+        document.getElementById('captureEquipName').textContent = (et.icon||'🔧') + ' ' + et.name;
+        document.getElementById('captureUnitName').textContent = 'Unit: ' + state.currentUnit.unit_name;
+
+        renderSubTypeChips(et.name);
 
         // Reset UI
         document.getElementById('captureStep1').style.display = 'block';
-        document.getElementById('captureStepConfirm').style.display = 'none';
         document.getElementById('captureStep2').style.display = 'none';
+        document.getElementById('captureStep2b').style.display = 'none';
         document.getElementById('captureStep3').style.display = 'none';
         document.getElementById('photoPreview').style.display = 'none';
         document.getElementById('cameraPlaceholder').style.display = 'block';
         document.getElementById('photoInput').value = '';
-        _annPaths = []; _annCurrent = []; _annModeActive = false;
-        document.getElementById('annotationCanvas').style.display = 'none';
-        document.getElementById('drawingTools').style.display = 'none';
-        document.getElementById('confirmActions').style.display = 'block';
-        const qn = document.getElementById('captureQuickNote');
-        if (qn) qn.value = '';
+        document.getElementById('photoThumbsArea').style.display = 'none';
+        document.getElementById('specsArea').style.display = 'none';
 
         showScreen('screenCapture', { title: 'Capture: ' + et.name });
     }
-
-    // ─── Annotation state ────────────────
-    let _annPaths = [];
-    let _annCurrent = [];
-    let _annDrawing = false;
 
     function onPhotoSelected(event) {
         const file = event.target.files[0];
         if (!file) return;
         state.capturePhoto = file;
+        state.capturePhotos = [{ file, type: 'tag' }];
 
         const reader = new FileReader();
         reader.onload = (e) => {
-            const img = document.getElementById('photoPreview');
-            img.src = e.target.result;
-            img.style.display = 'block';
-            // Show confirm step instead of auto-submitting
-            document.getElementById('captureStep1').style.display = 'none';
-            document.getElementById('captureStepConfirm').style.display = 'block';
-            // Setup annotation canvas
-            img.onload = () => setupAnnotation(img);
+            document.getElementById('photoPreview').src = e.target.result;
+            document.getElementById('photoPreview').style.display = 'block';
+            document.getElementById('cameraPlaceholder').style.display = 'none';
         };
         reader.readAsDataURL(file);
+        processPhoto(file);
     }
 
-    let _annModeActive = false;
+    // No-tag photo: AI identifies the equipment
+    function onNoTagPhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        state.capturePhoto = file;
+        state.capturePhotos = [{ file, type: 'unit' }];
 
-    function setupAnnotation(img) {
-        const canvas = document.getElementById('annotationCanvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        canvas.style.width = img.clientWidth + 'px';
-        canvas.style.height = img.clientHeight + 'px';
-        _annPaths = [];
-        _annCurrent = [];
-        _annModeActive = false;
-        // Canvas stays hidden until user taps "Draw / Annotate"
-        canvas.style.display = 'none';
+        const reader = new FileReader();
+        reader.onload = (e) => { document.getElementById('noTagPhotoPreview').src = e.target.result; };
+        reader.readAsDataURL(file);
+
+        // Show processing
+        document.getElementById('captureStep1').style.display = 'none';
+        document.getElementById('aiProcessingText').textContent = 'Identifying equipment...';
+        document.getElementById('aiProcessingSub').textContent = 'AI is analyzing what this equipment is';
+        document.getElementById('captureStep2').style.display = 'block';
+
+        // Send to identification endpoint
+        const fd = new FormData();
+        fd.append('photo', file);
+        fetch(`${API}/api/identify-equipment`, { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('captureStep2').style.display = 'none';
+            if (data.success && data.identification) {
+                state.noTagIdentification = data.identification;
+                document.getElementById('aiIdentifyType').textContent = data.identification.identified_type || 'Unknown equipment';
+                document.getElementById('aiIdentifyDesc').textContent = data.identification.description || '';
+                const conf = data.identification.confidence || 'low';
+                const badge = document.getElementById('aiIdentifyConf');
+                badge.textContent = conf; badge.className = 'confidence-badge conf-' + conf;
+                document.getElementById('captureStep2b').style.display = 'block';
+            } else {
+                // AI failed — go to manual
+                toast('Could not identify. Enter data manually.');
+                goToManualEntry();
+            }
+        })
+        .catch(() => {
+            document.getElementById('captureStep2').style.display = 'none';
+            toast('Identification failed. Enter manually.');
+            goToManualEntry();
+        });
     }
 
-    function _attachDrawEvents() {
-        const canvas = document.getElementById('annotationCanvas');
-        const getPos = (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const touch = e.touches ? e.touches[0] : e;
-            return {
-                x: (touch.clientX - rect.left) / rect.width * canvas.width,
-                y: (touch.clientY - rect.top) / rect.height * canvas.height
-            };
-        };
-        const startDraw = (e) => { e.preventDefault(); _annDrawing = true; _annCurrent = [getPos(e)]; };
-        const moveDraw = (e) => { if (!_annDrawing) return; e.preventDefault(); _annCurrent.push(getPos(e)); drawAnnotations(); };
-        const endDraw = () => { if (!_annDrawing) return; _annDrawing = false; if (_annCurrent.length > 1) _annPaths.push([..._annCurrent]); _annCurrent = []; drawAnnotations(); };
+    function confirmIdentification() {
+        // User confirmed AI identification — populate what we can and go to form
+        const id = state.noTagIdentification;
+        document.getElementById('captureStep2b').style.display = 'none';
+        document.getElementById('captureStep3').style.display = 'block';
+        document.getElementById('aiResultBox').style.display = 'none';
 
-        canvas.onmousedown = startDraw; canvas.onmousemove = moveDraw; canvas.onmouseup = endDraw;
-        canvas.ontouchstart = startDraw; canvas.ontouchmove = moveDraw; canvas.ontouchend = endDraw;
-    }
+        document.getElementById('fieldBrand').value = id.brand || '';
+        document.getElementById('fieldMake').value = '';
+        document.getElementById('fieldModelName').value = '';
+        document.getElementById('fieldModelNumber').value = '';
+        document.getElementById('fieldSerial').value = '';
+        document.getElementById('fieldYear').value = id.estimated_age || '';
+        document.getElementById('fieldCondition').value = id.condition_visual || '';
+        document.getElementById('fieldNotes').value = id.description || '';
 
-    function _detachDrawEvents() {
-        const canvas = document.getElementById('annotationCanvas');
-        canvas.onmousedown = null; canvas.onmousemove = null; canvas.onmouseup = null;
-        canvas.ontouchstart = null; canvas.ontouchmove = null; canvas.ontouchend = null;
-    }
-
-    function enterDrawMode() {
-        _annModeActive = true;
-        const canvas = document.getElementById('annotationCanvas');
-        canvas.style.display = 'block';
-        _attachDrawEvents();
-        document.getElementById('drawingTools').style.display = 'block';
-        document.getElementById('confirmActions').style.display = 'none';
-    }
-
-    function exitDrawMode() {
-        _annModeActive = false;
-        _detachDrawEvents();
-        document.getElementById('drawingTools').style.display = 'none';
-        document.getElementById('confirmActions').style.display = 'block';
-        // Keep canvas visible if there are drawings, hide if empty
-        const canvas = document.getElementById('annotationCanvas');
-        if (_annPaths.length === 0) canvas.style.display = 'none';
-    }
-
-    function drawAnnotations() {
-        const canvas = document.getElementById('annotationCanvas');
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = Math.max(3, canvas.width / 100);
-        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        const allPaths = [..._annPaths, _annCurrent];
-        for (const path of allPaths) {
-            if (path.length < 2) continue;
-            ctx.beginPath();
-            ctx.moveTo(path[0].x, path[0].y);
-            for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
-            ctx.stroke();
-        }
-    }
-
-    function clearAnnotation() { _annPaths = []; _annCurrent = []; drawAnnotations(); }
-    function undoAnnotation() { _annPaths.pop(); drawAnnotations(); }
-
-    function confirmPhoto() {
-        const img = document.getElementById('photoPreview');
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-
-        // Draw original photo
-        ctx.drawImage(img, 0, 0);
-
-        // Draw annotations if any
-        if (_annPaths.length > 0) {
-            ctx.drawImage(document.getElementById('annotationCanvas'), 0, 0);
+        // Auto-select sub-type if suggested
+        if (id.suggested_sub_type) {
+            state.selectedSubType = id.suggested_sub_type;
+            // Try to select matching chip
+            document.querySelectorAll('#subTypeChips .subtype-chip').forEach(c => {
+                if (c.textContent.includes(id.suggested_sub_type)) { c.classList.add('selected'); }
+            });
         }
 
-        // Stamp at bottom: user name + date/time on line 1, equipment + unit on line 2
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) + '  ' + now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
-        const userName = state.user?.name || 'Unknown';
-        const fontSize = Math.max(14, Math.round(canvas.width / 35));
-        const pad = Math.round(fontSize * 0.5);
-        const lineH = fontSize + pad;
-        const barH = lineH * 2 + pad * 2;
+        renderPhotoThumbs();
+        if (state.capturePhotos.length > 0) document.getElementById('photoThumbsArea').style.display = 'block';
+    }
 
-        // Semi-transparent bar at bottom
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.fillRect(0, canvas.height - barH, canvas.width, barH);
+    function rejectIdentification() {
+        document.getElementById('captureStep2b').style.display = 'none';
+        goToManualEntry();
+    }
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        ctx.textBaseline = 'middle';
+    function goToManualEntry() {
+        document.getElementById('captureStep3').style.display = 'block';
+        document.getElementById('aiResultBox').style.display = 'none';
+        document.getElementById('specsArea').style.display = 'none';
+        ['fieldBrand','fieldMake','fieldModelName','fieldModelNumber','fieldSerial','fieldYear','fieldNotes'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('fieldCondition').value = '';
+        renderPhotoThumbs();
+        if (state.capturePhotos.length > 0) document.getElementById('photoThumbsArea').style.display = 'block';
+    }
 
-        // Line 1: User name + date/time
-        const line1Y = canvas.height - barH + pad + lineH / 2;
-        ctx.fillText(userName, pad, line1Y);
-        const dateW = ctx.measureText(dateStr).width;
-        ctx.fillText(dateStr, canvas.width - dateW - pad, line1Y);
+    function onAdditionalPhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        state.capturePhotos.push({ file, type: 'detail' });
+        renderPhotoThumbs();
+        document.getElementById('photoThumbsArea').style.display = 'block';
+        toast('Photo added');
+    }
 
-        // Line 2: Equipment type + unit + quick note
-        const line2Y = line1Y + lineH;
-        const equipLabel = state.currentEquipType?.name || '';
-        const unitLabel = state.currentUnit?.unit_name || '';
-        const quickNote = (document.getElementById('captureQuickNote')?.value || '').trim();
-        ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        const line2Text = equipLabel + '  ·  ' + unitLabel + (quickNote ? '  ·  ' + quickNote : '');
-        ctx.fillText(line2Text, pad, line2Y);
+    function renderPhotoThumbs() {
+        const container = document.getElementById('photoThumbs');
+        container.innerHTML = '';
+        state.capturePhotos.forEach((p, i) => {
+            const img = document.createElement('img');
+            img.className = 'photo-thumb' + (i === 0 ? ' active' : '');
+            const reader = new FileReader();
+            reader.onload = (e) => { img.src = e.target.result; };
+            reader.readAsDataURL(p.file);
+            container.appendChild(img);
+        });
+        const addBtn = document.createElement('div');
+        addBtn.className = 'add-photo-btn'; addBtn.textContent = '+';
+        addBtn.onclick = () => document.getElementById('addPhotoInput').click();
+        container.appendChild(addBtn);
+    }
 
-        canvas.toBlob((blob) => {
-            state.capturePhoto = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
-            processPhoto(state.capturePhoto);
-        }, 'image/jpeg', 0.9);
+    // Render technical specs grid from AI additional_specs
+    function renderSpecsGrid(specs, gridId, areaId) {
+        if (!specs || typeof specs !== 'object') { document.getElementById(areaId).style.display = 'none'; return; }
+        const entries = Object.entries(specs).filter(([k,v]) => v && v !== 'null');
+        if (entries.length === 0) { document.getElementById(areaId).style.display = 'none'; return; }
+        document.getElementById(areaId).style.display = 'block';
+        document.getElementById(gridId).innerHTML = entries.map(([k,v]) =>
+            `<div class="spec-item"><div class="spec-label">${k.replace(/_/g,' ')}</div><div class="spec-value">${v}</div></div>`
+        ).join('');
     }
 
     async function processPhoto(file) {
-        // Show step 2 (processing)
         document.getElementById('captureStep1').style.display = 'none';
-        document.getElementById('captureStepConfirm').style.display = 'none';
+        document.getElementById('aiProcessingText').textContent = 'Analyzing equipment tag...';
+        document.getElementById('aiProcessingSub').textContent = 'AI is reading brand, model, serial number & specs';
         document.getElementById('captureStep2').style.display = 'block';
 
         const formData = new FormData();
@@ -1366,109 +971,70 @@
         formData.append('equipment_type_id', state.currentEquipType.id);
         formData.append('user_id', state.user.id);
         formData.append('user_name', state.user.name);
+        const subType = getSelectedSubType();
+        if (subType) formData.append('sub_type', subType);
         if (state.walkSession) formData.append('walk_session_id', state.walkSession.id);
         if (state.currentVisit) formData.append('unit_visit_id', state.currentVisit.id);
 
         try {
-            const r = await fetch(`${API}/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/capture`, {
-                method: 'POST',
-                body: formData,
-            });
-
+            const r = await fetch(`${API}/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/capture`, { method: 'POST', body: formData });
             if (!r.ok) throw new Error('Capture failed');
             const data = await r.json();
             state.lastCaptureId = data.capture?.id;
+            state.lastCaptureData = data.capture;
 
-            // Populate review form
             const c = data.capture || {};
+            document.getElementById('fieldBrand').value = c.brand || '';
             document.getElementById('fieldMake').value = c.make || '';
             document.getElementById('fieldModelName').value = c.model_name || '';
             document.getElementById('fieldModelNumber').value = c.model_number || '';
             document.getElementById('fieldSerial').value = c.serial_number || '';
             document.getElementById('fieldYear').value = c.manufacture_year || '';
             document.getElementById('fieldCondition').value = c.condition_rating || '';
-            const quickNoteVal = (document.getElementById('captureQuickNote')?.value || '').trim();
-            document.getElementById('fieldNotes').value = c.condition_notes || quickNoteVal || '';
+            document.getElementById('fieldNotes').value = c.condition_notes || '';
 
-            // Confidence badge
             const conf = c.ai_confidence || 'low';
             const badge = document.getElementById('aiConfBadge');
-            badge.textContent = conf;
-            badge.className = 'confidence-badge conf-' + conf;
+            badge.textContent = conf; badge.className = 'confidence-badge conf-' + conf;
+            document.getElementById('aiResultBox').style.display = data.ai_extracted ? 'block' : 'none';
 
-            // Show/hide AI result box
-            if (data.ai_extracted) {
-                document.getElementById('aiResultBox').style.display = 'block';
-            } else {
-                document.getElementById('aiResultBox').style.display = 'none';
-            }
+            // Show technical specs
+            renderSpecsGrid(c.additional_specs, 'specsGrid', 'specsArea');
 
-            // Show thumbnail of captured photo
-            const thumb = document.getElementById('captureThumb');
-            if (state.capturePhoto) {
-                const tr = new FileReader();
-                tr.onload = (ev) => { thumb.src = ev.target.result; };
-                tr.readAsDataURL(state.capturePhoto);
-                document.getElementById('captureThumbWrap').style.display = 'block';
-            }
+            renderPhotoThumbs();
+            if (state.capturePhotos.length > 0) document.getElementById('photoThumbsArea').style.display = 'block';
 
-            // Show step 3
             document.getElementById('captureStep2').style.display = 'none';
             document.getElementById('captureStep3').style.display = 'block';
-
         } catch (e) {
             toast('AI extraction failed. Enter data manually.');
             document.getElementById('captureStep2').style.display = 'none';
             document.getElementById('captureStep3').style.display = 'block';
             document.getElementById('aiResultBox').style.display = 'none';
-            document.getElementById('captureThumbWrap').style.display = 'none';
+            document.getElementById('specsArea').style.display = 'none';
         }
     }
 
     function tagNotReadable() {
-        // Skip photo, go straight to manual entry
-        state.capturePhoto = null;
-        document.getElementById('captureStep1').style.display = 'none';
-        document.getElementById('captureStep3').style.display = 'block';
-        document.getElementById('aiResultBox').style.display = 'none';
-
-        // Clear fields
-        ['fieldMake', 'fieldModelName', 'fieldModelNumber', 'fieldSerial', 'fieldYear', 'fieldNotes'].forEach(id => {
-            document.getElementById(id).value = '';
-        });
-        document.getElementById('fieldCondition').value = '';
+        state.capturePhoto = null; state.capturePhotos = [];
         state.lastCaptureId = null;
+        goToManualEntry();
+        document.getElementById('captureStep1').style.display = 'none';
     }
 
     function retakePhoto() {
         document.getElementById('captureStep3').style.display = 'none';
-        document.getElementById('captureStepConfirm').style.display = 'none';
         document.getElementById('captureStep1').style.display = 'block';
         document.getElementById('photoPreview').style.display = 'none';
         document.getElementById('cameraPlaceholder').style.display = 'block';
         document.getElementById('photoInput').value = '';
-        _annPaths = []; _annCurrent = []; _annModeActive = false;
-        _detachDrawEvents();
-        document.getElementById('annotationCanvas').style.display = 'none';
-        document.getElementById('drawingTools').style.display = 'none';
-        document.getElementById('confirmActions').style.display = 'block';
-        const qn = document.getElementById('captureQuickNote');
-        if (qn) qn.value = '';
     }
 
     async function saveCapture() {
-        // Require condition
-        const cond = document.getElementById('fieldCondition').value;
-        if (!cond) {
-            document.getElementById('fieldCondition').style.borderColor = '#ef4444';
-            document.getElementById('fieldCondition').focus();
-            toast('Please select a condition rating');
-            return;
-        }
-
         showLoading('Saving...');
-
+        const subType = getSelectedSubType();
         const captureData = {
+            brand: document.getElementById('fieldBrand').value,
             make: document.getElementById('fieldMake').value,
             model_name: document.getElementById('fieldModelName').value,
             model_number: document.getElementById('fieldModelNumber').value,
@@ -1479,94 +1045,177 @@
             manually_verified: true,
             verified_by: state.user.id,
         };
+        if (subType) captureData.sub_type = subType;
 
         try {
             if (state.lastCaptureId) {
-                // Update existing capture with corrections
                 await api(`/api/captures/${state.lastCaptureId}`, captureData);
+                // Upload additional photos
+                for (let i = 1; i < state.capturePhotos.length; i++) {
+                    const p = state.capturePhotos[i];
+                    const fd = new FormData();
+                    fd.append('photo', p.file); fd.append('photo_type', p.type);
+                    await fetch(`${API}/api/captures/${state.lastCaptureId}/photos`, { method: 'POST', body: fd });
+                }
             } else {
-                // Manual capture (no photo)
-                await api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/manual-capture`, {
+                // Manual capture (no photo or no-tag with identification)
+                const manualData = {
                     ...captureData,
                     equipment_type_id: state.currentEquipType.id,
                     user_id: state.user.id,
                     user_name: state.user.name,
                     walk_session_id: state.walkSession?.id,
                     unit_visit_id: state.currentVisit?.id,
-                });
+                    sub_type: subType || null,
+                };
+                const r = await api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/manual-capture`, manualData);
+                const newId = r.capture?.id;
+                // Upload photos if we have any (from no-tag flow)
+                if (newId && state.capturePhotos.length > 0) {
+                    for (const p of state.capturePhotos) {
+                        const fd = new FormData();
+                        fd.append('photo', p.file); fd.append('photo_type', p.type);
+                        await fetch(`${API}/api/captures/${newId}/photos`, { method: 'POST', body: fd });
+                    }
+                }
             }
 
-            // Update local captures list
             const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
             state.captures = capsR.captures || [];
-
-            hideLoading();
-            toast('Saved!');
-
-            // Go back to unit detail and refresh it
-            goBack();
-            openUnit(state.currentUnit.id);
-
-        } catch (e) {
-            hideLoading();
-            toast('Error saving: ' + e.message);
-        }
+            hideLoading(); toast('Saved!');
+            goBack(); openUnit(state.currentUnit.id);
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
     }
 
-    async function deleteCapture(captureId) {
-        if (!confirm('Delete this capture and its photo?')) return;
-        showLoading('Deleting...');
+    // ── Add Photo to Existing Capture (from unit detail) ──
+    function addPhotoToCapture(captureId) {
+        state.editingCapture = state.captures.find(c => c.id === captureId);
+        if (!state.editingCapture) return;
+        // Create a temporary file input and trigger it
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+        input.onchange = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            showLoading('Uploading photo...');
+            const fd = new FormData();
+            fd.append('photo', file); fd.append('photo_type', 'detail');
+            try {
+                await fetch(`${API}/api/captures/${captureId}/photos`, { method: 'POST', body: fd });
+                hideLoading(); toast('Photo added!');
+            } catch (e) { hideLoading(); toast('Upload failed'); }
+        };
+        input.click();
+    }
+
+    // ── Edit Capture ───────────────────────
+    async function editCapture(captureId) {
+        const capture = state.captures.find(c => c.id === captureId);
+        if (!capture) { toast('Capture not found'); return; }
+        state.editingCapture = capture;
+
+        const et = state.equipTypes.find(t => t.id === capture.equipment_type_id);
+        const etName = et ? (et.icon||'🔧')+' '+et.name : 'Equipment';
+        document.getElementById('editCaptureTitle').textContent = etName;
+        document.getElementById('editCaptureMeta').textContent = 'Unit: ' + (state.currentUnit?.unit_name || '');
+
+        document.getElementById('editSubType').value = capture.sub_type || '';
+        document.getElementById('editBrand').value = capture.brand || '';
+        document.getElementById('editMake').value = capture.make || '';
+        document.getElementById('editModelName').value = capture.model_name || '';
+        document.getElementById('editModelNumber').value = capture.model_number || '';
+        document.getElementById('editSerial').value = capture.serial_number || '';
+        document.getElementById('editYear').value = capture.manufacture_year || '';
+        document.getElementById('editCondition').value = capture.condition_rating || '';
+        document.getElementById('editNotes').value = capture.condition_notes || '';
+
+        // Show specs
+        renderSpecsGrid(capture.additional_specs, 'editSpecsGrid', 'editSpecsArea');
+
+        // Show existing photos
+        const thumbsEl = document.getElementById('editPhotoThumbs');
+        thumbsEl.innerHTML = '';
+        if (capture.photo_url) {
+            const img = document.createElement('img');
+            img.className = 'photo-thumb active'; img.src = capture.photo_url;
+            thumbsEl.appendChild(img);
+        }
         try {
-            await fetch(`${API}/api/captures/${captureId}`, { method: 'DELETE' });
-            // Refresh captures
+            const photosR = await api(`/api/captures/${captureId}/photos`);
+            (photosR.photos || []).forEach(p => {
+                if (p.photo_url !== capture.photo_url) {
+                    const img = document.createElement('img');
+                    img.className = 'photo-thumb'; img.src = p.photo_url;
+                    thumbsEl.appendChild(img);
+                }
+            });
+        } catch (e) {}
+        // Add photo button in thumbs
+        const addBtn = document.createElement('div');
+        addBtn.className = 'add-photo-btn'; addBtn.textContent = '+';
+        addBtn.onclick = () => document.getElementById('editAddPhotoInput').click();
+        thumbsEl.appendChild(addBtn);
+
+        showScreen('screenEditCapture', { title: 'Edit Capture' });
+    }
+
+    async function onEditAddPhoto(event) {
+        const file = event.target.files[0];
+        if (!file || !state.editingCapture) return;
+        showLoading('Uploading...');
+        const fd = new FormData();
+        fd.append('photo', file); fd.append('photo_type', 'detail');
+        try {
+            await fetch(`${API}/api/captures/${state.editingCapture.id}/photos`, { method: 'POST', body: fd });
+            hideLoading(); toast('Photo added!');
+            // Refresh the edit screen
+            editCapture(state.editingCapture.id);
+        } catch (e) { hideLoading(); toast('Upload failed'); }
+    }
+
+    async function saveEditCapture() {
+        if (!state.editingCapture) return;
+        showLoading('Saving...');
+        try {
+            await api(`/api/captures/${state.editingCapture.id}`, {
+                sub_type: document.getElementById('editSubType').value,
+                brand: document.getElementById('editBrand').value,
+                make: document.getElementById('editMake').value,
+                model_name: document.getElementById('editModelName').value,
+                model_number: document.getElementById('editModelNumber').value,
+                serial_number: document.getElementById('editSerial').value,
+                manufacture_year: document.getElementById('editYear').value,
+                condition_rating: document.getElementById('editCondition').value,
+                condition_notes: document.getElementById('editNotes').value,
+                manually_verified: true,
+                verified_by: state.user.id,
+            });
             const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
             state.captures = capsR.captures || [];
-            hideLoading();
-            toast('Capture deleted');
-            // Refresh unit detail
+            hideLoading(); toast('Changes saved!');
+            goBack();
             if (state.currentUnit) openUnit(state.currentUnit.id);
-        } catch (e) {
-            hideLoading();
-            toast('Error deleting: ' + (e.message || 'unknown'));
-        }
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
     }
 
-    // ─── Export ──────────────────────────────
-    function exportCSV() {
-        window.open(`${API}/api/buildings/${state.currentBuilding}/export/csv`, '_blank');
-    }
+    // ── Export ──────────────────────────────
+    function exportCSV() { window.open(`${API}/api/buildings/${state.currentBuilding}/export/csv`, '_blank'); }
 
-    // ─── API helper ─────────────────────────
+    // ── API helper ─────────────────────────
     async function api(path, body = null) {
         const opts = { headers: { 'Content-Type': 'application/json' } };
-        if (body) {
-            opts.method = 'POST';
-            opts.body = JSON.stringify(body);
-        }
+        if (body) { opts.method = 'POST'; opts.body = JSON.stringify(body); }
         const r = await fetch(API + path, opts);
-        if (!r.ok) {
-            const err = await r.json().catch(() => ({ detail: r.statusText }));
-            throw new Error(err.detail || 'Request failed');
-        }
+        if (!r.ok) { const err = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(err.detail || 'Request failed'); }
         return r.json();
     }
 
-    // ─── UI Helpers ─────────────────────────
-    function showLoading(text) {
-        document.getElementById('loadingText').textContent = text || 'Loading...';
-        document.getElementById('loadingOverlay').style.display = 'flex';
-    }
-    function hideLoading() {
-        document.getElementById('loadingOverlay').style.display = 'none';
-    }
-    function toast(msg) {
-        const t = document.getElementById('toast');
-        t.textContent = msg;
-        t.classList.add('show');
-        setTimeout(() => t.classList.remove('show'), 3000);
-    }
+    // ── UI Helpers ─────────────────────────
+    function showLoading(text) { document.getElementById('loadingText').textContent = text || 'Loading...'; document.getElementById('loadingOverlay').style.display = 'flex'; }
+    function hideLoading() { document.getElementById('loadingOverlay').style.display = 'none'; }
+    function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
 
-    // ─── Init ───────────────────────────────
+    // ── Init ───────────────────────────────
     (function init() {
         const saved = localStorage.getItem('fc_user');
         if (saved) {
@@ -1574,17 +1223,9 @@
                 state.user = JSON.parse(saved);
                 document.getElementById('loginName').value = state.user.name || '';
                 document.getElementById('loginEmail').value = state.user.email || '';
-                // Auto-load buildings
-                loadBuildings().then(() => {
-                    if (state.buildings.length === 1) {
-                        // Single building — go straight to it
-                        const b = state.buildings[0];
-                        selectBuilding(b.building_id, b.building_name, b.building_address);
-                        screenStack = ['screenBuildings'];
-                    } else if (state.buildings.length > 0) {
-                        showScreen('screenBuildings');
-                    }
-                }).catch(() => {});
+                // Load sub-types
+                api('/api/equipment-sub-types').then(r => { state.equipSubTypes = r.sub_types || {}; }).catch(() => {});
+                loadBuildings().then(() => { if (state.buildings.length > 0) showScreen('screenBuildings'); }).catch(() => {});
             } catch (e) { localStorage.removeItem('fc_user'); }
         }
     })();
