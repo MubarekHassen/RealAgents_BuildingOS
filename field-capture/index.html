@@ -36,16 +36,7 @@
         .header-action { font-size: 13px; background: rgba(255,255,255,0.12); padding: 6px 14px; border-radius: 6px; cursor: pointer; border: none; color: white; transition: background 0.2s ease; }
         .header-action:active { background: rgba(255,255,255,0.22); }
 
-        /* Client banner */
-        .client-banner {
-            background: #206A8A;
-            padding: 8px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 50px;
-        }
-        .client-banner svg { height: 32px; width: auto; }
+        /* Client banner (reserved for future use) */
 
         .screen { display: none; min-height: calc(100dvh - 48px); }
         .screen.active { display: block; }
@@ -229,24 +220,6 @@
 
 <!-- SCREEN: Dashboard -->
 <div class="screen" id="screenDashboard">
-    <div class="client-banner" id="clientBanner" style="display:none;">
-        <svg viewBox="0 0 260 40" xmlns="http://www.w3.org/2000/svg">
-            <!-- Bracket left -->
-            <rect x="4" y="4" width="3" height="32" rx="1" fill="white"/>
-            <rect x="4" y="4" width="12" height="3" rx="1" fill="white"/>
-            <rect x="4" y="33" width="12" height="3" rx="1" fill="white"/>
-            <!-- E -->
-            <text x="22" y="30" font-family="Georgia, 'Times New Roman', serif" font-size="26" font-weight="700" fill="white">E</text>
-            <!-- F -->
-            <text x="42" y="30" font-family="Georgia, 'Times New Roman', serif" font-size="26" font-weight="700" fill="white">F</text>
-            <!-- Bracket right -->
-            <rect x="63" y="4" width="3" height="32" rx="1" fill="white"/>
-            <rect x="54" y="4" width="12" height="3" rx="1" fill="white"/>
-            <rect x="54" y="33" width="12" height="3" rx="1" fill="white"/>
-            <!-- CAPITAL -->
-            <text x="80" y="29" font-family="Georgia, 'Times New Roman', serif" font-size="22" font-weight="400" fill="white" letter-spacing="4">CAPITAL</text>
-        </svg>
-    </div>
     <div class="screen-pad">
         <div id="dashboardBuildingName" style="font-size:18px;font-weight:700;margin-bottom:4px;"></div>
         <div id="dashboardBuildingAddr" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
@@ -670,12 +643,6 @@
                 <div class="progress-bar"><div class="progress-fill" style="width:${t.pct}%;background:${t.pct>=100?'#059669':'#206A8A'}"></div></div>
             </div>`).join('');
 
-        // Show EF Capital banner for Marquis Villa
-        const banner = document.getElementById('clientBanner');
-        if (banner) {
-            const isEF = state.currentBuildingName && state.currentBuildingName.match(/marquis|ef.capital/i);
-            banner.style.display = isEF ? 'flex' : 'none';
-        }
     }
 
     // ── Walk ───────────────────────────────
