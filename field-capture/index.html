@@ -19,36 +19,56 @@
         }
 
         .app-header {
-            background: #1e293b;
+            background: linear-gradient(135deg, #1e293b 0%, #263545 100%);
             color: white;
-            padding: 12px 16px;
+            padding: 14px 20px;
             display: flex;
             align-items: center;
             gap: 12px;
             position: sticky;
             top: 0;
             z-index: 100;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
         }
-        .app-header h1 { font-size: 16px; font-weight: 600; flex: 1; }
-        .header-back { font-size: 20px; cursor: pointer; padding: 4px 8px; }
-        .header-action { font-size: 13px; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; cursor: pointer; border: none; color: white; }
+        .app-header h1 { font-size: 16px; font-weight: 600; flex: 1; letter-spacing: 0.01em; }
+        .header-back { font-size: 20px; cursor: pointer; padding: 4px 8px; transition: opacity 0.2s ease; }
+        .header-back:active { opacity: 0.7; }
+        .header-action { font-size: 13px; background: rgba(255,255,255,0.12); padding: 6px 14px; border-radius: 6px; cursor: pointer; border: none; color: white; transition: background 0.2s ease; }
+        .header-action:active { background: rgba(255,255,255,0.22); }
+
+        /* Client banner */
+        .client-banner {
+            background: #206A8A;
+            padding: 8px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 50px;
+        }
+        .client-banner svg { height: 32px; width: auto; }
 
         .screen { display: none; min-height: calc(100dvh - 48px); }
         .screen.active { display: block; }
         .screen-pad { padding: 16px; }
 
-        .card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); transition: box-shadow 0.2s ease; }
         .card-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
         .card-sub { font-size: 13px; color: #64748b; }
 
-        .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-align: center; margin-bottom: 10px; }
-        .btn-primary { background: #4f46e5; color: white; }
-        .btn-primary:active { background: #4338ca; }
+        .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-align: center; margin-bottom: 10px; transition: all 0.2s ease; }
+        .btn-primary { background: #206A8A; color: white; }
+        .btn-primary:hover { background: #1b5a76; }
+        .btn-primary:active { background: #164c65; }
         .btn-success { background: #059669; color: white; }
+        .btn-success:hover { background: #048a5e; }
         .btn-success:active { background: #047857; }
-        .btn-outline { background: white; color: #4f46e5; border: 2px solid #4f46e5; }
+        .btn-outline { background: white; color: #206A8A; border: 2px solid #206A8A; }
+        .btn-outline:hover { background: #f0f7fa; }
+        .btn-outline:active { background: #e1eef3; }
         .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
         .btn-secondary { background: #e2e8f0; color: #475569; }
+        .btn-secondary:hover { background: #d5dce5; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-sm { padding: 8px 14px; font-size: 13px; width: auto; display: inline-block; margin-bottom: 0; }
 
@@ -58,10 +78,10 @@
             width: 100%; padding: 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 15px; background: white; -webkit-appearance: none;
         }
         .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
-            outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+            outline: none; border-color: #206A8A; box-shadow: 0 0 0 3px rgba(32,106,138,0.15);
         }
 
-        .unit-card { background: white; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+        .unit-card { background: white; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); transition: all 0.2s ease; }
         .unit-card:active { background: #f8fafc; }
         .unit-status { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
         .status-pending { background: #fef3c7; color: #92400e; }
@@ -81,9 +101,9 @@
         .equip-status.done { color: #059669; }
         .equip-status.pending { color: #f59e0b; }
         .equip-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-        .equip-capture-btn { background: #4f46e5; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .equip-capture-btn { background: #206A8A; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
         .equip-done-badge { background: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; }
-        .equip-edit-btn { background: #eef2ff; color: #4f46e5; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .equip-edit-btn { background: #edf5f8; color: #206A8A; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
         .equip-photo-btn { background: #f0fdf4; color: #059669; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
 
         .camera-area { background: #1e293b; border-radius: 12px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; margin-bottom: 16px; overflow: hidden; position: relative; }
@@ -111,7 +131,7 @@
         .conf-low { background: #fee2e2; color: #991b1b; }
 
         .progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 6px; }
-        .progress-fill { height: 100%; background: #4f46e5; border-radius: 3px; transition: width 0.3s; }
+        .progress-fill { height: 100%; background: #206A8A; border-radius: 3px; transition: width 0.3s; }
 
         .spinner { display: inline-block; width: 20px; height: 20px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -130,7 +150,7 @@
         /* Photo thumbnails */
         .photo-thumbs { display: flex; gap: 8px; margin: 12px 0; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
         .photo-thumb { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; border: 2px solid #e2e8f0; flex-shrink: 0; cursor: pointer; }
-        .photo-thumb.active { border-color: #4f46e5; }
+        .photo-thumb.active { border-color: #206A8A; }
         .add-photo-btn { width: 64px; height: 64px; border-radius: 8px; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #94a3b8; cursor: pointer; flex-shrink: 0; background: #f8fafc; }
         .add-photo-btn:active { background: #e2e8f0; }
 
@@ -143,7 +163,7 @@
         /* Sub-type chips */
         .subtype-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
         .subtype-chip { padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1.5px solid #e2e8f0; background: white; color: #475569; transition: all 0.15s; }
-        .subtype-chip.selected { background: #4f46e5; color: white; border-color: #4f46e5; }
+        .subtype-chip.selected { background: #206A8A; color: white; border-color: #206A8A; }
         .subtype-chip:active { transform: scale(0.97); }
         .subtype-custom-input { display: none; margin-top: 8px; }
         .subtype-custom-input.visible { display: block; }
@@ -163,10 +183,12 @@
 <!-- SCREEN: Login -->
 <div class="screen active" id="screenLogin">
     <div class="screen-pad" style="display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 48px);">
-        <div style="text-align:center;margin-bottom:32px;">
-            <div style="font-size:48px;margin-bottom:8px;">&#9881;&#65039;</div>
-            <h2 style="font-size:22px;margin-bottom:4px;">BuildingOS</h2>
-            <p style="color:#64748b;font-size:14px;">Field Capture v1.3</p>
+        <div style="text-align:center;margin-bottom:36px;">
+            <div style="width:64px;height:64px;background:linear-gradient(135deg,#206A8A,#1b5a76);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 4px 12px rgba(32,106,138,0.3);">
+                <span style="font-size:30px;color:white;font-weight:700;">B</span>
+            </div>
+            <h2 style="font-size:24px;margin-bottom:6px;font-weight:700;letter-spacing:-0.01em;">BuildingOS</h2>
+            <p style="color:#94a3b8;font-size:13px;font-weight:500;letter-spacing:0.02em;">Field Capture v1.3</p>
         </div>
         <div class="card">
             <div class="input-group">
@@ -207,13 +229,31 @@
 
 <!-- SCREEN: Dashboard -->
 <div class="screen" id="screenDashboard">
+    <div class="client-banner" id="clientBanner" style="display:none;">
+        <svg viewBox="0 0 260 40" xmlns="http://www.w3.org/2000/svg">
+            <!-- Bracket left -->
+            <rect x="4" y="4" width="3" height="32" rx="1" fill="white"/>
+            <rect x="4" y="4" width="12" height="3" rx="1" fill="white"/>
+            <rect x="4" y="33" width="12" height="3" rx="1" fill="white"/>
+            <!-- E -->
+            <text x="22" y="30" font-family="Georgia, 'Times New Roman', serif" font-size="26" font-weight="700" fill="white">E</text>
+            <!-- F -->
+            <text x="42" y="30" font-family="Georgia, 'Times New Roman', serif" font-size="26" font-weight="700" fill="white">F</text>
+            <!-- Bracket right -->
+            <rect x="63" y="4" width="3" height="32" rx="1" fill="white"/>
+            <rect x="54" y="4" width="12" height="3" rx="1" fill="white"/>
+            <rect x="54" y="33" width="12" height="3" rx="1" fill="white"/>
+            <!-- CAPITAL -->
+            <text x="80" y="29" font-family="Georgia, 'Times New Roman', serif" font-size="22" font-weight="400" fill="white" letter-spacing="4">CAPITAL</text>
+        </svg>
+    </div>
     <div class="screen-pad">
         <div id="dashboardBuildingName" style="font-size:18px;font-weight:700;margin-bottom:4px;"></div>
         <div id="dashboardBuildingAddr" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
         <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <span class="card-title">Capture Progress</span>
-                <span id="dashPct" style="font-weight:700;color:#4f46e5;">0%</span>
+                <span id="dashPct" style="font-weight:700;color:#206A8A;">0%</span>
             </div>
             <div class="progress-bar"><div class="progress-fill" id="dashBar" style="width:0%"></div></div>
             <div style="display:flex;gap:16px;margin-top:12px;font-size:13px;color:#64748b;">
@@ -301,7 +341,7 @@
         <!-- Step 2: AI Processing -->
         <div id="captureStep2" style="display:none;">
             <div style="text-align:center;padding:40px 0;">
-                <div class="spinner" style="width:40px;height:40px;border-color:rgba(79,70,229,0.2);border-top-color:#4f46e5;margin:0 auto 16px;"></div>
+                <div class="spinner" style="width:40px;height:40px;border-color:rgba(32,106,138,0.2);border-top-color:#206A8A;margin:0 auto 16px;"></div>
                 <p style="font-size:15px;font-weight:600;" id="aiProcessingText">Analyzing equipment tag...</p>
                 <p style="font-size:13px;color:#64748b;margin-top:4px;" id="aiProcessingSub">AI is reading brand, model, serial number</p>
             </div>
@@ -627,8 +667,15 @@
                     <span>${t.icon||'🔧'} ${t.name}</span>
                     <span style="font-weight:600;font-size:13px;">${t.captured}/${t.total}</span>
                 </div>
-                <div class="progress-bar"><div class="progress-fill" style="width:${t.pct}%;background:${t.pct>=100?'#059669':'#4f46e5'}"></div></div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${t.pct}%;background:${t.pct>=100?'#059669':'#206A8A'}"></div></div>
             </div>`).join('');
+
+        // Show EF Capital banner for Marquis Villa
+        const banner = document.getElementById('clientBanner');
+        if (banner) {
+            const isEF = state.currentBuildingName && state.currentBuildingName.match(/marquis|ef.capital/i);
+            banner.style.display = isEF ? 'flex' : 'none';
+        }
     }
 
     // ── Walk ───────────────────────────────
