@@ -994,6 +994,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
   .login-btn{font-size:13px;padding:12px 16px}
   .nav-item{padding:8px 12px;font-size:12px}
 }
+/* Site View */
+.sv-table { border-collapse:collapse; width:100%; min-width:1800px; font-size:13px; }
+.sv-table th { background:#f8fafc; border:1px solid #e2e8f0; padding:8px 10px; text-align:left; font-weight:600; white-space:nowrap; position:sticky; top:0; z-index:2; }
+.sv-table td { border:1px solid #e2e8f0; padding:7px 10px; white-space:nowrap; }
+.sv-table .sv-sticky { position:sticky; left:0; background:white; z-index:1; font-weight:600; }
+.sv-table th.sv-sticky { z-index:3; }
+.sv-table .sv-good { background:#d1fae5; color:#065f46; }
+.sv-table .sv-fair { background:#fef3c7; color:#92400e; }
+.sv-table .sv-poor { background:#fee2e2; color:#991b1b; }
+.sv-table .sv-pass { background:#d1fae5; color:#065f46; }
+.sv-table .sv-fail { background:#fee2e2; color:#991b1b; }
+.sv-section-header { background:#eef2ff !important; color:#3730a3; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; }
+.sv-photo-badge { display:inline-flex; align-items:center; gap:4px; background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; cursor:pointer; }
+.sv-photo-badge:hover { background:#bfdbfe; }
+.sv-modal { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:9999; display:flex; align-items:center; justify-content:center; }
+.sv-modal-content { background:white; border-radius:16px; max-width:900px; width:95%; max-height:90vh; overflow-y:auto; padding:24px; position:relative; }
+.sv-modal-close { position:absolute; top:16px; right:20px; font-size:24px; cursor:pointer; color:#64748b; background:white; border:none; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(0,0,0,0.15); }
+.sv-photo-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; margin-top:16px; }
+.sv-photo-card { border-radius:10px; overflow:hidden; border:1px solid #e2e8f0; }
+.sv-photo-card img { width:100%; height:180px; object-fit:cover; }
+.sv-photo-card .sv-photo-label { padding:8px 10px; font-size:12px; color:#475569; }
 </style>
 </head>
 <body>
@@ -1213,26 +1234,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
     <div style="flex:1;min-width:0;">
       <div style="display:flex;align-items:center;gap:6px;">
         <div class="logo-text">BuildingOS</div>
-        <span style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:8.5px;font-weight:800;letter-spacing:0.08em;padding:2px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(217,119,6,0.35);">BETA</span>
       </div>
       <div class="logo-sub">AI Building Intelligence</div>
     </div>
   </div>
-  <!-- Pilot partner co-branding -->
-  <div id="pilotPartnerBadge" style="margin:10px 14px 0;padding:9px 12px;border-radius:10px;background:linear-gradient(135deg,#1e40af,#1e3a8a);display:flex;align-items:center;gap:9px;box-shadow:0 2px 8px rgba(30,58,138,0.35);border:1px solid rgba(147,197,253,0.2);">
-    <div style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-      <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
-        <rect x="4" y="6" width="10" height="20" fill="#fff" rx="1"/>
-        <rect x="16" y="6" width="12" height="4" fill="#fff"/>
-        <rect x="16" y="14" width="8" height="4" fill="#fff"/>
-      </svg>
-    </div>
-    <div style="min-width:0;">
-      <div style="font-size:9px;color:rgba(255,255,255,0.55);letter-spacing:0.08em;font-weight:600;text-transform:uppercase;">Pilot Partner</div>
-      <div style="font-size:11.5px;color:#fff;font-weight:700;letter-spacing:0.02em;margin-top:1px;">EF Capital</div>
-    </div>
-  </div>
-
   <!-- Building switcher -->
   <div class="sb-building" id="sbBuildingWrap" onclick="toggleBuildingMenu()">
     <div class="sb-building-top">
@@ -1254,6 +1259,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
     <div class="nav-item active" onclick="showPage('dashboard')"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>Dashboard</div>
     <div class="nav-item" onclick="showPage('building-profile')"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>Building Profile</div>
     <div class="nav-group-label">Intelligence</div>
+    <div class="nav-item" onclick="showPage('site-view')"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14h.01"/><path d="M13 14h.01"/><path d="M9 17h.01"/><path d="M13 17h.01"/></svg></span>Site View</div>
     <div class="nav-item" onclick="showPage('deferred')"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>Maintenance<span class="nav-badge-g" id="navDMBadge">0</span></div>
     <div class="nav-item" onclick="showPage('capital')"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Capital Plan</div>
     <div class="nav-item" onclick="showPage('equipment')"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M5 20V8l7-5 7 5v12"/><path d="M9 20v-4h6v4"/><path d="M9 12h.01"/><path d="M15 12h.01"/></svg></span>Equipment Register<span class="nav-badge-g" id="navEqBadge">0</span></div>
@@ -1863,6 +1869,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- SITE VIEW -->
+<div class="page" id="page-site-view">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Site View</div>
+      <div class="page-sub" id="svPageSub">Unit-by-unit inspection data from field capture</div>
+    </div>
+    <div class="page-header-actions">
+      <button class="btn btn-secondary" onclick="refreshSiteView()">&#8635; Refresh</button>
+      <button class="btn btn-primary" onclick="exportSiteViewCSV()">Export CSV</button>
+    </div>
+  </div>
+  <div id="siteViewBody" style="padding:20px;overflow-x:auto;">
+    <div id="siteViewEmpty" style="text-align:center;padding:60px 20px;color:#94a3b8;">
+      <div style="font-size:48px;margin-bottom:12px;">&#128203;</div>
+      <div style="font-size:16px;font-weight:600;color:#64748b;">No inspections yet</div>
+      <div style="font-size:14px;margin-top:6px;">Use the Field Capture app to inspect units</div>
+    </div>
+    <div id="siteViewTable" style="display:none;"></div>
   </div>
 </div>
 
@@ -2708,6 +2736,10 @@ function srcBadge(docName) {
     const short = docName.length > 28 ? docName.slice(0,26)+'…' : docName;
     return `<span class="src-badge" style="background:#f0fdf4;color:#059669;border-color:#bbf7d0;cursor:default">${short}</span>`;
   }
+  if (docName.startsWith('📋 Field')) {
+    const short = docName.length > 28 ? docName.slice(0,26)+'…' : docName;
+    return `<span class="src-badge" style="background:#fefce8;color:#a16207;border-color:#fde68a;cursor:default">${short}</span>`;
+  }
   const safe = docName.replace(/'/g, "\\'");
   const short = docName.length > 28 ? docName.slice(0,26)+'…' : docName;
   return `<button class="src-badge" onclick="showSource('${safe}')">📄 ${short}</button>`;
@@ -3197,7 +3229,7 @@ function showPage(id) {
   if (pageEl) pageEl.classList.add('active');
   const uploadChatBtn = document.getElementById('uploadChatButton');
   if (uploadChatBtn) uploadChatBtn.style.display = id === 'upload' ? '' : 'none';
-  const order = ['dashboard','building-profile','deferred','capital','equipment','upload','settings'];
+  const order = ['dashboard','building-profile','site-view','deferred','capital','equipment','upload','settings'];
   const navs = document.querySelectorAll('.nav-item');
   const idx = order.indexOf(id);
   if (idx >= 0 && navs[idx]) navs[idx].classList.add('active');
@@ -3208,7 +3240,12 @@ function showPage(id) {
     // Auto-sync field captures and re-render with photos
     if (FIELD_CAPTURE_API) pullFieldCaptures({ silent: true }).then(() => renderBuildingProfilePage());
   }
-  if (id === 'deferred')  renderDeferredMaintenance();
+  if (id === 'deferred') {
+    renderDeferredMaintenance();
+    // Auto-sync field inspection maintenance items
+    if (FIELD_CAPTURE_API) pullFieldCaptures({ silent: true }).then(() => renderDeferredMaintenance());
+  }
+  if (id === 'site-view') renderSiteView();
   if (id === 'capital')   renderCapitalPlan();
   if (id === 'equipment') renderEquipmentRegister();
   if (id === 'settings')  showSettingsPage();
@@ -3914,20 +3951,15 @@ function updateSidebarUser() {
   const initials = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('sbAvatar').textContent = initials;
   const nameEl = document.getElementById('sfName');
-  nameEl.textContent = '';
-  nameEl.appendChild(document.createTextNode(currentUser.name));
-  // BuildingOS beta role pill
+  nameEl.textContent = currentUser.name;
+  // Build role subtitle
   const bosRole = currentUser.bosRole || resolveRoleForEmail(currentUser.email);
-  if (bosRole && bosRole !== 'user') {
-    const pill = document.createElement('span');
-    const isAdmin = bosRole === 'admin';
-    pill.textContent = isAdmin ? 'ADMIN' : 'TESTER';
-    pill.style.cssText = `margin-left:6px;font-size:8px;font-weight:800;letter-spacing:0.08em;padding:1.5px 5px;border-radius:3px;vertical-align:middle;${isAdmin?'background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;':'background:rgba(96,165,250,0.25);color:#bfdbfe;border:1px solid rgba(96,165,250,0.4);'}`;
-    nameEl.appendChild(pill);
-  }
+  const roleLabel = (bosRole === 'admin') ? 'Admin' : (bosRole === 'tester') ? 'Tester' : '';
   const roles = currentUser.roles || (currentUser.role ? [currentUser.role] : []);
   const roleNames = roles.map(rid => ROLES.find(r => r.id === rid)?.name).filter(Boolean);
-  document.getElementById('sfRole').textContent = currentUser.company || roleNames.join(', ') || '—';
+  const companyName = currentUser.company || '';
+  const parts = [roleLabel, companyName].filter(Boolean);
+  document.getElementById('sfRole').textContent = parts.join(' \u00b7 ') || roleNames.join(', ') || '\u2014';
 }
 
 function updateSidebar() {
@@ -7371,7 +7403,7 @@ function maybeShowProfileCompletion(docEntry) {
 }
 
 // ─── FIELD CAPTURE INTEGRATION ────────────────────────────────
-const FIELD_CAPTURE_API = 'https://buildingosinitial-production.up.railway.app';
+const FIELD_CAPTURE_API = 'https://buildingos-fieldcapture-production.up.railway.app';
 
 function fcToggleEquipType(checkbox) {
   const label = checkbox.closest('label');
@@ -7475,7 +7507,7 @@ function fcShowInviteCodeScreen(invite) {
   const unitCount = (bp.units_list || []).length;
   const propName = bp.name || bld?.name || 'Property';
   const propAddr = bp.address || bld?.address || '';
-  const fieldCaptureUrl = FIELD_CAPTURE_API || 'https://buildingosinitial-production.up.railway.app';
+  const fieldCaptureUrl = FIELD_CAPTURE_API || 'https://buildingos-fieldcapture-production.up.railway.app';
 
   modal.innerHTML = `<div class="bp-modal" style="max-width:480px;">
     <div style="padding:32px 28px;text-align:center;">
@@ -8077,8 +8109,52 @@ async function pullFieldCaptures(opts) {
     }
     if (dmAdded > 0) localStorage.setItem('bos_dm_items', JSON.stringify(allDeferredItems));
 
-    if (!silent && (added > 0 || dmAdded > 0)) {
-      showToast && showToast(`Synced ${captures.length} captures from field`, 'success');
+    // ── Pull inspection maintenance items (v1.4) ────────────────
+    let inspDmAdded = 0;
+    if (activeBuildingId) {
+      try {
+        const mResp = await fetch(`${FIELD_CAPTURE_API}/api/buildings/${activeBuildingId}/maintenance-items`);
+        if (mResp.ok) {
+          const mData = await mResp.json();
+          const mItems = mData.items || [];
+          const condMap3 = { 1:'Critical', 2:'Poor', 3:'Fair', 4:'Fair', 5:'Good' };
+          for (const mi of mItems) {
+            const miId = 'fc_insp::' + (mi.id || mi.item);
+            if (allDeferredItems.find(d => d._dmId === miId)) continue;
+            allDeferredItems.push({
+              _dmId: miId,
+              _source: '📋 Field Inspection',
+              item: mi.item || 'Inspection finding',
+              system: mi.system || 'General',
+              location: mi.unit || '',
+              condition: condMap3[mi.priority] || mi.condition || 'Fair',
+              priority: mi.priority || 3,
+              cost_k: 0,
+              timeline_yr: mi.priority <= 2 ? 0 : 1,
+              action: mi.item || '',
+              note: `Inspector: ${mi.inspector || 'Unknown'} · ${mi.inspection_date || ''}`,
+            });
+            inspDmAdded++;
+          }
+          if (inspDmAdded > 0) {
+            allDeferredItems.sort((a,b) => (a.priority||5) - (b.priority||5));
+            localStorage.setItem('bos_dm_items', JSON.stringify(allDeferredItems));
+          }
+        }
+      } catch (e) { console.warn('Inspection maintenance pull failed:', e); }
+    }
+
+    const totalDmAdded = dmAdded + inspDmAdded;
+    if (!silent && (added > 0 || totalDmAdded > 0)) {
+      const parts = [];
+      if (captures.length) parts.push(`${captures.length} captures`);
+      if (inspDmAdded > 0) parts.push(`${inspDmAdded} inspection items`);
+      showToast && showToast(`Synced ${parts.join(' + ')} from field`, 'success');
+    }
+
+    // Re-render maintenance register if we're on that page
+    if (document.getElementById('page-deferred')?.classList?.contains('active')) {
+      renderDeferredMaintenance();
     }
 
     // Re-render Building Profile if we're on that page
@@ -11808,6 +11884,278 @@ function initSessionTimeout() {
 
 function trackUserActivity() {
   lastActivityTime = Date.now();
+}
+
+// ─── SITE VIEW ───────────────────────────────────────────────
+let siteViewData = [];
+
+function svCondClass(val) {
+  if (!val) return '';
+  const v = String(val).toLowerCase().trim();
+  if (v === 'good' || v === 'pass' || v === 'yes') return 'sv-good';
+  if (v === 'fair' || v === 'moderate') return 'sv-fair';
+  if (v === 'poor' || v === 'fail' || v === 'no') return 'sv-poor';
+  return '';
+}
+
+function svVal(ins, key, alt) {
+  if (ins[key] !== undefined && ins[key] !== null && ins[key] !== '') return ins[key];
+  if (ins.data && ins.data[key] !== undefined) return ins.data[key];
+  if (alt && ins[alt] !== undefined) return ins[alt];
+  if (alt && ins.data && ins.data[alt] !== undefined) return ins.data[alt];
+  return '';
+}
+
+async function renderSiteView() {
+  if (!activeBuildingId || !FIELD_CAPTURE_API) {
+    document.getElementById('siteViewEmpty').style.display = '';
+    document.getElementById('siteViewTable').style.display = 'none';
+    return;
+  }
+  try {
+    const resp = await fetch(`${FIELD_CAPTURE_API}/api/buildings/${activeBuildingId}/inspections`);
+    if (!resp.ok) throw new Error('Failed to fetch inspections');
+    const data = await resp.json();
+    siteViewData = data.inspections || data || [];
+
+    if (siteViewData.length === 0) {
+      document.getElementById('siteViewEmpty').style.display = '';
+      document.getElementById('siteViewTable').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('siteViewEmpty').style.display = 'none';
+    document.getElementById('siteViewTable').style.display = '';
+    document.getElementById('svPageSub').textContent = `${siteViewData.length} unit${siteViewData.length !== 1 ? 's' : ''} inspected`;
+
+    const cols = [
+      { key:'unit', label:'Unit #', sticky:true },
+      { key:'inspector', label:'Inspector' },
+      { key:'date', label:'Date' },
+      // Safety & Habitability
+      { key:'smoke_co', label:'Smoke/CO', section:'Safety & Habitability', cond:true },
+      { key:'safety_check', label:'Safety Check', cond:true },
+      { key:'safety_notes', label:'Safety Notes' },
+      // Mechanicals
+      { key:'hvac_info', label:'HVAC Info', section:'Mechanicals' },
+      { key:'hvac_condition', label:'HVAC Condition', cond:true },
+      { key:'wh_info', label:'WH Info' },
+      { key:'wh_condition', label:'WH Condition', cond:true },
+      { key:'elec_panel', label:'Elec Panel', cond:true },
+      // Finishes
+      { key:'windows', label:'Windows', section:'Finishes', cond:true },
+      { key:'plumbing', label:'Plumbing', cond:true },
+      { key:'appliances', label:'Appliances', cond:true },
+      { key:'kb_flooring', label:'KB Flooring', cond:true },
+      { key:'kb_condition', label:'KB Condition', cond:true },
+      { key:'doors_drywall', label:'Doors/Drywall', cond:true },
+      { key:'cleanliness', label:'Cleanliness', cond:true },
+      // Tenant Assessment
+      { key:'tenant_issues', label:'Tenant Issues', section:'Tenant Assessment' },
+      { key:'cooperation', label:'Cooperation', cond:true },
+      { key:'renewal_rec', label:'Renewal Rec' },
+      // Outputs
+      { key:'immediate_wos', label:'Immediate WOs', section:'Outputs' },
+      { key:'notes', label:'Notes' },
+      { key:'photos', label:'Photos' }
+    ];
+
+    // Build section header row
+    const sections = [];
+    let curSection = null;
+    let count = 0;
+    cols.forEach(c => {
+      if (c.section) {
+        if (curSection) sections.push({ label: curSection, span: count });
+        curSection = c.section;
+        count = 1;
+      } else if (curSection) {
+        count++;
+      } else {
+        sections.push({ label: '', span: 1 });
+      }
+    });
+    if (curSection) sections.push({ label: curSection, span: count });
+
+    let html = '<table class="sv-table"><thead>';
+    // Section header row
+    html += '<tr>';
+    sections.forEach(s => {
+      if (s.label) {
+        html += `<th class="sv-section-header" colspan="${s.span}">${s.label}</th>`;
+      } else {
+        html += `<th class="sv-section-header"></th>`;
+      }
+    });
+    html += '</tr>';
+    // Column header row
+    html += '<tr>';
+    cols.forEach(c => {
+      html += `<th${c.sticky ? ' class="sv-sticky"' : ''}>${c.label}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    siteViewData.forEach((ins, idx) => {
+      const unit = svVal(ins, 'unit', 'unit_number') || svVal(ins, 'unitNumber') || `#${idx + 1}`;
+      const inspector = svVal(ins, 'inspector', 'inspector_name') || svVal(ins, 'inspectorName') || '';
+      const rawDate = svVal(ins, 'date', 'inspected_at') || svVal(ins, 'created_at') || svVal(ins, 'timestamp') || '';
+      const dateStr = rawDate ? new Date(rawDate).toLocaleDateString() : '';
+      const photoCount = (ins.photos && ins.photos.length) || svVal(ins, 'photo_count') || 0;
+
+      const rowValues = {
+        unit, inspector, date: dateStr,
+        smoke_co: svVal(ins, 'smoke_co', 'smokeCo'),
+        safety_check: svVal(ins, 'safety_check', 'safetyCheck'),
+        safety_notes: svVal(ins, 'safety_notes', 'safetyNotes'),
+        hvac_info: svVal(ins, 'hvac_info', 'hvacInfo'),
+        hvac_condition: svVal(ins, 'hvac_condition', 'hvacCondition'),
+        wh_info: svVal(ins, 'wh_info', 'whInfo'),
+        wh_condition: svVal(ins, 'wh_condition', 'whCondition'),
+        elec_panel: svVal(ins, 'elec_panel', 'elecPanel'),
+        windows: svVal(ins, 'windows'),
+        plumbing: svVal(ins, 'plumbing'),
+        appliances: svVal(ins, 'appliances'),
+        kb_flooring: svVal(ins, 'kb_flooring', 'kbFlooring'),
+        kb_condition: svVal(ins, 'kb_condition', 'kbCondition'),
+        doors_drywall: svVal(ins, 'doors_drywall', 'doorsDrywall'),
+        cleanliness: svVal(ins, 'cleanliness'),
+        tenant_issues: svVal(ins, 'tenant_issues', 'tenantIssues'),
+        cooperation: svVal(ins, 'cooperation'),
+        renewal_rec: svVal(ins, 'renewal_rec', 'renewalRec'),
+        immediate_wos: svVal(ins, 'immediate_wos', 'immediateWos'),
+        notes: svVal(ins, 'notes'),
+        photos: photoCount
+      };
+
+      html += '<tr>';
+      cols.forEach(c => {
+        const val = rowValues[c.key] ?? '';
+        if (c.key === 'photos') {
+          const cnt = parseInt(val) || 0;
+          const badge = cnt > 0
+            ? `<span class="sv-photo-badge" onclick="event.stopPropagation();openSvPhotoModal(${idx})">\u{1F4F7} ${cnt}</span>`
+            : '<span style="color:#cbd5e1;">0</span>';
+          html += `<td>${badge}</td>`;
+        } else {
+          const condCls = c.cond ? svCondClass(val) : '';
+          const isWo = c.key === 'immediate_wos' && val && String(val).trim();
+          const woStyle = isWo ? ' style="color:#dc2626;font-weight:600;"' : '';
+          html += `<td${c.sticky ? ' class="sv-sticky"' : ''}${condCls ? ` class="${condCls}"` : ''}${woStyle}>${val}</td>`;
+        }
+      });
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('siteViewTable').innerHTML = html;
+  } catch(e) {
+    console.error('Site view error:', e);
+    document.getElementById('siteViewEmpty').style.display = '';
+    document.getElementById('siteViewTable').style.display = 'none';
+  }
+}
+
+function refreshSiteView() {
+  renderSiteView();
+}
+
+function openSvPhotoModal(idx) {
+  const ins = siteViewData[idx];
+  if (!ins) return;
+  const unit = svVal(ins, 'unit', 'unit_number') || svVal(ins, 'unitNumber') || `#${idx + 1}`;
+  const inspector = svVal(ins, 'inspector', 'inspector_name') || svVal(ins, 'inspectorName') || '';
+  const photos = ins.photos || [];
+  const insId = ins.id || ins._id;
+
+  let modal = document.createElement('div');
+  modal.className = 'sv-modal';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+  let content = `<div class="sv-modal-content">
+    <button class="sv-modal-close" onclick="this.closest('.sv-modal').remove()">&times;</button>
+    <h3 style="margin:0 0 4px;font-size:18px;">Unit ${unit} Photos</h3>
+    <div style="font-size:13px;color:#64748b;margin-bottom:8px;">Inspector: ${inspector}</div>`;
+
+  if (photos.length > 0) {
+    content += '<div class="sv-photo-grid">';
+    photos.forEach(p => {
+      const url = p.url || p.photo_url || p;
+      const label = p.room || p.label || p.room_name || '';
+      const ts = p.timestamp || p.taken_at || '';
+      content += `<div class="sv-photo-card">
+        <img src="${url}" alt="${label}" onerror="this.style.display='none'"/>
+        <div class="sv-photo-label">${label}${ts ? ' &middot; ' + new Date(ts).toLocaleString() : ''}</div>
+      </div>`;
+    });
+    content += '</div>';
+  } else if (insId && FIELD_CAPTURE_API) {
+    content += `<div id="svPhotoLoading" style="text-align:center;padding:30px;color:#94a3b8;">Loading photos...</div>
+      <div class="sv-photo-grid" id="svPhotoGrid"></div>`;
+    // Fetch photos async
+    setTimeout(async () => {
+      try {
+        const r = await fetch(`${FIELD_CAPTURE_API}/api/inspections/${insId}/photos`);
+        if (r.ok) {
+          const pd = await r.json();
+          const pArr = pd.photos || pd || [];
+          const grid = document.getElementById('svPhotoGrid');
+          const loading = document.getElementById('svPhotoLoading');
+          if (loading) loading.style.display = 'none';
+          if (pArr.length === 0 && grid) {
+            grid.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">No photos found</div>';
+          } else if (grid) {
+            grid.innerHTML = pArr.map(p => {
+              const url = p.url || p.photo_url || p;
+              const label = p.room || p.label || p.room_name || '';
+              return `<div class="sv-photo-card"><img src="${url}" alt="${label}" onerror="this.style.display='none'"/><div class="sv-photo-label">${label}</div></div>`;
+            }).join('');
+          }
+        }
+      } catch(err) {
+        const loading = document.getElementById('svPhotoLoading');
+        if (loading) loading.textContent = 'Could not load photos';
+      }
+    }, 50);
+  } else {
+    content += '<div style="text-align:center;padding:30px;color:#94a3b8;">No photos available</div>';
+  }
+
+  content += '</div>';
+  modal.innerHTML = content;
+  document.body.appendChild(modal);
+}
+
+function exportSiteViewCSV() {
+  if (!siteViewData || siteViewData.length === 0) return;
+  const headers = ['Unit #','Inspector','Date','Smoke/CO','Safety Check','Safety Notes','HVAC Info','HVAC Condition','WH Info','WH Condition','Elec Panel','Windows','Plumbing','Appliances','KB Flooring','KB Condition','Doors/Drywall','Cleanliness','Tenant Issues','Cooperation','Renewal Rec','Immediate WOs','Notes','Photos'];
+  const keys = ['unit','inspector','date','smoke_co','safety_check','safety_notes','hvac_info','hvac_condition','wh_info','wh_condition','elec_panel','windows','plumbing','appliances','kb_flooring','kb_condition','doors_drywall','cleanliness','tenant_issues','cooperation','renewal_rec','immediate_wos','notes','photos'];
+  const altKeys = ['unit_number','inspector_name','inspected_at','smokeCo','safetyCheck','safetyNotes','hvacInfo','hvacCondition','whInfo','whCondition','elecPanel','','','','kbFlooring','kbCondition','doorsDrywall','','tenantIssues','','renewalRec','immediateWos','','photo_count'];
+
+  const rows = [headers.join(',')];
+  siteViewData.forEach((ins, idx) => {
+    const row = keys.map((k, i) => {
+      let v = svVal(ins, k, altKeys[i]);
+      if (k === 'photos') v = (ins.photos && ins.photos.length) || svVal(ins, 'photo_count') || 0;
+      if (k === 'date') {
+        const raw = svVal(ins, 'date', 'inspected_at') || svVal(ins, 'created_at') || '';
+        v = raw ? new Date(raw).toLocaleDateString() : '';
+      }
+      if (k === 'unit' && !v) v = svVal(ins, 'unitNumber') || `#${idx + 1}`;
+      const s = String(v ?? '').replace(/"/g, '""');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+    });
+    rows.push(row.join(','));
+  });
+
+  const csv = rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const bld = activeBuilding();
+  a.download = `${(bld?.name || 'site-view').replace(/\s+/g,'_')}_inspections.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 initApp();
