@@ -7378,7 +7378,7 @@ function maybeShowProfileCompletion(docEntry) {
 }
 
 // ─── FIELD CAPTURE INTEGRATION ────────────────────────────────
-const FIELD_CAPTURE_API = 'https://buildingosinitial-production.up.railway.app';
+const FIELD_CAPTURE_API = 'https://buildingos-fieldcapture-production.up.railway.app';
 
 function fcToggleEquipType(checkbox) {
   const label = checkbox.closest('label');
@@ -7482,7 +7482,7 @@ function fcShowInviteCodeScreen(invite) {
   const unitCount = (bp.units_list || []).length;
   const propName = bp.name || bld?.name || 'Property';
   const propAddr = bp.address || bld?.address || '';
-  const fieldCaptureUrl = FIELD_CAPTURE_API || 'https://buildingosinitial-production.up.railway.app';
+  const fieldCaptureUrl = FIELD_CAPTURE_API || 'https://buildingos-fieldcapture-production.up.railway.app';
 
   modal.innerHTML = `<div class="bp-modal" style="max-width:480px;">
     <div style="padding:32px 28px;text-align:center;">
