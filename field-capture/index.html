@@ -636,8 +636,15 @@
             localStorage.setItem('fc_user_id', r.user.id);
 
             if (r.is_new) toast('Account created! Joined ' + (r.building?.building_name || 'building'));
-            await postLoginLoad();
-            hideLoading();
+            // Go directly to the building from the invite code
+            if (r.building && r.building.building_id) {
+                try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
+                hideLoading();
+                selectBuilding(r.building.building_id, r.building.building_name, r.building.building_address);
+            } else {
+                await postLoginLoad();
+                hideLoading();
+            }
         } catch (e) {
             hideLoading();
             toast(e.message || 'Sign in failed');
@@ -1407,20 +1414,14 @@
 
     // ── Init ───────────────────────────────
     (async function init() {
-        // Always verify session on load — no auto-login from stored user data
+        // Always require invite code login — no auto-restore to building list
+        // If session exists, pre-fill name/email for convenience but still require invite code
         const valid = await verifyExistingSession();
-        if (valid) {
-            // Session is still valid — load buildings
-            try {
-                const st = await api('/api/equipment-sub-types');
-                state.equipSubTypes = st.sub_types || {};
-            } catch (e) {}
-            await loadBuildings();
-            if (state.buildings.length > 0) {
-                showScreen('screenBuildings');
-            }
+        if (valid && state.user) {
+            document.getElementById('loginName').value = state.user.name || '';
+            document.getElementById('loginEmail').value = state.user.email || '';
         }
-        // If not valid, user stays on login screen
+        // User always starts on login screen — must enter invite code
     })();
 </script>
 </body>
