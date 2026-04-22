@@ -12,9 +12,17 @@ v1.3 CHANGES (from EF Capital Pilot #3 feedback, Apr 15):
   • Phase 1 scope: 3 equipment types (HVAC, Water Heater, Electrical Panel)
   • No photo annotation (liability concern)
   • AI prompt updated to extract brand separately from manufacturer
+
+v1.3.1 SECURITY CHANGES (Apr 22):
+  • PIN-based authentication (4-6 digit, SHA-256 hashed with email salt)
+  • Session tokens (UUID, 7-day expiry) stored in fc_sessions
+  • All protected endpoints require valid session via Authorization header
+  • Analytics logging (fc_analytics) for key events
+  • Admin endpoint for user listing
 """
 
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -31,7 +39,7 @@ load_dotenv()
 
 import anthropic
 import httpx
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
@@ -51,7 +59,9 @@ HEADERS = {
     "Prefer": "return=representation",
 }
 
-app = FastAPI(title="BuildingOS Field Capture", version="1.3.0")
+SESSION_EXPIRY_DAYS = 7
+
+app = FastAPI(title="BuildingOS Field Capture", version="1.3.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -102,6 +112,18 @@ async def sb_patch(table: str, filters: str, data: dict) -> list:
         return r.json() if r.text else []
 
 
+async def sb_delete(table: str, filters: str) -> list:
+    async with httpx.AsyncClient() as client:
+        r = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/{table}{filters}",
+            headers=HEADERS,
+        )
+        if r.status_code >= 400:
+            logger.error(f"sb_delete {table}: {r.status_code} {r.text}")
+            return []
+        return r.json() if r.text else []
+
+
 async def sb_upload(bucket: str, path: str, data: bytes, content_type: str = "image/jpeg") -> str:
     async with httpx.AsyncClient() as client:
         r = await client.post(
@@ -130,6 +152,99 @@ async def sb_upload(bucket: str, path: str, data: bytes, content_type: str = "im
     return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}"
 
 
+# ── PIN hashing ─────────────────────────────────────────────────────────────
+
+def hash_pin(pin: str, email: str) -> str:
+    """SHA-256 hash a PIN with the user's email as salt."""
+    salted = f"{email.lower().strip()}:{pin}"
+    return hashlib.sha256(salted.encode("utf-8")).hexdigest()
+
+
+def verify_pin(pin: str, email: str, stored_hash: str) -> bool:
+    """Verify a PIN against a stored hash."""
+    return hash_pin(pin, email) == stored_hash
+
+
+# ── Session management ──────────────────────────────────────────────────────
+
+async def create_session(user_id: str, request: Request) -> dict:
+    """Create a new session token for a user."""
+    token = str(uuid.uuid4())
+    now = datetime.utcnow()
+    expires = now + timedelta(days=SESSION_EXPIRY_DAYS)
+
+    device_info = request.headers.get("User-Agent", "")
+    ip_address = request.client.host if request.client else ""
+
+    session = await sb_post("fc_sessions", {
+        "user_id": user_id,
+        "token": token,
+        "created_at": now.isoformat(),
+        "expires_at": expires.isoformat(),
+        "device_info": device_info[:500],
+        "ip_address": ip_address,
+    })
+    return {
+        "token": token,
+        "expires_at": expires.isoformat(),
+        "session": session[0] if session else None,
+    }
+
+
+async def verify_session(request: Request) -> dict:
+    """Dependency: extract and verify session token from Authorization header.
+    Returns the session row (includes user_id).
+    """
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "Missing or invalid Authorization header")
+
+    token = auth[7:].strip()
+    if not token:
+        raise HTTPException(401, "Empty session token")
+
+    sessions = await sb_get("fc_sessions", f"?token=eq.{token}")
+    if not sessions:
+        raise HTTPException(401, "Invalid session token")
+
+    session = sessions[0]
+    expires_at = session.get("expires_at", "")
+    if expires_at:
+        try:
+            exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00").replace("+00:00", ""))
+            if exp < datetime.utcnow():
+                raise HTTPException(401, "Session expired")
+        except ValueError:
+            pass
+
+    return session
+
+
+# ── Analytics logging ───────────────────────────────────────────────────────
+
+async def log_analytics(
+    event_type: str,
+    user_id: str = None,
+    building_id: str = None,
+    metadata: dict = None,
+    request: Request = None,
+):
+    """Fire-and-forget analytics event logging."""
+    try:
+        event = {
+            "event_type": event_type,
+            "user_id": user_id,
+            "building_id": building_id,
+            "metadata": metadata or {},
+            "timestamp": datetime.utcnow().isoformat(),
+            "device_info": request.headers.get("User-Agent", "")[:500] if request else "",
+            "ip_address": (request.client.host if request and request.client else ""),
+        }
+        await sb_post("fc_analytics", event)
+    except Exception as e:
+        logger.warning(f"Analytics logging failed: {e}")
+
+
 # ── Frontend ────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -145,10 +260,246 @@ def health():
     return {
         "status": "ok",
         "app": "BuildingOS Field Capture",
-        "version": "1.3.0",
+        "version": "1.3.1",
         "supabase": bool(SUPABASE_URL),
         "anthropic": bool(ANTHROPIC_KEY),
     }
+
+
+# ── Database Migration (self-bootstrapping) ────────────────────────────────
+
+_migration_done = False
+
+async def ensure_schema():
+    """Ensure required tables/columns exist. Idempotent, runs once per process."""
+    global _migration_done
+    if _migration_done:
+        return
+    _migration_done = True
+
+    # Check if fc_sessions table exists
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            f"{SUPABASE_URL}/rest/v1/fc_sessions?select=id&limit=1",
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+        )
+        sessions_exist = r.status_code != 404 and "PGRST" not in r.text
+
+    if not sessions_exist:
+        logger.warning("fc_sessions table missing — schema migration required!")
+        logger.warning("Run the following SQL in Supabase SQL Editor:")
+        logger.warning("""
+-- v1.3.1 Auth Migration
+ALTER TABLE fc_users ADD COLUMN IF NOT EXISTS pin_hash text;
+ALTER TABLE fc_users ADD COLUMN IF NOT EXISTS last_login_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS fc_sessions (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id uuid NOT NULL,
+    token text NOT NULL UNIQUE,
+    created_at timestamptz DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    device_info text DEFAULT '',
+    ip_address text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_fc_sessions_token ON fc_sessions(token);
+CREATE INDEX IF NOT EXISTS idx_fc_sessions_user_id ON fc_sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS fc_analytics (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    event_type text NOT NULL,
+    user_id uuid,
+    building_id text,
+    metadata jsonb DEFAULT '{}',
+    timestamp timestamptz DEFAULT now(),
+    device_info text DEFAULT '',
+    ip_address text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_fc_analytics_event ON fc_analytics(event_type);
+CREATE INDEX IF NOT EXISTS idx_fc_analytics_user ON fc_analytics(user_id);
+        """)
+
+
+@app.on_event("startup")
+async def startup_event():
+    await ensure_schema()
+
+
+@app.post("/api/admin/migrate")
+async def run_migration():
+    """Admin endpoint: outputs migration SQL to run in Supabase SQL Editor."""
+    return {
+        "message": "Run this SQL in your Supabase SQL Editor (supabase.com/dashboard → SQL Editor)",
+        "sql": """
+-- v1.3.1 Auth Migration — Run in Supabase SQL Editor
+-- Step 1: Add columns to fc_users
+ALTER TABLE fc_users ADD COLUMN IF NOT EXISTS pin_hash text;
+ALTER TABLE fc_users ADD COLUMN IF NOT EXISTS last_login_at timestamptz;
+
+-- Step 2: Create sessions table
+CREATE TABLE IF NOT EXISTS fc_sessions (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id uuid NOT NULL,
+    token text NOT NULL UNIQUE,
+    created_at timestamptz DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    device_info text DEFAULT '',
+    ip_address text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_fc_sessions_token ON fc_sessions(token);
+CREATE INDEX IF NOT EXISTS idx_fc_sessions_user_id ON fc_sessions(user_id);
+
+-- Step 3: Create analytics table
+CREATE TABLE IF NOT EXISTS fc_analytics (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    event_type text NOT NULL,
+    user_id uuid,
+    building_id text,
+    metadata jsonb DEFAULT '{}',
+    timestamp timestamptz DEFAULT now(),
+    device_info text DEFAULT '',
+    ip_address text DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_fc_analytics_event ON fc_analytics(event_type);
+CREATE INDEX IF NOT EXISTS idx_fc_analytics_user ON fc_analytics(user_id);
+
+-- Step 4: Set PINs for existing users (they'll need to re-register or admin sets PIN)
+-- UPDATE fc_users SET pin_hash = encode(sha256(concat(lower(email), ':1234')::bytea), 'hex') WHERE pin_hash IS NULL;
+"""
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTH ENDPOINTS (v1.3.1 — PIN + session)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/auth/register")
+async def register_field_user(request: Request):
+    """Register a new field user. Requires invite code + PIN."""
+    body = await request.json()
+    name = body.get("name", "").strip()
+    email = body.get("email", "").strip().lower()
+    pin = body.get("pin", "").strip()
+    invite_code = body.get("invite_code", "").strip().upper()
+
+    if not name or not email:
+        raise HTTPException(400, "Name and email required")
+    if not invite_code:
+        raise HTTPException(400, "Invite code required to create an account")
+    if not pin or len(pin) < 4 or len(pin) > 6 or not pin.isdigit():
+        raise HTTPException(400, "PIN must be 4-6 digits")
+
+    # Validate invite code first
+    invites = await sb_get("fc_invite_codes", f"?code=eq.{invite_code}&is_active=eq.true")
+    if not invites:
+        raise HTTPException(404, "Invalid or expired invite code")
+    invite = invites[0]
+    if invite.get("uses", 0) >= invite.get("max_uses", 10):
+        raise HTTPException(410, "Invite code has reached maximum uses")
+
+    # Check if user already exists
+    existing = await sb_get("fc_users", f"?email=eq.{email}")
+    if existing:
+        raise HTTPException(409, "An account with this email already exists. Please sign in.")
+
+    # Create user with hashed PIN
+    pin_hashed = hash_pin(pin, email)
+    user = await sb_post("fc_users", {
+        "name": name,
+        "email": email,
+        "phone": body.get("phone", ""),
+        "pin_hash": pin_hashed,
+    })
+    user_record = user[0] if user else None
+    if not user_record:
+        raise HTTPException(500, "Failed to create account")
+
+    # Auto-join the building from the invite code
+    await sb_post("fc_building_members", {
+        "user_id": user_record["id"],
+        "building_id": invite["building_id"],
+        "invite_code_id": invite["id"],
+    })
+    await sb_patch("fc_invite_codes", f"?id=eq.{invite['id']}", {"uses": invite.get("uses", 0) + 1})
+
+    # Create session
+    session_info = await create_session(user_record["id"], request)
+
+    # Log analytics
+    await log_analytics("register", user_id=user_record["id"], building_id=invite["building_id"], request=request)
+
+    # Return user (without pin_hash) + session token
+    safe_user = {k: v for k, v in user_record.items() if k != "pin_hash"}
+    return {
+        "user": safe_user,
+        "token": session_info["token"],
+        "expires_at": session_info["expires_at"],
+        "is_new": True,
+        "joined_building": {
+            "building_id": invite["building_id"],
+            "building_name": invite.get("building_name", ""),
+            "building_address": invite.get("building_address", ""),
+        },
+    }
+
+
+@app.post("/api/auth/login")
+async def login_field_user(request: Request):
+    """Login with email + PIN. Returns session token."""
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    pin = body.get("pin", "").strip()
+
+    if not email or not pin:
+        raise HTTPException(400, "Email and PIN required")
+
+    users = await sb_get("fc_users", f"?email=eq.{email}")
+    if not users:
+        raise HTTPException(404, "No account found with that email")
+
+    user = users[0]
+    stored_hash = user.get("pin_hash", "")
+    if not stored_hash:
+        raise HTTPException(403, "Account has no PIN set. Please contact your administrator.")
+
+    if not verify_pin(pin, email, stored_hash):
+        raise HTTPException(401, "Incorrect PIN")
+
+    # Create session
+    session_info = await create_session(user["id"], request)
+
+    # Update last login
+    try:
+        await sb_patch("fc_users", f"?id=eq.{user['id']}", {"last_login_at": datetime.utcnow().isoformat()})
+    except Exception:
+        pass
+
+    # Log analytics
+    await log_analytics("login", user_id=user["id"], request=request)
+
+    safe_user = {k: v for k, v in user.items() if k != "pin_hash"}
+    return {
+        "user": safe_user,
+        "token": session_info["token"],
+        "expires_at": session_info["expires_at"],
+    }
+
+
+@app.get("/api/auth/verify")
+async def verify_auth(session: dict = Depends(verify_session)):
+    """Verify a session token is still valid. Returns user info."""
+    users = await sb_get("fc_users", f"?id=eq.{session['user_id']}")
+    if not users:
+        raise HTTPException(401, "User not found")
+    safe_user = {k: v for k, v in users[0].items() if k != "pin_hash"}
+    return {"valid": True, "user": safe_user}
+
+
+@app.post("/api/auth/logout")
+async def logout(session: dict = Depends(verify_session)):
+    """Invalidate the current session."""
+    await sb_delete("fc_sessions", f"?token=eq.{session['token']}")
+    return {"logged_out": True}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -249,7 +600,7 @@ def _generate_invite_code() -> str:
 # ── Building config endpoints ───────────────────────────────────────────────
 
 @app.post("/api/buildings/{building_id}/units")
-async def add_units(building_id: str, request: Request):
+async def add_units(building_id: str, request: Request, session: dict = Depends(verify_session)):
     body = await request.json()
     units = body if isinstance(body, list) else body.get("units", [])
     rows = [{
@@ -267,7 +618,7 @@ async def add_units(building_id: str, request: Request):
 
 
 @app.get("/api/buildings/{building_id}/units")
-async def list_units(building_id: str):
+async def list_units(building_id: str, session: dict = Depends(verify_session)):
     units = await sb_get("fc_units", f"?building_id=eq.{building_id}&order=sort_order,unit_name")
     equip_types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&order=sort_order")
     captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&select=id,unit_id,equipment_type_id")
@@ -294,7 +645,7 @@ async def list_units(building_id: str):
 
 
 @app.post("/api/buildings/{building_id}/equipment-types")
-async def add_equipment_types(building_id: str, request: Request):
+async def add_equipment_types(building_id: str, request: Request, session: dict = Depends(verify_session)):
     body = await request.json()
     types = body if isinstance(body, list) else body.get("equipment_types", [])
     rows = [{
@@ -310,14 +661,14 @@ async def add_equipment_types(building_id: str, request: Request):
 
 
 @app.get("/api/buildings/{building_id}/equipment-types")
-async def list_equipment_types(building_id: str):
+async def list_equipment_types(building_id: str, session: dict = Depends(verify_session)):
     types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&order=sort_order")
     return {"equipment_types": types}
 
 
 # v1.3: Get pre-configured sub-types for equipment categories
 @app.get("/api/equipment-sub-types")
-async def get_equipment_sub_types():
+async def get_equipment_sub_types(session: dict = Depends(verify_session)):
     """Return pre-configured sub-types for each equipment category."""
     return {"sub_types": EQUIPMENT_SUB_TYPES}
 
@@ -326,6 +677,7 @@ async def get_equipment_sub_types():
 @app.post("/api/identify-equipment")
 async def identify_equipment(
     photo: UploadFile = File(...),
+    session: dict = Depends(verify_session),
 ):
     """Send a photo of equipment (no tag) to AI for visual identification."""
     photo_bytes = await photo.read()
@@ -369,7 +721,7 @@ async def identify_equipment(
 
 # v1.3: Custom equipment type creation by field users
 @app.post("/api/buildings/{building_id}/equipment-types/custom")
-async def add_custom_equipment_type(building_id: str, request: Request):
+async def add_custom_equipment_type(building_id: str, request: Request, session: dict = Depends(verify_session)):
     """Field user adds a custom equipment type not in the pre-set list."""
     body = await request.json()
     name = body.get("name", "").strip()
@@ -398,43 +750,13 @@ async def add_custom_equipment_type(building_id: str, request: Request):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FIELD USER ENDPOINTS
+# FIELD USER ENDPOINTS (protected by session)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@app.post("/api/auth/register")
-async def register_field_user(request: Request):
-    body = await request.json()
-    name = body.get("name", "").strip()
-    email = body.get("email", "").strip().lower()
-    if not name or not email:
-        raise HTTPException(400, "Name and email required")
-
-    existing = await sb_get("fc_users", f"?email=eq.{email}")
-    if existing:
-        return {"user": existing[0], "is_new": False}
-
-    user = await sb_post("fc_users", {
-        "name": name,
-        "email": email,
-        "phone": body.get("phone", ""),
-    })
-    return {"user": user[0], "is_new": True}
-
-
-@app.post("/api/auth/login")
-async def login_field_user(request: Request):
-    body = await request.json()
-    email = body.get("email", "").strip().lower()
-    users = await sb_get("fc_users", f"?email=eq.{email}")
-    if not users:
-        raise HTTPException(404, "No account found with that email")
-    return {"user": users[0]}
-
-
 @app.post("/api/join/{code}")
-async def join_building(code: str, request: Request):
+async def join_building(code: str, request: Request, session: dict = Depends(verify_session)):
     body = await request.json()
-    user_id = body.get("user_id")
+    user_id = body.get("user_id") or session.get("user_id")
     if not user_id:
         raise HTTPException(400, "user_id required")
 
@@ -470,7 +792,11 @@ async def join_building(code: str, request: Request):
 
 
 @app.get("/api/users/{user_id}/buildings")
-async def list_user_buildings(user_id: str):
+async def list_user_buildings(user_id: str, session: dict = Depends(verify_session)):
+    # Ensure user can only see their own buildings
+    if session.get("user_id") != user_id:
+        raise HTTPException(403, "Access denied")
+
     memberships = await sb_get("fc_building_members", f"?user_id=eq.{user_id}")
     buildings = []
     for m in memberships:
@@ -501,18 +827,21 @@ async def list_user_buildings(user_id: str):
 # ── Walk Sessions ───────────────────────────────────────────────────────────
 
 @app.post("/api/buildings/{building_id}/walks")
-async def start_walk(building_id: str, request: Request):
+async def start_walk(building_id: str, request: Request, session: dict = Depends(verify_session)):
     body = await request.json()
     walk = await sb_post("fc_walk_sessions", {
         "building_id": building_id,
-        "user_id": body.get("user_id"),
+        "user_id": body.get("user_id") or session.get("user_id"),
         "user_name": body.get("user_name", ""),
     })
+
+    await log_analytics("walk_start", user_id=session.get("user_id"), building_id=building_id, request=request)
+
     return {"walk": walk[0]}
 
 
 @app.patch("/api/walks/{walk_id}")
-async def update_walk(walk_id: str, request: Request):
+async def update_walk(walk_id: str, request: Request, session: dict = Depends(verify_session)):
     body = await request.json()
     update = {}
     if "status" in body:
@@ -527,25 +856,29 @@ async def update_walk(walk_id: str, request: Request):
         update["captures_made"] = body["captures_made"]
 
     result = await sb_patch("fc_walk_sessions", f"?id=eq.{walk_id}", update)
+
+    if body.get("status") == "completed":
+        await log_analytics("walk_end", user_id=session.get("user_id"), metadata={"walk_id": walk_id}, request=request)
+
     return {"walk": result[0] if result else None}
 
 
 # ── Unit Visits ─────────────────────────────────────────────────────────────
 
 @app.post("/api/buildings/{building_id}/units/{unit_id}/visit")
-async def visit_unit(building_id: str, unit_id: str, request: Request):
+async def visit_unit(building_id: str, unit_id: str, request: Request, session: dict = Depends(verify_session)):
     body = await request.json()
     visit = await sb_post("fc_unit_visits", {
         "walk_session_id": body.get("walk_session_id"),
         "unit_id": unit_id,
         "building_id": building_id,
-        "user_id": body.get("user_id"),
+        "user_id": body.get("user_id") or session.get("user_id"),
     })
     return {"visit": visit[0]}
 
 
 @app.patch("/api/visits/{visit_id}")
-async def update_visit(visit_id: str, request: Request):
+async def update_visit(visit_id: str, request: Request, session: dict = Depends(verify_session)):
     body = await request.json()
     update = {}
     if "status" in body:
@@ -672,6 +1005,7 @@ async def capture_equipment(
     condition_rating: str = Form(None),
     condition_notes: str = Form(""),
     tag_readable: bool = Form(True),
+    session: dict = Depends(verify_session),
 ):
     """
     Core capture endpoint:
@@ -746,7 +1080,7 @@ async def capture_equipment(
         "unit_visit_id": unit_visit_id,
         "equipment_type_id": equipment_type_id,
         "walk_session_id": walk_session_id,
-        "captured_by": user_id,
+        "captured_by": user_id or session.get("user_id"),
         "captured_by_name": user_name,
         "sub_type": sub_type,                 # v1.3
         "photo_url": photo_url,
@@ -781,6 +1115,10 @@ async def capture_equipment(
             "sort_order": 0,
         })
 
+    # Log analytics
+    await log_analytics("capture", user_id=session.get("user_id"), building_id=building_id,
+                        metadata={"capture_id": capture.get("id"), "equipment_type": eq_type_name}, request=None)
+
     return {
         "capture": capture,
         "ai_extracted": bool(ai_data),
@@ -795,6 +1133,7 @@ async def add_capture_photo(
     capture_id: str,
     photo: UploadFile = File(...),
     photo_type: str = Form("unit"),  # 'unit', 'detail', 'condition'
+    session: dict = Depends(verify_session),
 ):
     """Upload an additional photo for an existing capture (e.g., unit overview photo)."""
     photo_bytes = await photo.read()
@@ -826,6 +1165,9 @@ async def add_capture_photo(
         "sort_order": next_order,
     })
 
+    await log_analytics("photo_upload", user_id=session.get("user_id"), building_id=cap.get("building_id"),
+                        metadata={"capture_id": capture_id, "photo_type": photo_type}, request=None)
+
     return {
         "photo": result[0] if result else None,
         "photo_url": photo_url,
@@ -834,14 +1176,14 @@ async def add_capture_photo(
 
 # v1.3: List photos for a capture
 @app.get("/api/captures/{capture_id}/photos")
-async def list_capture_photos(capture_id: str):
+async def list_capture_photos(capture_id: str, session: dict = Depends(verify_session)):
     """Get all photos for a capture."""
     photos = await sb_get("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order")
     return {"photos": photos}
 
 
 @app.patch("/api/captures/{capture_id}")
-async def update_capture(capture_id: str, request: Request):
+async def update_capture(capture_id: str, request: Request, session: dict = Depends(verify_session)):
     """Update/correct a capture — v1.3: supports edit-after-save, brand field."""
     body = await request.json()
     allowed = [
@@ -861,7 +1203,7 @@ async def update_capture(capture_id: str, request: Request):
 
 
 @app.post("/api/buildings/{building_id}/units/{unit_id}/manual-capture")
-async def manual_capture(building_id: str, unit_id: str, request: Request):
+async def manual_capture(building_id: str, unit_id: str, request: Request, session: dict = Depends(verify_session)):
     """Manual capture when tag is unreadable."""
     body = await request.json()
     capture_record = {
@@ -870,7 +1212,7 @@ async def manual_capture(building_id: str, unit_id: str, request: Request):
         "equipment_type_id": body.get("equipment_type_id"),
         "walk_session_id": body.get("walk_session_id"),
         "unit_visit_id": body.get("unit_visit_id"),
-        "captured_by": body.get("user_id"),
+        "captured_by": body.get("user_id") or session.get("user_id"),
         "captured_by_name": body.get("user_name", ""),
         "sub_type": body.get("sub_type"),     # v1.3
         "brand": body.get("brand"),           # v1.3
@@ -893,7 +1235,7 @@ async def manual_capture(building_id: str, unit_id: str, request: Request):
 # ── Progress & Dashboard ────────────────────────────────────────────────────
 
 @app.get("/api/buildings/{building_id}/progress")
-async def building_progress(building_id: str):
+async def building_progress(building_id: str, session: dict = Depends(verify_session)):
     units = await sb_get("fc_units", f"?building_id=eq.{building_id}&select=id,unit_name")
     types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&select=id,name,icon")
     captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&select=id,unit_id,equipment_type_id,captured_by_name,created_at,make,brand,model_name,ai_confidence,manually_verified")
@@ -942,7 +1284,7 @@ async def building_progress(building_id: str):
 
 
 @app.get("/api/buildings/{building_id}/captures")
-async def list_captures(building_id: str, unit_id: str = None):
+async def list_captures(building_id: str, unit_id: str = None, session: dict = Depends(verify_session)):
     filters = f"?building_id=eq.{building_id}&order=created_at.desc"
     if unit_id:
         filters += f"&unit_id=eq.{unit_id}"
@@ -953,7 +1295,7 @@ async def list_captures(building_id: str, unit_id: str = None):
 # ── Export ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/buildings/{building_id}/export/csv")
-async def export_csv(building_id: str):
+async def export_csv(building_id: str, session: dict = Depends(verify_session)):
     """Export all captures as CSV — v1.3: includes brand, sub_type, timestamp."""
     captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&order=created_at")
     units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
@@ -1000,6 +1342,89 @@ def _csv_escape(val: str) -> str:
     if "," in val or '"' in val or "\n" in val:
         return '"' + val.replace('"', '""') + '"'
     return val
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ANALYTICS ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/analytics/event")
+async def log_analytics_event(request: Request, session: dict = Depends(verify_session)):
+    """Log an analytics event from the frontend."""
+    body = await request.json()
+    await log_analytics(
+        event_type=body.get("event_type", "unknown"),
+        user_id=session.get("user_id"),
+        building_id=body.get("building_id"),
+        metadata=body.get("metadata"),
+        request=request,
+    )
+    return {"logged": True}
+
+
+@app.get("/api/analytics/summary")
+async def analytics_summary(session: dict = Depends(verify_session)):
+    """Return analytics summary: login counts, active users, captures per day."""
+    all_events = await sb_get("fc_analytics", "?order=timestamp.desc&limit=1000")
+
+    login_count = sum(1 for e in all_events if e.get("event_type") == "login")
+    register_count = sum(1 for e in all_events if e.get("event_type") == "register")
+    capture_count = sum(1 for e in all_events if e.get("event_type") == "capture")
+    walk_count = sum(1 for e in all_events if e.get("event_type") == "walk_start")
+
+    active_users = len(set(e.get("user_id") for e in all_events if e.get("user_id")))
+
+    # Captures per day (last 7 days)
+    captures_per_day = {}
+    for e in all_events:
+        if e.get("event_type") == "capture" and e.get("timestamp"):
+            day = e["timestamp"][:10]
+            captures_per_day[day] = captures_per_day.get(day, 0) + 1
+
+    return {
+        "total_logins": login_count,
+        "total_registrations": register_count,
+        "total_captures": capture_count,
+        "total_walks": walk_count,
+        "active_users": active_users,
+        "captures_per_day": captures_per_day,
+        "recent_events": all_events[:20],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ADMIN ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/admin/users")
+async def admin_list_users(session: dict = Depends(verify_session)):
+    """List all registered users with last login, buildings, capture counts."""
+    users = await sb_get("fc_users", "?order=created_at.desc")
+
+    result = []
+    for u in users:
+        uid = u["id"]
+        memberships = await sb_get("fc_building_members", f"?user_id=eq.{uid}")
+        captures = await sb_get("fc_captures", f"?captured_by=eq.{uid}&select=id")
+
+        building_names = []
+        for m in memberships:
+            invites = await sb_get("fc_invite_codes", f"?building_id=eq.{m['building_id']}&limit=1")
+            if invites:
+                building_names.append(invites[0].get("building_name", m["building_id"]))
+
+        result.append({
+            "id": uid,
+            "name": u.get("name", ""),
+            "email": u.get("email", ""),
+            "created_at": u.get("created_at", ""),
+            "last_login_at": u.get("last_login_at", ""),
+            "building_count": len(memberships),
+            "buildings": building_names,
+            "capture_count": len(captures),
+        })
+
+    return {"users": result}
 
 
 # ── Run ─────────────────────────────────────────────────────────────────────
