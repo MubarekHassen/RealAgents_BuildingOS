@@ -370,26 +370,26 @@ CREATE INDEX IF NOT EXISTS idx_fc_analytics_user ON fc_analytics(user_id);
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# AUTH ENDPOINTS (v1.3.1 — PIN + session)
+# AUTH ENDPOINTS (v1.3.2 — invite-code login + session)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@app.post("/api/auth/register")
-async def register_field_user(request: Request):
-    """Register a new field user. Requires invite code + PIN."""
+@app.post("/api/auth/login")
+async def login_field_user(request: Request):
+    """Login/register with name + email + invite code. The invite code IS the auth.
+    - If user exists and has access to a building matching the invite code → session created.
+    - If user doesn't exist → auto-register, join building, create session.
+    """
     body = await request.json()
     name = body.get("name", "").strip()
     email = body.get("email", "").strip().lower()
-    pin = body.get("pin", "").strip()
     invite_code = body.get("invite_code", "").strip().upper()
 
-    if not name or not email:
-        raise HTTPException(400, "Name and email required")
+    if not email:
+        raise HTTPException(400, "Email required")
     if not invite_code:
-        raise HTTPException(400, "Invite code required to create an account")
-    if not pin or len(pin) < 4 or len(pin) > 6 or not pin.isdigit():
-        raise HTTPException(400, "PIN must be 4-6 digits")
+        raise HTTPException(400, "Invite code required")
 
-    # Validate invite code first
+    # Validate invite code
     invites = await sb_get("fc_invite_codes", f"?code=eq.{invite_code}&is_active=eq.true")
     if not invites:
         raise HTTPException(404, "Invalid or expired invite code")
@@ -397,73 +397,43 @@ async def register_field_user(request: Request):
     if invite.get("uses", 0) >= invite.get("max_uses", 10):
         raise HTTPException(410, "Invite code has reached maximum uses")
 
-    # Check if user already exists
-    existing = await sb_get("fc_users", f"?email=eq.{email}")
-    if existing:
-        raise HTTPException(409, "An account with this email already exists. Please sign in.")
-
-    # Create user with hashed PIN
-    pin_hashed = hash_pin(pin, email)
-    user = await sb_post("fc_users", {
-        "name": name,
-        "email": email,
-        "phone": body.get("phone", ""),
-        "pin_hash": pin_hashed,
-    })
-    user_record = user[0] if user else None
-    if not user_record:
-        raise HTTPException(500, "Failed to create account")
-
-    # Auto-join the building from the invite code
-    await sb_post("fc_building_members", {
-        "user_id": user_record["id"],
-        "building_id": invite["building_id"],
-        "invite_code_id": invite["id"],
-    })
-    await sb_patch("fc_invite_codes", f"?id=eq.{invite['id']}", {"uses": invite.get("uses", 0) + 1})
-
-    # Create session
-    session_info = await create_session(user_record["id"], request)
-
-    # Log analytics
-    await log_analytics("register", user_id=user_record["id"], building_id=invite["building_id"], request=request)
-
-    # Return user (without pin_hash) + session token
-    safe_user = {k: v for k, v in user_record.items() if k != "pin_hash"}
-    return {
-        "user": safe_user,
-        "token": session_info["token"],
-        "expires_at": session_info["expires_at"],
-        "is_new": True,
-        "joined_building": {
-            "building_id": invite["building_id"],
-            "building_name": invite.get("building_name", ""),
-            "building_address": invite.get("building_address", ""),
-        },
-    }
-
-
-@app.post("/api/auth/login")
-async def login_field_user(request: Request):
-    """Login with email + PIN. Returns session token."""
-    body = await request.json()
-    email = body.get("email", "").strip().lower()
-    pin = body.get("pin", "").strip()
-
-    if not email or not pin:
-        raise HTTPException(400, "Email and PIN required")
-
+    # Find or create user
     users = await sb_get("fc_users", f"?email=eq.{email}")
-    if not users:
-        raise HTTPException(404, "No account found with that email")
+    is_new = False
+    if users:
+        user = users[0]
+        # Update name if provided and different
+        if name and name != user.get("name", ""):
+            try:
+                await sb_patch("fc_users", f"?id=eq.{user['id']}", {"name": name})
+                user["name"] = name
+            except Exception:
+                pass
+    else:
+        if not name:
+            raise HTTPException(400, "Name and email required for new accounts")
+        created = await sb_post("fc_users", {
+            "name": name,
+            "email": email,
+            "phone": body.get("phone", ""),
+        })
+        if not created:
+            raise HTTPException(500, "Failed to create account")
+        user = created[0]
+        is_new = True
 
-    user = users[0]
-    stored_hash = user.get("pin_hash", "")
-    if not stored_hash:
-        raise HTTPException(403, "Account has no PIN set. Please contact your administrator.")
-
-    if not verify_pin(pin, email, stored_hash):
-        raise HTTPException(401, "Incorrect PIN")
+    # Ensure user is a member of the building from the invite code
+    existing_member = await sb_get(
+        "fc_building_members",
+        f"?user_id=eq.{user['id']}&building_id=eq.{invite['building_id']}"
+    )
+    if not existing_member:
+        await sb_post("fc_building_members", {
+            "user_id": user["id"],
+            "building_id": invite["building_id"],
+            "invite_code_id": invite["id"],
+        })
+        await sb_patch("fc_invite_codes", f"?id=eq.{invite['id']}", {"uses": invite.get("uses", 0) + 1})
 
     # Create session
     session_info = await create_session(user["id"], request)
@@ -475,13 +445,20 @@ async def login_field_user(request: Request):
         pass
 
     # Log analytics
-    await log_analytics("login", user_id=user["id"], request=request)
+    event = "register" if is_new else "login"
+    await log_analytics(event, user_id=user["id"], building_id=invite["building_id"], request=request)
 
     safe_user = {k: v for k, v in user.items() if k != "pin_hash"}
     return {
         "user": safe_user,
         "token": session_info["token"],
         "expires_at": session_info["expires_at"],
+        "is_new": is_new,
+        "building": {
+            "building_id": invite["building_id"],
+            "building_name": invite.get("building_name", ""),
+            "building_address": invite.get("building_address", ""),
+        },
     }
 
 
