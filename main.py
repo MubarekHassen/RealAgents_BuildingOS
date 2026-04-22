@@ -18,6 +18,8 @@ import logging
 import io
 import html
 import secrets
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List, Any
 from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
@@ -1595,6 +1597,219 @@ def public_config():
         "supabase_url": rag_config.supabase_url or None,
         "supabase_anon_key": anon_key or None,
         "auth_enabled": bool(rag_config.supabase_url and anon_key),
+    }
+
+
+# ── In-memory analytics store (replace with DB table for production) ──
+_analytics_events: list[dict] = []
+
+
+# ─────────────────────────────────────────────
+# ADMIN: User Management via Supabase Auth Admin API
+# ─────────────────────────────────────────────
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+    role: str = "viewer"  # admin | editor | viewer
+
+
+class DeactivateUserRequest(BaseModel):
+    user_id: str
+
+
+def _supabase_admin_headers() -> dict:
+    """Return headers for Supabase Auth Admin API calls."""
+    rag_config = load_rag_config()
+    service_key = rag_config.supabase_service_role_key
+    if not service_key or not rag_config.supabase_url:
+        raise HTTPException(status_code=500, detail="Supabase is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing).")
+    return {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }
+
+
+@app.post("/api/admin/create-user", dependencies=[Depends(verify_api_key)])
+async def admin_create_user(body: CreateUserRequest):
+    """Create a new user via Supabase Auth Admin API. Requires BUILDINGOS_API_KEY."""
+    if body.role not in ("admin", "editor", "viewer"):
+        raise HTTPException(status_code=400, detail="role must be one of: admin, editor, viewer")
+    if not body.email or not body.password:
+        raise HTTPException(status_code=400, detail="email and password are required")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    rag_config = load_rag_config()
+    headers = _supabase_admin_headers()
+    url = f"{rag_config.supabase_url}/auth/v1/admin/users"
+
+    payload = {
+        "email": body.email,
+        "password": body.password,
+        "email_confirm": True,
+        "user_metadata": {
+            "name": body.name,
+            "role": body.role,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+
+    if resp.status_code >= 400:
+        detail = "Failed to create user"
+        try:
+            err = resp.json()
+            detail = err.get("msg") or err.get("message") or err.get("error_description") or detail
+        except Exception:
+            pass
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    user_data = resp.json()
+    # Log analytics event
+    _analytics_events.append({
+        "event": "admin_user_created",
+        "email": body.email,
+        "role": body.role,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return {
+        "id": user_data.get("id"),
+        "email": user_data.get("email"),
+        "name": body.name,
+        "role": body.role,
+        "created_at": user_data.get("created_at"),
+    }
+
+
+@app.get("/api/admin/users", dependencies=[Depends(verify_api_key)])
+async def admin_list_users():
+    """List all Supabase Auth users with metadata. Requires BUILDINGOS_API_KEY."""
+    rag_config = load_rag_config()
+    headers = _supabase_admin_headers()
+    url = f"{rag_config.supabase_url}/auth/v1/admin/users"
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, headers=headers, params={"page": 1, "per_page": 500})
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail="Failed to list users from Supabase")
+
+    data = resp.json()
+    users_raw = data.get("users", data) if isinstance(data, dict) else data
+
+    users = []
+    for u in (users_raw if isinstance(users_raw, list) else []):
+        meta = u.get("user_metadata") or {}
+        users.append({
+            "id": u.get("id"),
+            "email": u.get("email"),
+            "name": meta.get("name", ""),
+            "role": meta.get("role", "viewer"),
+            "created_at": u.get("created_at"),
+            "last_sign_in_at": u.get("last_sign_in_at"),
+            "email_confirmed_at": u.get("email_confirmed_at"),
+            "banned": u.get("banned_until") is not None,
+        })
+
+    return {"users": users, "total": len(users)}
+
+
+@app.post("/api/admin/deactivate-user", dependencies=[Depends(verify_api_key)])
+async def admin_deactivate_user(body: DeactivateUserRequest):
+    """Ban/deactivate a Supabase Auth user by ID. Requires BUILDINGOS_API_KEY."""
+    if not body.user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+
+    rag_config = load_rag_config()
+    headers = _supabase_admin_headers()
+    url = f"{rag_config.supabase_url}/auth/v1/admin/users/{body.user_id}"
+
+    payload = {
+        "ban_duration": "876000h",  # ~100 years effectively permanent
+    }
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.put(url, json=payload, headers=headers)
+
+    if resp.status_code >= 400:
+        detail = "Failed to deactivate user"
+        try:
+            err = resp.json()
+            detail = err.get("msg") or err.get("message") or detail
+        except Exception:
+            pass
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    _analytics_events.append({
+        "event": "admin_user_deactivated",
+        "user_id": body.user_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"status": "deactivated", "user_id": body.user_id}
+
+
+# ─────────────────────────────────────────────
+# ANALYTICS
+# ─────────────────────────────────────────────
+
+class AnalyticsEventRequest(BaseModel):
+    event: str  # login, document_upload, ai_query, building_view
+    user_email: Optional[str] = None
+    metadata: Optional[dict] = None
+
+
+@app.post("/api/analytics/event")
+async def track_analytics_event(body: AnalyticsEventRequest):
+    """Log a platform analytics event."""
+    event_record = {
+        "event": body.event,
+        "user_email": body.user_email,
+        "metadata": body.metadata or {},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    _analytics_events.append(event_record)
+    # Cap in-memory store at 10,000 events
+    if len(_analytics_events) > 10000:
+        _analytics_events[:] = _analytics_events[-5000:]
+    return {"status": "ok"}
+
+
+@app.get("/api/analytics/dashboard", dependencies=[Depends(verify_api_key)])
+async def analytics_dashboard():
+    """Return usage summaries for the analytics dashboard. Requires BUILDINGOS_API_KEY."""
+    now = datetime.now(timezone.utc)
+    thirty_days_ago = (now - timedelta(days=30)).isoformat()
+    seven_days_ago = (now - timedelta(days=7)).isoformat()
+    today_str = now.strftime("%Y-%m-%d")
+
+    recent = [e for e in _analytics_events if e.get("timestamp", "") >= thirty_days_ago]
+
+    logins = [e for e in recent if e["event"] == "login"]
+    doc_uploads = [e for e in recent if e["event"] == "document_upload"]
+    ai_queries = [e for e in recent if e["event"] == "ai_query"]
+    building_views = [e for e in recent if e["event"] == "building_view"]
+
+    unique_users_7d = len(set(e.get("user_email", "") for e in _analytics_events if e.get("timestamp", "") >= seven_days_ago and e.get("user_email")))
+
+    # Daily login counts for chart (last 30 days)
+    login_by_day: dict[str, int] = {}
+    for e in logins:
+        day = e.get("timestamp", "")[:10]
+        login_by_day[day] = login_by_day.get(day, 0) + 1
+
+    return {
+        "period": "last_30_days",
+        "logins_total": len(logins),
+        "documents_uploaded": len(doc_uploads),
+        "ai_queries": len(ai_queries),
+        "building_views": len(building_views),
+        "active_users_7d": unique_users_7d,
+        "login_by_day": login_by_day,
+        "total_events": len(recent),
     }
 
 
