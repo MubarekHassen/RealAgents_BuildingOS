@@ -223,6 +223,189 @@
             transition: background 0.2s ease;
         }
         .header-logout:active { background: rgba(255,255,255,0.22); }
+
+        /* ── Inspection Styles ────────────────── */
+        .inspection-section {
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+            overflow: hidden;
+        }
+        .inspection-section-header {
+            padding: 14px 16px;
+            font-weight: 700;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #206A8A;
+            background: #f0f7fa;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .inspection-section-header:active { background: #e1eef3; }
+        .inspection-section-header .collapse-icon {
+            font-size: 16px;
+            transition: transform 0.25s ease;
+        }
+        .inspection-section-header.collapsed .collapse-icon {
+            transform: rotate(-90deg);
+        }
+        .inspection-section-body {
+            padding: 16px;
+            max-height: 2000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+        .inspection-section-body.collapsed {
+            max-height: 0;
+            padding: 0 16px;
+        }
+
+        .room-stop-card {
+            background: white;
+            border-radius: 10px;
+            border: 1.5px solid #e2e8f0;
+            margin-bottom: 10px;
+            overflow: hidden;
+            transition: border-color 0.2s ease;
+        }
+        .room-stop-card.flagged {
+            border-color: #f59e0b;
+            box-shadow: 0 0 0 2px rgba(245,158,11,0.15);
+        }
+        .room-stop-header {
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .room-stop-header:active { background: #f8fafc; }
+        .room-stop-icon { font-size: 22px; flex-shrink: 0; }
+        .room-stop-name { font-weight: 600; font-size: 14px; flex: 1; }
+        .room-stop-actions { display: flex; gap: 8px; align-items: center; }
+        .room-flag-btn {
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            border: 1.5px solid #e2e8f0;
+            background: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .room-flag-btn.active {
+            background: #fff7ed;
+            border-color: #f59e0b;
+            color: #d97706;
+        }
+        .room-photo-btn {
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            border: 1.5px solid #e2e8f0;
+            background: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .room-photo-btn.has-photo {
+            background: #f0fdf4;
+            border-color: #059669;
+        }
+        .room-stop-collapse-icon {
+            font-size: 14px;
+            color: #94a3b8;
+            transition: transform 0.25s ease;
+        }
+        .room-stop-body {
+            padding: 0 14px 14px;
+            max-height: 500px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+        .room-stop-body.collapsed {
+            max-height: 0;
+            padding: 0 14px;
+        }
+        .room-stop-content {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .room-photo-thumb {
+            width: 72px;
+            height: 72px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 2px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+        .room-notes-area { flex: 1; }
+        .room-notes-area textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 13px;
+            resize: vertical;
+            min-height: 48px;
+            font-family: inherit;
+        }
+        .room-notes-area textarea:focus {
+            outline: none;
+            border-color: #206A8A;
+            box-shadow: 0 0 0 3px rgba(32,106,138,0.15);
+        }
+        .room-flag-issue {
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: #fff7ed;
+            border: 1.5px solid #fed7aa;
+            border-radius: 8px;
+        }
+        .room-flag-issue label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #d97706;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .room-flag-issue input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #fed7aa;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+        }
+        .room-flag-issue input:focus {
+            outline: none;
+            border-color: #f59e0b;
+        }
+
+        .inspection-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .inspection-badge-done {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .inspection-badge-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
     </style>
 </head>
 <body>
@@ -241,7 +424,7 @@
         <div class="auth-logo">
             <div class="auth-logo-icon"><span>B</span></div>
             <h2>BuildingOS</h2>
-            <p>Field Capture v1.3</p>
+            <p>Field Capture v1.4</p>
         </div>
 
         <div class="card">
@@ -303,6 +486,7 @@
         <div id="dashTypeProgress"></div>
         <div style="margin-top:20px;">
             <button class="btn btn-success" onclick="startWalk()" style="font-size:17px;padding:16px;">&#128694; Start Walk</button>
+            <button class="btn btn-primary" onclick="startInspection()" style="font-size:17px;padding:16px;">&#128203; Start Unit Inspection</button>
             <button class="btn btn-outline" onclick="exportCSV()">Export CSV</button>
         </div>
     </div>
@@ -551,6 +735,212 @@
     </div>
 </div>
 
+<!-- SCREEN: Unit Inspection -->
+<div class="screen" id="screenInspection">
+    <div class="screen-pad">
+        <div id="inspectionUnitName" style="font-size:18px;font-weight:700;margin-bottom:4px;"></div>
+        <div style="font-size:13px;color:#64748b;margin-bottom:16px;">Unit Inspection Walkthrough</div>
+
+        <!-- Room Walkthrough -->
+        <div class="section-title">Room Walkthrough (13 Stops)</div>
+        <div id="roomStopsList"></div>
+
+        <!-- Safety & Habitability -->
+        <div class="inspection-section">
+            <div class="inspection-section-header" onclick="toggleInspectionSection(this)">
+                <span>SAFETY &amp; HABITABILITY</span>
+                <span class="collapse-icon">&#9660;</span>
+            </div>
+            <div class="inspection-section-body">
+                <div class="input-group">
+                    <label>Smoke/CO Detectors</label>
+                    <select id="insp_smoke_co">
+                        <option value="">Select...</option>
+                        <option value="Pass">Pass</option>
+                        <option value="Fail">Fail</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Safety Check</label>
+                    <select id="insp_safety_check">
+                        <option value="">Select...</option>
+                        <option value="Pass">Pass</option>
+                        <option value="Fail">Fail</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Safety Notes</label>
+                    <textarea id="insp_safety_notes" rows="2" placeholder="Any safety concerns..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mechanicals - Systems -->
+        <div class="inspection-section">
+            <div class="inspection-section-header" onclick="toggleInspectionSection(this)">
+                <span>MECHANICALS &mdash; SYSTEMS</span>
+                <span class="collapse-icon">&#9660;</span>
+            </div>
+            <div class="inspection-section-body">
+                <div class="input-group">
+                    <label>HVAC Make/Model/Age</label>
+                    <input type="text" id="insp_hvac_info" placeholder="e.g. Goodman GMS80603BN, 2018">
+                </div>
+                <div class="input-group">
+                    <label>HVAC Condition</label>
+                    <select id="insp_hvac_condition">
+                        <option value="">Select...</option>
+                        <option value="Good">Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                        <option value="Non-functional">Non-functional</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Water Heater Make/Model/Age</label>
+                    <input type="text" id="insp_wh_info" placeholder="e.g. Rheem 40gal, 2015">
+                </div>
+                <div class="input-group">
+                    <label>Water Heater Condition</label>
+                    <select id="insp_wh_condition">
+                        <option value="">Select...</option>
+                        <option value="Good">Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                        <option value="Non-functional">Non-functional</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Elec Panel Make/Amps</label>
+                    <input type="text" id="insp_elec_panel" placeholder="e.g. Square D 100A">
+                </div>
+                <div class="input-group">
+                    <label>Windows</label>
+                    <select id="insp_windows">
+                        <option value="">Select...</option>
+                        <option value="Good">Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Plumbing Leaks</label>
+                    <input type="text" id="insp_plumbing_leaks" placeholder="e.g. Kitchen faucet drips">
+                </div>
+                <div class="input-group">
+                    <label>Appliances Condition</label>
+                    <select id="insp_appliances">
+                        <option value="">Select...</option>
+                        <option value="Good">Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Finishes - Reno Scope -->
+        <div class="inspection-section">
+            <div class="inspection-section-header" onclick="toggleInspectionSection(this)">
+                <span>FINISHES &mdash; RENO SCOPE</span>
+                <span class="collapse-icon">&#9660;</span>
+            </div>
+            <div class="inspection-section-body">
+                <div class="input-group">
+                    <label>Kitchen/Bath Flooring</label>
+                    <select id="insp_kb_flooring">
+                        <option value="">Select...</option>
+                        <option value="Good">Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Kitchen/Bath Condition</label>
+                    <select id="insp_kb_condition">
+                        <option value="">Select...</option>
+                        <option value="Good">Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Doors/Drywall</label>
+                    <textarea id="insp_doors_drywall" rows="2" placeholder="Notes on what needs replacing..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tenant Assessment -->
+        <div class="inspection-section">
+            <div class="inspection-section-header" onclick="toggleInspectionSection(this)">
+                <span>TENANT ASSESSMENT</span>
+                <span class="collapse-icon">&#9660;</span>
+            </div>
+            <div class="inspection-section-body">
+                <div class="input-group">
+                    <label>Cleanliness (1-5)</label>
+                    <select id="insp_cleanliness">
+                        <option value="">Select...</option>
+                        <option value="1">1 - Very Poor</option>
+                        <option value="2">2 - Poor</option>
+                        <option value="3">3 - Average</option>
+                        <option value="4">4 - Good</option>
+                        <option value="5">5 - Excellent</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Tenant Issues</label>
+                    <textarea id="insp_tenant_issues" rows="2" placeholder="Any issues reported by tenant..."></textarea>
+                </div>
+                <div class="input-group">
+                    <label>Cooperation</label>
+                    <select id="insp_cooperation">
+                        <option value="">Select...</option>
+                        <option value="Friendly">Friendly</option>
+                        <option value="Neutral">Neutral</option>
+                        <option value="Uncooperative">Uncooperative</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Renewal Recommendation</label>
+                    <select id="insp_renewal">
+                        <option value="">Select...</option>
+                        <option value="Renew">Renew</option>
+                        <option value="Offer Reno Unit">Offer Reno Unit</option>
+                        <option value="Non-Renew">Non-Renew</option>
+                        <option value="Month-to-Month">Month-to-Month</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Work Orders -->
+        <div class="inspection-section">
+            <div class="inspection-section-header" onclick="toggleInspectionSection(this)">
+                <span>WORK ORDERS</span>
+                <span class="collapse-icon">&#9660;</span>
+            </div>
+            <div class="inspection-section-body">
+                <div class="input-group">
+                    <label>Immediate WOs Needed</label>
+                    <textarea id="insp_immediate_wos" rows="3" placeholder="Critical maintenance items..."></textarea>
+                </div>
+                <div class="input-group">
+                    <label>Notes</label>
+                    <textarea id="insp_wo_notes" rows="2" placeholder="Additional notes..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div style="margin-top:20px;">
+            <button class="btn btn-success" onclick="saveInspection('complete')" style="font-size:17px;padding:16px;">&#10003; Save Inspection</button>
+            <button class="btn btn-secondary" onclick="saveInspection('draft')">Save Draft</button>
+        </div>
+    </div>
+</div>
+
 <!-- Loading overlay -->
 <div class="loading-overlay" id="loadingOverlay" style="display:none;">
     <div class="spinner"></div>
@@ -559,6 +949,9 @@
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
+
+<!-- Hidden file inputs for room photos -->
+<input type="file" accept="image/*" capture="environment" id="roomPhotoInput" class="hidden-input" onchange="onRoomPhotoSelected(event)">
 
 <script>
     const API = window.location.origin;
@@ -586,7 +979,32 @@
         selectedSubType: '',
         noTagIdentification: null,
         equipSubTypes: {},       // loaded from server
+        // Inspection state
+        isInspectionMode: false,
+        inspectionStops: [],
+        inspectionPhotos: {},    // { stopIndex: File }
+        inspectionFlags: {},     // { stopIndex: { flagged: bool, issue: string } }
+        inspectionNotes: {},     // { stopIndex: string }
+        inspectedUnits: {},      // { unitId: true }
+        pendingRoomPhotoIndex: null,
     };
+
+    // Default 13-stop room guide
+    const DEFAULT_ROOM_STOPS = [
+        { name: 'Front Door / Entry', icon: '\uD83D\uDEAA' },
+        { name: 'Living Room', icon: '\uD83D\uDECB\uFE0F' },
+        { name: 'Kitchen', icon: '\uD83C\uDF73' },
+        { name: 'Dining Area', icon: '\uD83C\uDF7D\uFE0F' },
+        { name: 'Hallway', icon: '\uD83D\uDEB6' },
+        { name: 'Bedroom 1', icon: '\uD83D\uDECF\uFE0F' },
+        { name: 'Bedroom 2', icon: '\uD83D\uDECF\uFE0F' },
+        { name: 'Bedroom 3', icon: '\uD83D\uDECF\uFE0F' },
+        { name: 'Bathroom 1', icon: '\uD83D\uDEBF' },
+        { name: 'Bathroom 2', icon: '\uD83D\uDEBF' },
+        { name: 'Utility / Laundry', icon: '\uD83E\uDDFA' },
+        { name: 'HVAC / Mechanical', icon: '\u2699\uFE0F' },
+        { name: 'Patio / Exterior', icon: '\uD83C\uDF3F' },
+    ];
 
     // ── Navigation ─────────────────────────
     let screenStack = ['screenLogin'];
@@ -769,7 +1187,7 @@
         document.getElementById('dashTypeProgress').innerHTML = (p.type_progress || []).map(t => `
             <div class="card" style="padding:12px 16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span>${t.icon||'🔧'} ${t.name}</span>
+                    <span>${t.icon||'\uD83D\uDD27'} ${t.name}</span>
                     <span style="font-weight:600;font-size:13px;">${t.captured}/${t.total}</span>
                 </div>
                 <div class="progress-bar"><div class="progress-fill" style="width:${t.pct}%;background:${t.pct>=100?'#059669':'#206A8A'}"></div></div>
@@ -779,6 +1197,7 @@
 
     // ── Walk ───────────────────────────────
     async function startWalk() {
+        state.isInspectionMode = false;
         showLoading('Starting walk...');
         try {
             const r = await api(`/api/buildings/${state.currentBuilding}/walks`, { user_id: state.user.id, user_name: state.user.name });
@@ -794,27 +1213,71 @@
         if (!confirm('End this walk session?')) return;
         if (state.walkSession) await api(`/api/walks/${state.walkSession.id}`, { status: 'completed' }).catch(() => {});
         state.walkSession = null;
+        state.isInspectionMode = false;
         const progressR = await api(`/api/buildings/${state.currentBuilding}/progress`).catch(() => ({}));
         state.progress = progressR; renderDashboard();
         screenStack = ['screenBuildings', 'screenDashboard'];
         showScreen('screenDashboard', { title: state.currentBuildingName, noStack: true });
     }
 
+    // ── Inspection Mode ───────────────────
+    async function startInspection() {
+        state.isInspectionMode = true;
+        showLoading('Starting inspection...');
+        try {
+            // Try to load inspection stops from server, fall back to defaults
+            try {
+                const stopsR = await api('/api/inspection-stops');
+                state.inspectionStops = stopsR.stops || DEFAULT_ROOM_STOPS;
+            } catch (e) {
+                state.inspectionStops = DEFAULT_ROOM_STOPS;
+            }
+            // Start a walk session for the inspection
+            const r = await api(`/api/buildings/${state.currentBuilding}/walks`, { user_id: state.user.id, user_name: state.user.name });
+            state.walkSession = r.walk;
+            const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
+            state.captures = capsR.captures || [];
+            hideLoading(); renderUnits();
+            showScreen('screenUnits', { title: 'Inspection: ' + state.currentBuildingName });
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
+    }
+
     // ── Unit List ──────────────────────────
     function renderUnits() {
         const search = (document.getElementById('unitSearch').value || '').toLowerCase();
         const filtered = state.units.filter(u => u.unit_name.toLowerCase().includes(search));
-        document.getElementById('walkSubtitle').textContent = state.units.filter(u => u.is_complete).length + ' of ' + state.units.length + ' units complete';
-        document.getElementById('unitList').innerHTML = filtered.map(u => {
-            const done = u.captures_done || 0, total = u.captures_total || 0;
-            const cls = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
-            const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
-            return `<div class="unit-card" onclick="openUnit('${u.id}')">
-                <div class="unit-status ${cls}">${label}</div>
-                <div class="unit-info"><div class="unit-name">${u.unit_name}</div>
-                <div class="unit-meta">${u.floor ? 'Floor '+u.floor+' · ' : ''}${u.unit_type||''}</div></div>
-                <div class="unit-arrow">&#8250;</div></div>`;
-        }).join('');
+
+        if (state.isInspectionMode) {
+            document.getElementById('walkTitle').textContent = 'Inspection in Progress';
+            const inspected = state.units.filter(u => state.inspectedUnits[u.id]).length;
+            document.getElementById('walkSubtitle').textContent = inspected + ' of ' + state.units.length + ' units inspected';
+            document.getElementById('unitList').innerHTML = filtered.map(u => {
+                const isInspected = state.inspectedUnits[u.id];
+                const cls = isInspected ? 'status-complete' : 'status-pending';
+                const label = isInspected ? '&#10003;' : '&#8212;';
+                const badgeHtml = isInspected
+                    ? '<span class="inspection-badge inspection-badge-done">Inspected &#10003;</span>'
+                    : '<span class="inspection-badge inspection-badge-pending">Not inspected</span>';
+                return `<div class="unit-card" onclick="openUnitForInspection('${u.id}')">
+                    <div class="unit-status ${cls}">${label}</div>
+                    <div class="unit-info"><div class="unit-name">${u.unit_name}</div>
+                    <div class="unit-meta">${u.floor ? 'Floor '+u.floor+' &middot; ' : ''}${u.unit_type||''} ${badgeHtml}</div></div>
+                    <div class="unit-arrow">&#8250;</div></div>`;
+            }).join('');
+        } else {
+            document.getElementById('walkTitle').textContent = 'Walk in Progress';
+            document.getElementById('walkSubtitle').textContent = state.units.filter(u => u.is_complete).length + ' of ' + state.units.length + ' units complete';
+            document.getElementById('unitList').innerHTML = filtered.map(u => {
+                const done = u.captures_done || 0, total = u.captures_total || 0;
+                const cls = done >= total && total > 0 ? 'status-complete' : done > 0 ? 'status-partial' : 'status-pending';
+                const label = done >= total && total > 0 ? '&#10003;' : done + '/' + total;
+                return `<div class="unit-card" onclick="openUnit('${u.id}')">
+                    <div class="unit-status ${cls}">${label}</div>
+                    <div class="unit-info"><div class="unit-name">${u.unit_name}</div>
+                    <div class="unit-meta">${u.floor ? 'Floor '+u.floor+' &middot; ' : ''}${u.unit_type||''}</div></div>
+                    <div class="unit-arrow">&#8250;</div></div>`;
+            }).join('');
+        }
     }
 
     // ── Unit Detail ────────────────────────
@@ -827,7 +1290,7 @@
             catch (e) { state.currentVisit = null; }
         }
         document.getElementById('unitDetailName').textContent = unit.unit_name;
-        document.getElementById('unitDetailMeta').textContent = [unit.floor ? 'Floor '+unit.floor : '', unit.sqft ? unit.sqft+' sq ft' : ''].filter(Boolean).join(' · ');
+        document.getElementById('unitDetailMeta').textContent = [unit.floor ? 'Floor '+unit.floor : '', unit.sqft ? unit.sqft+' sq ft' : ''].filter(Boolean).join(' \u00B7 ');
 
         const unitCaptures = state.captures.filter(c => c.unit_id === unitId);
         document.getElementById('equipChecklist').innerHTML = state.equipTypes.map(et => {
@@ -844,7 +1307,7 @@
                 stampHtml = `<div class="capture-stamp">${who} &middot; ${when}</div>`;
             }
             return `<div class="equip-item" onclick="${isDone ? `editCapture('${capture.id}')` : `startCapture('${et.id}')`}">
-                <div class="equip-icon">${et.icon||'🔧'}</div>
+                <div class="equip-icon">${et.icon||'\uD83D\uDD27'}</div>
                 <div class="equip-info">
                     <div class="equip-name">${et.name}</div>
                     <div class="equip-status ${isDone?'done':'pending'}">${statusText}</div>
@@ -879,12 +1342,248 @@
         toast('Unit skipped'); goBack();
     }
 
+    // ── Inspection: Open Unit ─────────────
+    function openUnitForInspection(unitId) {
+        const unit = state.units.find(u => u.id === unitId);
+        if (!unit) return;
+        state.currentUnit = unit;
+
+        // Reset inspection form state for this unit
+        state.inspectionPhotos = {};
+        state.inspectionFlags = {};
+        state.inspectionNotes = {};
+
+        document.getElementById('inspectionUnitName').textContent = unit.unit_name;
+
+        // Reset all form fields
+        ['insp_smoke_co','insp_safety_check','insp_hvac_condition','insp_wh_condition',
+         'insp_windows','insp_appliances','insp_kb_flooring','insp_kb_condition',
+         'insp_cleanliness','insp_cooperation','insp_renewal'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+        ['insp_safety_notes','insp_hvac_info','insp_wh_info','insp_elec_panel',
+         'insp_plumbing_leaks','insp_doors_drywall','insp_tenant_issues',
+         'insp_immediate_wos','insp_wo_notes'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+
+        renderRoomStops();
+        showScreen('screenInspection', { title: 'Inspect: ' + unit.unit_name });
+    }
+
+    function renderRoomStops() {
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        document.getElementById('roomStopsList').innerHTML = stops.map((stop, i) => {
+            const hasPhoto = !!state.inspectionPhotos[i];
+            const flag = state.inspectionFlags[i] || { flagged: false, issue: '' };
+            const notes = state.inspectionNotes[i] || '';
+
+            return `<div class="room-stop-card ${flag.flagged ? 'flagged' : ''}" id="roomStop${i}">
+                <div class="room-stop-header" onclick="toggleRoomStop(${i})">
+                    <span class="room-stop-icon">${stop.icon}</span>
+                    <span class="room-stop-name">${stop.name}</span>
+                    <div class="room-stop-actions" onclick="event.stopPropagation();">
+                        <button class="room-photo-btn ${hasPhoto ? 'has-photo' : ''}" onclick="triggerRoomPhoto(${i})" title="Take photo">
+                            ${hasPhoto ? '&#10003;' : '&#128247;'}
+                        </button>
+                        <button class="room-flag-btn ${flag.flagged ? 'active' : ''}" onclick="toggleRoomFlag(${i})" title="Flag issue">
+                            ${flag.flagged ? '&#9888;&#65039;' : '&#9873;'}
+                        </button>
+                    </div>
+                    <span class="room-stop-collapse-icon" id="roomCollapseIcon${i}">&#9660;</span>
+                </div>
+                <div class="room-stop-body collapsed" id="roomStopBody${i}">
+                    <div class="room-stop-content">
+                        ${hasPhoto ? `<img class="room-photo-thumb" id="roomThumb${i}" src="">` : ''}
+                        <div class="room-notes-area">
+                            <textarea placeholder="Notes for ${stop.name}..." rows="2"
+                                onchange="state.inspectionNotes[${i}]=this.value">${notes}</textarea>
+                        </div>
+                    </div>
+                    ${flag.flagged ? `<div class="room-flag-issue">
+                        <label>&#9888;&#65039; What needs attention?</label>
+                        <input type="text" value="${(flag.issue||'').replace(/"/g,'&quot;')}"
+                               placeholder="Describe the issue..."
+                               onchange="if(state.inspectionFlags[${i}])state.inspectionFlags[${i}].issue=this.value">
+                    </div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+
+        // Load photo thumbnails that exist
+        Object.keys(state.inspectionPhotos).forEach(idx => {
+            const thumb = document.getElementById('roomThumb' + idx);
+            if (thumb && state.inspectionPhotos[idx]) {
+                const reader = new FileReader();
+                reader.onload = (e) => { thumb.src = e.target.result; };
+                reader.readAsDataURL(state.inspectionPhotos[idx]);
+            }
+        });
+    }
+
+    function toggleRoomStop(index) {
+        const body = document.getElementById('roomStopBody' + index);
+        const icon = document.getElementById('roomCollapseIcon' + index);
+        if (body.classList.contains('collapsed')) {
+            body.classList.remove('collapsed');
+            icon.innerHTML = '&#9650;';
+        } else {
+            body.classList.add('collapsed');
+            icon.innerHTML = '&#9660;';
+        }
+    }
+
+    function triggerRoomPhoto(index) {
+        state.pendingRoomPhotoIndex = index;
+        document.getElementById('roomPhotoInput').value = '';
+        document.getElementById('roomPhotoInput').click();
+    }
+
+    function onRoomPhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file || state.pendingRoomPhotoIndex === null) return;
+        const idx = state.pendingRoomPhotoIndex;
+        state.inspectionPhotos[idx] = file;
+        state.pendingRoomPhotoIndex = null;
+        renderRoomStops();
+        // Auto-expand the room stop that got a photo
+        const body = document.getElementById('roomStopBody' + idx);
+        const icon = document.getElementById('roomCollapseIcon' + idx);
+        if (body) { body.classList.remove('collapsed'); icon.innerHTML = '&#9650;'; }
+        toast('Photo added for ' + (state.inspectionStops[idx] || DEFAULT_ROOM_STOPS[idx]).name);
+    }
+
+    function toggleRoomFlag(index) {
+        if (!state.inspectionFlags[index]) {
+            state.inspectionFlags[index] = { flagged: false, issue: '' };
+        }
+        state.inspectionFlags[index].flagged = !state.inspectionFlags[index].flagged;
+        renderRoomStops();
+        // Auto-expand the flagged room
+        if (state.inspectionFlags[index].flagged) {
+            const body = document.getElementById('roomStopBody' + index);
+            const icon = document.getElementById('roomCollapseIcon' + index);
+            if (body) { body.classList.remove('collapsed'); icon.innerHTML = '&#9650;'; }
+        }
+    }
+
+    function toggleInspectionSection(header) {
+        header.classList.toggle('collapsed');
+        const body = header.nextElementSibling;
+        body.classList.toggle('collapsed');
+    }
+
+    function collectFlaggedWOs() {
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        const lines = [];
+        Object.keys(state.inspectionFlags).forEach(idx => {
+            const flag = state.inspectionFlags[idx];
+            if (flag.flagged && flag.issue) {
+                lines.push(stops[idx].name + ': ' + flag.issue);
+            }
+        });
+        return lines.join('\n');
+    }
+
+    async function saveInspection(status) {
+        const unit = state.currentUnit;
+        if (!unit) return;
+
+        // Merge flagged items into immediate WOs
+        const manualWOs = document.getElementById('insp_immediate_wos').value.trim();
+        const flaggedWOs = collectFlaggedWOs();
+        let combinedWOs = manualWOs;
+        if (flaggedWOs) {
+            combinedWOs = combinedWOs ? combinedWOs + '\n' + flaggedWOs : flaggedWOs;
+        }
+
+        // Collect room notes
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        const roomData = stops.map((stop, i) => ({
+            room: stop.name,
+            notes: state.inspectionNotes[i] || '',
+            flagged: !!(state.inspectionFlags[i] && state.inspectionFlags[i].flagged),
+            flag_issue: (state.inspectionFlags[i] && state.inspectionFlags[i].issue) || '',
+            has_photo: !!state.inspectionPhotos[i],
+        }));
+
+        const inspectionData = {
+            status: status === 'draft' ? 'draft' : 'complete',
+            user_id: state.user.id,
+            user_name: state.user.name,
+            walk_session_id: state.walkSession?.id,
+            rooms: roomData,
+            // Safety
+            smoke_co_detectors: document.getElementById('insp_smoke_co').value,
+            safety_check: document.getElementById('insp_safety_check').value,
+            safety_notes: document.getElementById('insp_safety_notes').value,
+            // Mechanicals
+            hvac_info: document.getElementById('insp_hvac_info').value,
+            hvac_condition: document.getElementById('insp_hvac_condition').value,
+            water_heater_info: document.getElementById('insp_wh_info').value,
+            water_heater_condition: document.getElementById('insp_wh_condition').value,
+            elec_panel: document.getElementById('insp_elec_panel').value,
+            windows: document.getElementById('insp_windows').value,
+            plumbing_leaks: document.getElementById('insp_plumbing_leaks').value,
+            appliances_condition: document.getElementById('insp_appliances').value,
+            // Finishes
+            kb_flooring: document.getElementById('insp_kb_flooring').value,
+            kb_condition: document.getElementById('insp_kb_condition').value,
+            doors_drywall: document.getElementById('insp_doors_drywall').value,
+            // Tenant
+            cleanliness: document.getElementById('insp_cleanliness').value,
+            tenant_issues: document.getElementById('insp_tenant_issues').value,
+            cooperation: document.getElementById('insp_cooperation').value,
+            renewal_recommendation: document.getElementById('insp_renewal').value,
+            // Work orders
+            immediate_wos: combinedWOs,
+            wo_notes: document.getElementById('insp_wo_notes').value,
+        };
+
+        showLoading(status === 'draft' ? 'Saving draft...' : 'Saving inspection...');
+        try {
+            const r = await api(`/api/buildings/${state.currentBuilding}/units/${unit.id}/inspection`, inspectionData);
+            const inspectionId = r.inspection?.id || r.id;
+
+            // Upload room photos
+            if (inspectionId) {
+                const photoKeys = Object.keys(state.inspectionPhotos);
+                for (const idx of photoKeys) {
+                    const file = state.inspectionPhotos[idx];
+                    if (file) {
+                        const fd = new FormData();
+                        fd.append('photo', file);
+                        fd.append('room_index', idx);
+                        fd.append('room_name', stops[idx].name);
+                        try {
+                            await fetchWithAuth(`${API}/api/inspections/${inspectionId}/photos`, { method: 'POST', body: fd });
+                        } catch (e) { /* continue uploading others */ }
+                    }
+                }
+            }
+
+            // Mark unit as inspected
+            if (status !== 'draft') {
+                state.inspectedUnits[unit.id] = true;
+            }
+
+            hideLoading();
+            toast(status === 'draft' ? 'Draft saved!' : unit.unit_name + ' inspection saved!');
+            // Go back to unit list
+            goBack();
+            renderUnits();
+        } catch (e) {
+            hideLoading();
+            toast('Error: ' + e.message);
+        }
+    }
+
     // ── Custom Equipment Type ──────────────
     function showAddCustomType() {
         const name = prompt('Enter equipment type name (e.g., "Smoke Detector"):');
         if (!name || !name.trim()) return;
         showLoading('Adding...');
-        api(`/api/buildings/${state.currentBuilding}/equipment-types/custom`, { name: name.trim(), icon: '🔧' })
+        api(`/api/buildings/${state.currentBuilding}/equipment-types/custom`, { name: name.trim(), icon: '\uD83D\uDD27' })
         .then(r => { hideLoading(); toast(r.already_exists ? 'Already exists' : 'Added: ' + name.trim()); return api(`/api/buildings/${state.currentBuilding}/equipment-types`); })
         .then(typesR => { if (typesR) { state.equipTypes = typesR.equipment_types || []; openUnit(state.currentUnit.id); } })
         .catch(e => { hideLoading(); toast('Error: ' + e.message); });
@@ -945,7 +1644,7 @@
         state.lastCaptureData = null;
         state.noTagIdentification = null;
 
-        document.getElementById('captureEquipName').textContent = (et.icon||'🔧') + ' ' + et.name;
+        document.getElementById('captureEquipName').textContent = (et.icon||'\uD83D\uDD27') + ' ' + et.name;
         document.getElementById('captureUnitName').textContent = 'Unit: ' + state.currentUnit.unit_name;
 
         renderSubTypeChips(et.name);
@@ -1261,7 +1960,7 @@
         state.editingCapture = capture;
 
         const et = state.equipTypes.find(t => t.id === capture.equipment_type_id);
-        const etName = et ? (et.icon||'🔧')+' '+et.name : 'Equipment';
+        const etName = et ? (et.icon||'\uD83D\uDD27')+' '+et.name : 'Equipment';
         document.getElementById('editCaptureTitle').textContent = etName;
         document.getElementById('editCaptureMeta').textContent = 'Unit: ' + (state.currentUnit?.unit_name || '');
 
@@ -1346,9 +2045,6 @@
 
     // ── Export ──────────────────────────────
     function exportCSV() {
-        // For CSV export, we need to pass the token as a query param since it's a direct download
-        // But our backend uses header auth, so we open a new window and hope the session cookie works
-        // Actually, we'll fetch it and trigger download manually
         fetchWithAuth(`${API}/api/buildings/${state.currentBuilding}/export/csv`)
         .then(r => r.blob())
         .then(blob => {
@@ -1414,14 +2110,11 @@
 
     // ── Init ───────────────────────────────
     (async function init() {
-        // Always require invite code login — no auto-restore to building list
-        // If session exists, pre-fill name/email for convenience but still require invite code
         const valid = await verifyExistingSession();
         if (valid && state.user) {
             document.getElementById('loginName').value = state.user.name || '';
             document.getElementById('loginEmail').value = state.user.email || '';
         }
-        // User always starts on login screen — must enter invite code
     })();
 </script>
 </body>
