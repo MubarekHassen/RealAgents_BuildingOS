@@ -16,9 +16,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
 
 /* SIDEBAR */
-.sidebar{width:240px;min-width:240px;background:linear-gradient(180deg,#0f172a 0%,#1e1b4b 100%);color:#fff;display:flex;flex-direction:column;box-shadow:2px 0 24px rgba(0,0,0,0.12)}
-.sidebar-logo{padding:18px 18px 16px;display:flex;align-items:center;gap:11px;border-bottom:1px solid rgba(255,255,255,0.06)}
-.logo-icon{width:34px;height:34px;background:linear-gradient(135deg,#818cf8,#6366f1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;flex-shrink:0;box-shadow:0 2px 8px rgba(99,102,241,0.35)}
+.sidebar{width:240px;min-width:240px;background:linear-gradient(180deg,#0b1120 0%,#111a34 55%,#1e2a5a 100%);color:#fff;display:flex;flex-direction:column;box-shadow:2px 0 24px rgba(0,0,0,0.18)}
+.sidebar-logo{padding:18px 18px 14px;display:flex;align-items:center;gap:11px;border-bottom:1px solid rgba(255,255,255,0.06)}
+.logo-icon{width:34px;height:34px;background:linear-gradient(135deg,#60a5fa 0%,#3b82f6 60%,#1e40af 100%);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff;flex-shrink:0;box-shadow:0 2px 10px rgba(59,130,246,0.45),inset 0 1px 0 rgba(255,255,255,0.2)}
 .logo-text{font-size:15px;font-weight:800;letter-spacing:-0.02em}
 .logo-sub{font-size:10px;color:rgba(255,255,255,0.30);margin-top:1px;letter-spacing:0.02em}
 
@@ -1014,7 +1014,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <p>Turn your building documents into actionable intelligence — capital plans, maintenance registers, equipment tracking, and more.</p>
     </div>
 
-    <!-- ─── STATE 1: Landing (choose sign in / create account) ─── -->
+    <!-- ─── STATE 1: Landing (choose sign in) ─── -->
     <div id="loginStateLanding">
       <div id="loginAccountsList" class="login-accounts-list" style="display:none"></div>
       <div class="login-divider" id="loginDivider" style="display:none"><span>or</span></div>
@@ -1023,10 +1023,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
           Sign In
         </button>
-        <button class="login-btn login-btn-secondary" onclick="startCreateAccount()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-          Create Account
-        </button>
+      </div>
+      <div style="text-align:center;margin-top:16px;font-size:12px;color:rgba(255,255,255,0.5);line-height:1.6">
+        Need an account? <a href="mailto:mubarek@berkeley.edu?subject=BuildingOS%20Access%20Request" style="color:rgba(129,140,248,0.95);text-decoration:none;font-weight:600">Contact your administrator</a> for access.
       </div>
     </div>
 
@@ -1063,8 +1062,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       </div>
     </div>
 
-    <!-- ─── STATE 5: Create Account ─── -->
-    <div id="loginStateCreate" style="display:none">
+    <!-- ─── STATE 5: Create Account (disabled — admin-only creation) ─── -->
+    <div id="loginStateCreate" style="display:none!important">
       <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:6px">
         <div>
           <label style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;display:block">Full name</label>
@@ -1211,9 +1210,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 <div class="sidebar" id="mainSidebar">
   <div class="sidebar-logo">
     <div class="logo-icon">B</div>
-    <div>
-      <div class="logo-text">BuildingOS</div>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="logo-text">BuildingOS</div>
+        <span style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:8.5px;font-weight:800;letter-spacing:0.08em;padding:2px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(217,119,6,0.35);">BETA</span>
+      </div>
       <div class="logo-sub">AI Building Intelligence</div>
+    </div>
+  </div>
+  <!-- Pilot partner co-branding -->
+  <div id="pilotPartnerBadge" style="margin:10px 14px 0;padding:9px 12px;border-radius:10px;background:linear-gradient(135deg,#1e40af,#1e3a8a);display:flex;align-items:center;gap:9px;box-shadow:0 2px 8px rgba(30,58,138,0.35);border:1px solid rgba(147,197,253,0.2);">
+    <div style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
+        <rect x="4" y="6" width="10" height="20" fill="#fff" rx="1"/>
+        <rect x="16" y="6" width="12" height="4" fill="#fff"/>
+        <rect x="16" y="14" width="8" height="4" fill="#fff"/>
+      </svg>
+    </div>
+    <div style="min-width:0;">
+      <div style="font-size:9px;color:rgba(255,255,255,0.55);letter-spacing:0.08em;font-weight:600;text-transform:uppercase;">Pilot Partner</div>
+      <div style="font-size:11.5px;color:#fff;font-weight:700;letter-spacing:0.02em;margin-top:1px;">EF Capital</div>
     </div>
   </div>
 
@@ -1437,6 +1453,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <div class="upload-right">
         <div id="uploadInsights"></div>
         <div class="upload-zone-wrap">
+          <!-- PROMINENT: Paste a shared link (Drive / OneDrive / Sheets) — Top of page -->
+          <div style="margin-bottom:20px;padding:20px 22px;border-radius:16px;background:linear-gradient(135deg,#eef2ff 0%,#f0f9ff 100%);border:1.5px solid #c7d2fe;box-shadow:0 2px 14px rgba(79,70,229,0.06);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+              <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#4f46e5);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(79,70,229,0.35);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:800;color:#1e1b4b;letter-spacing:-0.01em;">Paste a Google Drive or OneDrive link</div>
+                <div style="font-size:11.5px;color:#4b5563;margin-top:1px;">Drop a folder or file link — BuildingOS will auto-populate Equipment, Maintenance, Capital Plan, and more.</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input type="text" id="sharedLinkInputTop" placeholder="https://drive.google.com/drive/folders/… or https://docs.google.com/spreadsheets/…" style="flex:1;min-width:260px;border:1.5px solid #c7d2fe;border-radius:10px;padding:12px 14px;font:inherit;background:#fff;font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s" onfocus="this.style.borderColor='#6366f1';this.style.boxShadow='0 0 0 3px rgba(99,102,241,0.15)'" onblur="this.style.borderColor='#c7d2fe';this.style.boxShadow='none'" onkeydown="if(event.key==='Enter'){document.getElementById('sharedLinkInput').value=this.value;importSharedLinks();}">
+              <button class="btn btn-primary" onclick="document.getElementById('sharedLinkInput').value=document.getElementById('sharedLinkInputTop').value;importSharedLinks();" style="white-space:nowrap;border-radius:10px;padding:12px 20px;font-weight:700;font-size:13px;background:linear-gradient(135deg,#6366f1,#4f46e5);box-shadow:0 2px 8px rgba(79,70,229,0.3);">Import</button>
+            </div>
+            <div id="importLinkStatusTop" style="margin-top:10px;display:none;font-size:12px;"></div>
+            <div style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:#6b7280;">
+              <span style="display:flex;align-items:center;gap:4px;">✓ Google Drive folders</span>
+              <span style="display:flex;align-items:center;gap:4px;">✓ Google Sheets</span>
+              <span style="display:flex;align-items:center;gap:4px;">✓ OneDrive / SharePoint</span>
+              <span style="display:flex;align-items:center;gap:4px;">✓ Dropbox shared links</span>
+            </div>
+          </div>
+
           <!-- Cloud Import Section - Modern Cards -->
           <div style="margin-bottom:20px">
             <div style="font-size:13px;font-weight:700;color:#1e1b4b;margin-bottom:12px;display:flex;align-items:center;gap:8px">
@@ -1530,34 +1570,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
                 </div>
                 <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0fdf4;color:#16a34a;text-align:center">Click to connect</div>
               </div>
-              <div onclick="handleIntegrationClick('Trane Tracer / Tracer SC','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#003da5';this.style.boxShadow='0 4px 16px rgba(0,61,165,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#003da5,#002d7c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">TR</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Trane Tracer SC+</div><div style="font-size:10px;color:#6b7280">HVAC, chillers, BrainBox</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
-              </div>
-              <div onclick="handleIntegrationClick('Automated Logic WebCTRL','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#1f4e79';this.style.boxShadow='0 4px 16px rgba(31,78,121,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#1f4e79,#143657);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">ALC</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">ALC WebCTRL</div><div style="font-size:10px;color:#6b7280">Graphics, trends, schedules</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
-              </div>
-              <div onclick="handleIntegrationClick('Delta Controls enteliWEB','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00a551';this.style.boxShadow='0 4px 16px rgba(0,165,81,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#00a551,#00713a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">DC</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Delta enteliWEB</div><div style="font-size:10px;color:#6b7280">BACnet native</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0fdf4;color:#16a34a;text-align:center">Click to connect</div>
-              </div>
-              <div onclick="handleIntegrationClick('Distech Controls EC-Net','BMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#6366f1';this.style.boxShadow='0 4px 16px rgba(99,102,241,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#4338ca);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">DT</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Distech EC-Net</div><div style="font-size:10px;color:#6b7280">Niagara-based BAS</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eef2ff;color:#4f46e5;text-align:center">Click to connect</div>
-              </div>
             </div>
 
             <!-- CMMS / Maintenance -->
@@ -1594,34 +1606,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
                   <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">MaintainX</div><div style="font-size:10px;color:#6b7280">Work orders, procedures</div></div>
                 </div>
                 <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0fdf4;color:#16a34a;text-align:center">Click to connect</div>
-              </div>
-              <div onclick="handleIntegrationClick('Limble CMMS','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#f97316';this.style.boxShadow='0 4px 16px rgba(249,115,22,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#f97316,#c2410c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">LM</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Limble</div><div style="font-size:10px;color:#6b7280">Assets, PMs, reports</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fff7ed;color:#c2410c;text-align:center">Click to connect</div>
-              </div>
-              <div onclick="handleIntegrationClick('eMaint (Fluke)','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#fbbf24';this.style.boxShadow='0 4px 16px rgba(251,191,36,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#fbbf24,#d97706);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">eM</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">eMaint X5</div><div style="font-size:10px;color:#6b7280">Fluke Reliability</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#fffbeb;color:#d97706;text-align:center">Click to connect</div>
-              </div>
-              <div onclick="handleIntegrationClick('Brightly (Dude Solutions)','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#7c3aed';this.style.boxShadow='0 4px 16px rgba(124,58,237,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#5b21b6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">BR</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Brightly</div><div style="font-size:10px;color:#6b7280">Dude Solutions Asset</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f5f3ff;color:#6d28d9;text-align:center">Click to connect</div>
-              </div>
-              <div onclick="handleIntegrationClick('Hippo CMMS','CMMS')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#10b981';this.style.boxShadow='0 4px 16px rgba(16,185,129,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#10b981,#047857);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">HP</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Hippo CMMS</div><div style="font-size:10px;color:#6b7280">Work order + inventory</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#ecfdf5;color:#047857;text-align:center">Click to connect</div>
               </div>
             </div>
 
@@ -1674,20 +1658,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
                 </div>
                 <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
               </div>
-              <div onclick="handleIntegrationClick('Egnyte','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00a0dc';this.style.boxShadow='0 4px 16px rgba(0,160,220,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#00a0dc,#0077a8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">EG</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Egnyte</div><div style="font-size:10px;color:#6b7280">AEC file sync</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#f0f9ff;color:#0369a1;text-align:center">Click to connect</div>
-              </div>
-              <div onclick="handleIntegrationClick('Newforma','Docs')" style="border:1.5px solid #e0e7ff;border-radius:14px;padding:14px;background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#1e40af';this.style.boxShadow='0 4px 16px rgba(30,64,175,.12)'" onmouseout="this.style.borderColor='#e0e7ff';this.style.boxShadow='none'">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#1e40af,#1e3a8a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">NF</div>
-                  <div><div style="font-size:13px;font-weight:700;color:#1e1b4b">Newforma</div><div style="font-size:10px;color:#6b7280">Project info mgmt</div></div>
-                </div>
-                <div style="font-size:10px;padding:5px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;text-align:center">Click to connect</div>
-              </div>
             </div>
 
             <!-- AppFolio Connection Form (hidden by default) -->
@@ -1713,8 +1683,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
               </div>
             </div>
 
-            <!-- Shared Link Input (collapsed by default, expands on click) -->
-            <div id="sharedLinkSection" style="margin-bottom:14px">
+            <!-- Shared Link Input (legacy — hidden, replaced by prominent hero at top of page; kept for importSharedLinks() to read #sharedLinkInput) -->
+            <div id="sharedLinkSection" style="display:none;margin-bottom:14px">
               <div onclick="toggleSharedLinkInput()" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1.5px dashed #d1d5db;border-radius:12px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='#a5b4fc';this.style.background='#fafafe'" onmouseout="this.style.borderColor='#d1d5db';this.style.background='transparent'" id="sharedLinkToggle">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                 <span style="font-size:12px;font-weight:600;color:#4f46e5">Paste a shared link instead</span>
@@ -1931,6 +1901,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <div class="settings-tab" onclick="switchSettingsTab('preferences', this)">Preferences</div>
       <div class="settings-tab" onclick="switchSettingsTab('security', this)">Security</div>
       <div class="settings-tab" id="teamTab" style="display:none" onclick="switchSettingsTab('team', this)">Team</div>
+      <div class="settings-tab" id="userMgmtTab" style="display:none" onclick="switchSettingsTab('usermgmt', this)">User Management</div>
+      <div class="settings-tab" id="analyticsTab" style="display:none" onclick="switchSettingsTab('analytics', this)">Analytics</div>
       <div class="settings-tab" onclick="switchSettingsTab('buildings', this)">Buildings</div>
       <div class="settings-tab" onclick="switchSettingsTab('integrations', this)">Integrations</div>
       <div class="settings-tab" onclick="switchSettingsTab('data', this)">Data & Privacy</div>
@@ -2131,6 +2103,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
             </div>
           </div>
           <div id="pendingInvitationsList" style="min-height:60px"></div>
+        </div>
+      </div>
+
+      <!-- USER MANAGEMENT TAB (Admin only — Supabase Auth) -->
+      <div class="settings-section" id="settings-usermgmt">
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <div>
+              <div class="settings-card-title">Supabase Auth Users</div>
+              <div class="settings-card-sub">Manage platform accounts — only admins can create new users</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="showAdminCreateUserModal()">+ Create User</button>
+          </div>
+          <div id="supabaseUsersList" style="min-height:80px;padding:0 24px 20px">
+            <div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">Loading users...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANALYTICS TAB (Admin only) -->
+      <div class="settings-section" id="settings-analytics">
+        <div id="analyticsStatsRow" class="admin-stats" style="margin-bottom:24px"></div>
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <div>
+              <div class="settings-card-title">Login Activity (Last 30 Days)</div>
+              <div class="settings-card-sub">Daily login counts across all users</div>
+            </div>
+          </div>
+          <div id="analyticsLoginChart" style="padding:20px 24px;min-height:180px">
+            <div style="text-align:center;color:#9ca3af;font-size:13px">Loading analytics...</div>
+          </div>
         </div>
       </div>
 
@@ -2345,6 +2349,8 @@ const CONFIG = {
   BACKEND_URL: `${window.location.protocol}//${window.location.host}`
 };
 const PIPELINE_STEPS = ['Reading document structure','Identifying document type','Extracting building data','Mapping intelligence categories','Generating insights'];
+// API key for admin endpoints (set via localStorage for admin users)
+const API_KEY = localStorage.getItem('bos_admin_api_key') || '';
 
 // ─── ROLES & DOC TYPES ──────────────────────────────────────
 const ROLES = [
@@ -2408,6 +2414,27 @@ function generateUserId() {
 function userKey(suffix) {
   // All per-user storage keys go through here
   return 'bos_' + (_activeUserId || 'anon') + '_' + suffix;
+}
+
+// ─── Role allowlist (BuildingOS beta) ───
+// Roles: 'admin' (full access, can manage testers) · 'tester' (beta access, read/write own + pilot data) · 'user' (default)
+const BOS_ROLE_ALLOWLIST = {
+  'mhassen@mba2026.hbs.edu': 'admin',
+  'mubarek@berkeley.edu': 'admin',
+  'mfischer@ef-capital.com': 'tester',
+};
+function resolveRoleForEmail(email) {
+  const e = (email || '').toLowerCase().trim();
+  if (!e) return 'user';
+  if (BOS_ROLE_ALLOWLIST[e]) return BOS_ROLE_ALLOWLIST[e];
+  if (e.endsWith('@ef-capital.com')) return 'tester';
+  return 'user';
+}
+function getActiveRole() {
+  try {
+    const u = JSON.parse(localStorage.getItem('bos_' + (_activeUserId || 'anon') + '_profile') || '{}');
+    return u.bosRole || resolveRoleForEmail(u.email);
+  } catch(e) { return 'user'; }
 }
 
 // ─── User account registry (global — maps userId→profile) ───
@@ -3066,6 +3093,7 @@ async function askUploadDocuments() {
   const input = document.getElementById('uploadChatQuestion');
   const question = (input?.value || '').trim();
   if (!question) return;
+  trackAnalyticsEvent('ai_query', { building_id: activeBuildingId, source: 'upload_chat' });
   const selectedDoc = analyzedDocs[currentDocIndex];
   const readyDocs = analyzedDocs.filter(d => d.documentId && d.qaStatus === 'ready');
   const documentIds = uploadChatScope === 'selected' && selectedDoc?.documentId && selectedDoc?.qaStatus === 'ready'
@@ -3381,6 +3409,7 @@ function switchBuilding(id) {
   document.getElementById('sbBuildingWrap').classList.remove('open');
   // Fetch any missing analysis data from backend
   syncIndexedDocuments();
+  trackAnalyticsEvent('building_view', { building_id: id });
 }
 
 function showBuildingSetup(bldId) {
@@ -3884,7 +3913,18 @@ function updateSidebarUser() {
   if (!currentUser) return;
   const initials = currentUser.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('sbAvatar').textContent = initials;
-  document.getElementById('sfName').textContent = currentUser.name;
+  const nameEl = document.getElementById('sfName');
+  nameEl.textContent = '';
+  nameEl.appendChild(document.createTextNode(currentUser.name));
+  // BuildingOS beta role pill
+  const bosRole = currentUser.bosRole || resolveRoleForEmail(currentUser.email);
+  if (bosRole && bosRole !== 'user') {
+    const pill = document.createElement('span');
+    const isAdmin = bosRole === 'admin';
+    pill.textContent = isAdmin ? 'ADMIN' : 'TESTER';
+    pill.style.cssText = `margin-left:6px;font-size:8px;font-weight:800;letter-spacing:0.08em;padding:1.5px 5px;border-radius:3px;vertical-align:middle;${isAdmin?'background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;':'background:rgba(96,165,250,0.25);color:#bfdbfe;border:1px solid rgba(96,165,250,0.4);'}`;
+    nameEl.appendChild(pill);
+  }
   const roles = currentUser.roles || (currentUser.role ? [currentUser.role] : []);
   const roleNames = roles.map(rid => ROLES.find(r => r.id === rid)?.name).filter(Boolean);
   document.getElementById('sfRole').textContent = currentUser.company || roleNames.join(', ') || '—';
@@ -4275,6 +4315,7 @@ async function processSingleFile(queueItem) {
     docEntry.elapsed = ((Date.now() - t0) / 1000).toFixed(1) + 's';
     queueItem.status = 'done';
     queueItem.elapsed = docEntry.elapsed;
+    trackAnalyticsEvent('document_upload', { filename: docEntry.filename, building_id: activeBuildingId });
   } catch(e) {
     docEntry.status = 'error'; docEntry.errorMsg = e.message;
     queueItem.status = 'error';
@@ -6027,6 +6068,7 @@ function renderBuildingsOverview() {
 }
 
 let _bpExpandedBuildings = new Set();
+let _bpExpandedInitialized = false; // tracks whether user has interacted with expand state
 let _bpEditBuildings = new Set(); // tracks which buildings are in edit mode
 const _bpInputStyle = 'border:1.5px solid #e5e7eb;border-radius:8px;padding:8px 11px;font-size:13px;outline:none;transition:border-color 0.15s,box-shadow 0.15s;width:100%;';
 const _bpFocus = "this.style.borderColor='#4f46e5';this.style.boxShadow='0 0 0 3px rgba(79,70,229,0.08)'";
@@ -6067,9 +6109,10 @@ function renderBuildingProfilePage() {
   }
   const buildingKeys = Object.keys(buildings).sort();
   const totalUnits = unitsList.length;
-  // Auto-expand all complexes if none are manually expanded yet
-  if (_bpExpandedBuildings.size === 0 && buildingKeys.length > 0) {
+  // Auto-expand all complexes ONCE on first render; after that, respect user toggles
+  if (!_bpExpandedInitialized && buildingKeys.length > 0) {
     for (const k of buildingKeys) _bpExpandedBuildings.add(k);
+    _bpExpandedInitialized = true;
   }
 
   // ─── Property Header ───
@@ -6122,9 +6165,14 @@ function renderBuildingProfilePage() {
   </div>`;
 
   // ─── Action Bar ───
-  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+  const allExpanded = buildingKeys.length > 0 && buildingKeys.every(k => _bpExpandedBuildings.has(k));
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
     <div style="font-size:15px;font-weight:700;color:#111827;">Complexes & Units</div>
-    <div style="display:flex;gap:6px;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${buildingKeys.length > 1 ? `<button onclick="bpToggleAllBuildings()" style="background:#f9fafb;color:#374151;border:1.5px solid #e5e7eb;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transform:rotate(${allExpanded?180:0}deg);transition:transform 0.2s;"><polyline points="6 9 12 15 18 9"/></svg>
+        ${allExpanded ? 'Collapse All' : 'Expand All'}
+      </button>` : ''}
       <button onclick="bpPageAddBuilding()" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Complex
       </button>
@@ -6608,6 +6656,23 @@ function closeUnitDetail() {
   renderBuildingProfilePage();
 }
 
+function bpToggleAllBuildings() {
+  const bp = loadBuildingProfile(activeBuildingId) || {};
+  const unitsList = bp.units_list || [];
+  const prefixes = new Set();
+  for (const u of unitsList) {
+    const uname = u.name || '';
+    prefixes.add(uname.includes('-') ? uname.split('-')[0] : 'Main');
+  }
+  const keys = Array.from(prefixes);
+  if (!keys.length) return;
+  const allExpanded = keys.every(k => _bpExpandedBuildings.has(k));
+  if (allExpanded) { _bpExpandedBuildings.clear(); }
+  else { for (const k of keys) _bpExpandedBuildings.add(k); }
+  _bpExpandedInitialized = true;
+  renderBuildingProfilePage();
+}
+
 function bpToggleBuilding(prefix) {
   const el = document.getElementById('bpBldg-' + prefix);
   if (!el) return;
@@ -6616,6 +6681,7 @@ function bpToggleBuilding(prefix) {
   } else {
     _bpExpandedBuildings.add(prefix);
   }
+  _bpExpandedInitialized = true;
   renderBuildingProfilePage();
 }
 
@@ -9384,6 +9450,8 @@ function switchSettingsTab(tab, el) {
   if (tab === 'profile') renderSettingsProfile();
   if (tab === 'security') renderSecurityTab();
   if (tab === 'team') renderTeamTab();
+  if (tab === 'usermgmt') renderUserMgmtTab();
+  if (tab === 'analytics') renderAnalyticsTab();
   if (tab === 'buildings') renderSettingsBuildings();
   if (tab === 'integrations') renderSettingsIntegrations();
   if (tab === 'data') renderSettingsData();
@@ -9999,29 +10067,78 @@ const cloudSync = (function() {
     return n;
   }
 
+  // Heuristic "content weight" so we never clobber fuller local data with sparser cloud data (or vice versa)
+  function _weighLocal(bid) {
+    let w = 0;
+    try { const p = JSON.parse(localStorage.getItem('bos_bp_' + bid) || '{}'); w += Object.keys(p).length * 2 + ((p.units_list||[]).length * 3); } catch(e) {}
+    try { w += (JSON.parse(localStorage.getItem('bos_eq_' + bid) || '[]')).length * 2; } catch(e) {}
+    try { w += (JSON.parse(localStorage.getItem('bos_captures_' + bid) || '[]')).length * 2; } catch(e) {}
+    try { const m = JSON.parse(localStorage.getItem('bos_dm_updates_' + bid) || '{}'); w += Object.keys(m).length; } catch(e) {}
+    return w;
+  }
+  function _weighCloudRow(r) {
+    let w = 0;
+    w += Object.keys(r.profile_json || {}).length * 2 + ((r.profile_json?.units_list||[]).length * 3);
+    w += (r.equipment_json || []).length * 2;
+    w += (r.captures_json || []).length * 2;
+    w += Object.keys(r.maintenance_json || {}).length;
+    return w;
+  }
+  function _hydrateFromCloud(r) {
+    try { if (r.profile_json && Object.keys(r.profile_json).length) localStorage.setItem('bos_bp_' + r.id, JSON.stringify(r.profile_json)); } catch(e) {}
+    try { if (Array.isArray(r.equipment_json) && r.equipment_json.length) localStorage.setItem('bos_eq_' + r.id, JSON.stringify(r.equipment_json)); } catch(e) {}
+    try { if (Array.isArray(r.captures_json) && r.captures_json.length) localStorage.setItem('bos_captures_' + r.id, JSON.stringify(r.captures_json)); } catch(e) {}
+    try { if (r.maintenance_json && Object.keys(r.maintenance_json).length) localStorage.setItem('bos_dm_updates_' + r.id, JSON.stringify(r.maintenance_json)); } catch(e) {}
+    try { if (Array.isArray(r.units_json) && r.units_json.length) localStorage.setItem('bos_units_' + r.id, JSON.stringify(r.units_json)); } catch(e) {}
+  }
+
   async function pullAndMerge() {
     const cloud = await pullBuildings();
     if (!cloud) return { pulled: 0, pushed: 0 };
-    if (!cloud.length) {
-      // Cloud empty → push local as first-time migration
-      const pushed = await pushAllLocal();
-      return { pulled: 0, pushed };
-    }
-    // Cloud has data → hydrate localStorage
-    const localBlds = cloud.map(r => ({
-      id: r.id, name: r.name, address: r.address, useType: r.use_type,
-      _owner: _activeUserId,
-      ...(r.extra_json?.flat || {})
-    }));
-    try { localStorage.setItem('bos_' + _activeUserId + '_buildings', JSON.stringify(localBlds)); } catch(e) {}
+    if (!_activeUserId) return { pulled: 0, pushed: 0 };
+
+    // Load local buildings index for this user
+    let localBlds = [];
+    try { localBlds = JSON.parse(localStorage.getItem('bos_' + _activeUserId + '_buildings') || '[]'); } catch(e) {}
+    const localById = new Map(localBlds.map(b => [b.id, b]));
+    const cloudById = new Map((cloud || []).map(r => [r.id, r]));
+
+    let pulled = 0, pushed = 0;
+
+    // 1) Each cloud building: pull if local missing OR cloud content is richer
     for (const r of cloud) {
-      try { if (r.profile_json && Object.keys(r.profile_json).length) localStorage.setItem('bos_bp_' + r.id, JSON.stringify(r.profile_json)); } catch(e) {}
-      try { if (Array.isArray(r.equipment_json) && r.equipment_json.length) localStorage.setItem('bos_eq_' + r.id, JSON.stringify(r.equipment_json)); } catch(e) {}
-      try { if (Array.isArray(r.captures_json) && r.captures_json.length) localStorage.setItem('bos_captures_' + r.id, JSON.stringify(r.captures_json)); } catch(e) {}
-      try { if (r.maintenance_json && Object.keys(r.maintenance_json).length) localStorage.setItem('bos_dm_updates_' + r.id, JSON.stringify(r.maintenance_json)); } catch(e) {}
-      try { if (Array.isArray(r.units_json) && r.units_json.length) localStorage.setItem('bos_units_' + r.id, JSON.stringify(r.units_json)); } catch(e) {}
+      const hasLocal = localById.has(r.id);
+      const localW = hasLocal ? _weighLocal(r.id) : -1;
+      const cloudW = _weighCloudRow(r);
+      if (!hasLocal || cloudW > localW) {
+        _hydrateFromCloud(r);
+        pulled++;
+        // Make sure the index has this building
+        if (!hasLocal) {
+          localBlds.push({
+            id: r.id, name: r.name, address: r.address, useType: r.use_type,
+            _owner: _activeUserId,
+            ...(r.extra_json?.flat || {})
+          });
+        } else {
+          const existing = localById.get(r.id);
+          Object.assign(existing, { name: r.name || existing.name, address: r.address || existing.address, useType: r.use_type || existing.useType });
+        }
+      }
     }
-    return { pulled: cloud.length, pushed: 0 };
+    try { localStorage.setItem('bos_' + _activeUserId + '_buildings', JSON.stringify(localBlds)); } catch(e) {}
+
+    // 2) Each local building: push if cloud missing OR local content is richer
+    for (const b of localBlds) {
+      const r = cloudById.get(b.id);
+      const localW = _weighLocal(b.id);
+      const cloudW = r ? _weighCloudRow(r) : -1;
+      if (!r || localW > cloudW) {
+        if (await pushBuilding(b)) pushed++;
+      }
+    }
+
+    return { pulled, pushed };
   }
 
   // Debounced pushAll — call after any write
@@ -10034,8 +10151,21 @@ const cloudSync = (function() {
   return { pullBuildings, pushBuilding, pushAllLocal, pullAndMerge, schedulePushAll };
 })();
 
-// Kick off supabase init early
-try { cloudAuth.init(); } catch(e) {}
+// Kick off supabase init early and auto-sync when a session is already present
+try { cloudAuth.init().then(async () => {
+  try {
+    if (!cloudAuth.getSession()) return;
+    // Wait for local login to hydrate _activeUserId (up to ~5s)
+    for (let i = 0; i < 25 && !_activeUserId; i++) { await new Promise(r => setTimeout(r, 200)); }
+    if (!_activeUserId) return;
+    const sync = await cloudSync.pullAndMerge();
+    if (sync && (sync.pulled > 0 || sync.pushed > 0)) {
+      buildings = loadBuildings();
+      if (typeof updateSidebar === 'function') updateSidebar();
+      if (typeof renderDashboard === 'function') renderDashboard();
+    }
+  } catch(e) { console.warn('[boot sync] failed:', e); }
+}); } catch(e) {}
 
 // ─── Auth helpers (SHA-256 password hashing, consistent with profile modal) ───
 async function hashPassword(password) {
@@ -10129,6 +10259,14 @@ function _finalizeLogin(userId) {
     showUserProfileModal();
     return;
   }
+  // Stamp BuildingOS beta role on the profile (email-based allowlist)
+  try {
+    const want = resolveRoleForEmail(currentUser.email);
+    if (currentUser.bosRole !== want) {
+      currentUser.bosRole = want;
+      saveUser(currentUser);
+    }
+  } catch(e) {}
   // Update login history
   const auth = getAuthData(userId) || {};
   auth.lastLogin = new Date().toISOString();
@@ -10155,6 +10293,34 @@ function _finalizeLogin(userId) {
   renderDashboard();
   checkBackend();
   checkIntegrationStatus();
+
+  // ─── Auto cross-device sync ───
+  // Run on every login. If cloud is already authed (session persisted), this
+  // pulls remote data down AND pushes local-only data up using content-weight
+  // merge, so no device ever clobbers the other's richer data.
+  (async () => {
+    try {
+      if (!(await cloudAuth.ready())) return;
+      if (!cloudAuth.getSession()) return; // not signed in to Supabase on this device yet
+      const sync = await cloudSync.pullAndMerge();
+      if (sync && (sync.pulled > 0 || sync.pushed > 0)) {
+        buildings = loadBuildings();
+        const savedId = loadActiveId();
+        activeBuildingId = (savedId && buildings.find(b=>b.id===savedId)) ? savedId : (buildings[0]?.id || null);
+        if (activeBuildingId) {
+          analyzedDocs = loadDocsForBuilding(activeBuildingId);
+          equipmentRegister = loadEquipment(activeBuildingId);
+          fullBuildingProfile = loadBuildingProfile(activeBuildingId);
+          try { loadDMUpdates(); } catch(e) {}
+          try { mergeAllData(); } catch(e) {}
+        }
+        if (typeof updateSidebar === 'function') updateSidebar();
+        if (typeof renderDashboard === 'function') renderDashboard();
+        try { showToast && showToast(`Synced ${sync.pulled} pulled · ${sync.pushed} pushed`, 'success'); } catch(e) {}
+      }
+    } catch(e) { console.warn('[auto-sync] failed:', e); }
+  })();
+
   if (!buildings.length) setTimeout(() => showBuildingSetup(), 400);
 }
 
@@ -10178,6 +10344,7 @@ async function submitPasswordPrompt() {
   const result = await verifyPassword(_pendingLoginUserId, pw);
   if (result.ok) {
     _finalizeLogin(_pendingLoginUserId);
+    trackAnalyticsEvent('login', { method: 'local' });
     _pendingLoginUserId = null;
   } else {
     auth.loginAttempts = (auth.loginAttempts || 0) + 1;
@@ -10241,6 +10408,7 @@ async function submitSignIn() {
       auth.cloudLinked = true; auth.loginAttempts = 0; auth.lockedUntil = null;
       saveAuthData(user.userId, auth);
       _finalizeLogin(user.userId);
+      trackAnalyticsEvent('login', { method: 'supabase', email: email });
       // Pull cloud data & hydrate
       try {
         const sync = await cloudSync.pullAndMerge();
@@ -10504,6 +10672,10 @@ function updateAdminNav() {
   const show = isAdminUser();
   const teamTab = document.getElementById('teamTab');
   if (teamTab) teamTab.style.display = show ? '' : 'none';
+  const userMgmtTab = document.getElementById('userMgmtTab');
+  if (userMgmtTab) userMgmtTab.style.display = show ? '' : 'none';
+  const analyticsTab = document.getElementById('analyticsTab');
+  if (analyticsTab) analyticsTab.style.display = show ? '' : 'none';
 }
 
 function renderAdminPage() {
@@ -10898,9 +11070,9 @@ function showInviteTeamModal() {
       <div style="padding:24px 24px 0;display:flex;justify-content:space-between;align-items:flex-start">
         <div>
           <div style="font-size:17px;font-weight:700;color:#111827">Invite Team Member</div>
-          <div style="font-size:13px;color:#6b7280;margin-top:4px">They'll receive access when they create an account with this email</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:4px">Creates a Supabase Auth account and adds them to the team</div>
         </div>
-        <button style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;padding:4px" onclick="document.getElementById('inviteModal').remove()">✕</button>
+        <button style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;padding:4px" onclick="document.getElementById('inviteModal').remove()">&#x2715;</button>
       </div>
       <div class="modal-invite-form">
         <div>
@@ -10912,16 +11084,21 @@ function showInviteTeamModal() {
           <input type="email" id="inviteEmail" placeholder="john@company.com" />
         </div>
         <div>
+          <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:5px">Temporary Password</label>
+          <input type="text" id="invitePassword" placeholder="Minimum 8 characters" />
+        </div>
+        <div>
           <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:5px">Role</label>
           <select id="inviteRole">
-            <option value="viewer">Viewer — can view buildings and data</option>
-            <option value="editor">Editor — can modify buildings and data</option>
-            <option value="admin">Admin — full platform access</option>
+            <option value="viewer">Viewer -- can view buildings and data</option>
+            <option value="editor">Editor -- can modify buildings and data</option>
+            <option value="admin">Admin -- full platform access</option>
           </select>
         </div>
+        <div id="inviteError" style="font-size:12px;color:#ef4444;display:none;padding:4px 2px"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
           <button class="btn btn-secondary" onclick="document.getElementById('inviteModal').remove()">Cancel</button>
-          <button class="btn btn-primary" onclick="sendTeamInvitation()">Send Invitation</button>
+          <button class="btn btn-primary" id="inviteSendBtn" onclick="sendTeamInvitation()">Create Account & Invite</button>
         </div>
       </div>
     </div>
@@ -10931,38 +11108,43 @@ function showInviteTeamModal() {
   setTimeout(() => document.getElementById('inviteName')?.focus(), 100);
 }
 
-function sendTeamInvitation() {
+async function sendTeamInvitation() {
   const name = (document.getElementById('inviteName')?.value || '').trim();
   const email = (document.getElementById('inviteEmail')?.value || '').trim();
+  const password = (document.getElementById('invitePassword')?.value || '');
   const role = document.getElementById('inviteRole')?.value || 'viewer';
+  const errEl = document.getElementById('inviteError');
+  const btn = document.getElementById('inviteSendBtn');
 
-  if (!name) {
-    showToastNotification('Please enter a name');
-    return;
-  }
-  if (!email) {
-    showToastNotification('Please enter an email address');
-    return;
-  }
-  if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-    showToastNotification('Please enter a valid email address');
-    return;
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  function showErr(msg) { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } }
+
+  if (!name) return showErr('Please enter a name.');
+  if (!email || !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return showErr('Please enter a valid email address.');
+  if (password.length < 8) return showErr('Password must be at least 8 characters.');
+
+  // Try to create user in Supabase Auth via admin API
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
+  try {
+    const apiKey = API_KEY || localStorage.getItem('bos_admin_api_key') || '';
+    const resp = await fetch(CONFIG.BACKEND_URL + '/api/admin/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ email, password, name, role })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      return showErr(data.detail || 'Failed to create user account.');
+    }
+  } catch(e) {
+    // If backend is unavailable, fall back to local-only invitation
+    console.warn('[invite] Admin API unavailable, falling back to local invitation:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Create Account & Invite'; }
   }
 
-  // Check if user with this email already exists in registry
-  const registry = getUserRegistry();
-  const existingUser = Object.values(registry).find(u => (u.email||'').toLowerCase() === email.toLowerCase());
-  if (existingUser) {
-    showToastNotification('A user with this email already exists');
-    return;
-  }
-
+  // Also store in local invitations list for tracking
   const invitations = JSON.parse(localStorage.getItem('bos_invitations') || '[]');
-  if (invitations.some(i => i.email.toLowerCase() === email.toLowerCase() && !i.accepted)) {
-    showToastNotification('Invitation already pending for this email');
-    return;
-  }
-
   invitations.push({
     name,
     email: email.toLowerCase(),
@@ -10971,10 +11153,10 @@ function sendTeamInvitation() {
     sentAt: new Date().toISOString(),
     accepted: false
   });
-
   localStorage.setItem('bos_invitations', JSON.stringify(invitations));
+
   document.getElementById('inviteModal')?.remove();
-  showToastNotification('Invitation sent to ' + name + ' (' + email + ')');
+  showToastNotification('Account created for ' + name + ' (' + email + ')');
   renderTeamTab();
 }
 
@@ -11086,10 +11268,9 @@ function continueAsUser() {
 }
 
 function startCreateAccount() {
-  // Route to the in-login-card Create Account state (collects name/email/password/company)
-  _activeUserId = null;
-  currentUser = null;
-  showLoginState('create');
+  // Self-registration disabled — accounts are created by administrators only.
+  // Show sign-in instead.
+  showLoginState('landing');
 }
 
 function signInExisting() {
@@ -11255,6 +11436,250 @@ function showSettingsToast(message) {
   toast.textContent = '✓ ' + message;
   toast.classList.add('visible');
   setTimeout(() => toast.classList.remove('visible'), 2000);
+}
+
+// ─── ANALYTICS TRACKING ────────────────────────────────────────
+function trackAnalyticsEvent(event, metadata) {
+  const email = currentUser?.email || '';
+  fetch(CONFIG.BACKEND_URL + '/api/analytics/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event, user_email: email, metadata: metadata || {} })
+  }).catch(() => {});
+}
+
+// ─── ADMIN USER MANAGEMENT (Supabase Auth) ─────────────────────
+async function renderUserMgmtTab() {
+  if (!isAdminUser()) return;
+  const container = document.getElementById('supabaseUsersList');
+  container.innerHTML = '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">Loading users from Supabase...</div>';
+
+  try {
+    const apiKey = API_KEY || localStorage.getItem('bos_api_key') || '';
+    const resp = await fetch(CONFIG.BACKEND_URL + '/api/admin/users', {
+      headers: { 'Authorization': 'Bearer ' + apiKey }
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:13px">Failed to load users: ' + escapeHtml(err.detail || resp.statusText) + '</div>';
+      return;
+    }
+    const data = await resp.json();
+    const users = data.users || [];
+
+    if (!users.length) {
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">No users found in Supabase Auth.</div>';
+      return;
+    }
+
+    container.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="border-bottom:2px solid #f0f0f0;text-align:left">' +
+      '<th style="padding:10px 8px;font-weight:700;color:#374151">User</th>' +
+      '<th style="padding:10px 8px;font-weight:700;color:#374151">Role</th>' +
+      '<th style="padding:10px 8px;font-weight:700;color:#374151">Last Sign In</th>' +
+      '<th style="padding:10px 8px;font-weight:700;color:#374151">Status</th>' +
+      '<th style="padding:10px 8px;font-weight:700;color:#374151">Actions</th>' +
+      '</tr></thead><tbody>' +
+      users.map(u => {
+        const lastLogin = u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Never';
+        const statusColor = u.banned ? '#ef4444' : '#22c55e';
+        const statusText = u.banned ? 'Deactivated' : 'Active';
+        const roleColor = u.role === 'admin' ? '#6366f1' : u.role === 'editor' ? '#059669' : '#6b7280';
+        const initial = (u.name || u.email || '?').charAt(0).toUpperCase();
+        return '<tr style="border-bottom:1px solid #f3f4f6">' +
+          '<td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px">' +
+            '<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#e0e7ff,#c7d2fe);color:#4338ca;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">' + initial + '</div>' +
+            '<div><div style="font-weight:600;color:#111827">' + escapeHtml(u.name || 'Unnamed') + '</div>' +
+            '<div style="font-size:11px;color:#6b7280">' + escapeHtml(u.email) + '</div></div>' +
+          '</div></td>' +
+          '<td style="padding:10px 8px"><span style="font-size:11px;font-weight:700;color:' + roleColor + ';background:' + roleColor + '15;padding:2px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.04em">' + escapeHtml(u.role) + '</span></td>' +
+          '<td style="padding:10px 8px;color:#6b7280;font-size:12px">' + lastLogin + '</td>' +
+          '<td style="padding:10px 8px"><span style="font-size:11px;font-weight:700;color:' + statusColor + '">' + statusText + '</span></td>' +
+          '<td style="padding:10px 8px">' +
+            (u.banned ? '' : '<button class="btn btn-sm" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;font-size:11px" onclick="adminDeactivateUser(\'' + u.id + '\',\'' + escapeHtml(u.email) + '\')">Deactivate</button>') +
+          '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  } catch(e) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:13px">Error: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function showAdminCreateUserModal() {
+  const modal = document.createElement('div');
+  modal.className = 'overlay';
+  modal.id = 'createUserModal';
+  modal.style.cssText = 'display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;width:min(440px,90vw);box-shadow:0 20px 60px rgba(0,0,0,0.15);overflow:hidden">
+      <div style="padding:24px 24px 0;display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:17px;font-weight:700;color:#111827">Create New User</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:4px">Create an account via Supabase Auth — the user will sign in with these credentials</div>
+        </div>
+        <button style="background:none;border:none;font-size:18px;cursor:pointer;color:#9ca3af;padding:4px" onclick="document.getElementById('createUserModal').remove()">&#x2715;</button>
+      </div>
+      <div style="padding:20px 24px 24px;display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:5px">Full Name</label>
+          <input type="text" id="adminNewName" placeholder="Jane Smith" style="width:100%;padding:10px 12px;border:1.5px solid #e2e5ea;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:5px">Email Address</label>
+          <input type="email" id="adminNewEmail" placeholder="jane@company.com" style="width:100%;padding:10px 12px;border:1.5px solid #e2e5ea;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:5px">Password</label>
+          <input type="text" id="adminNewPassword" placeholder="Minimum 8 characters" style="width:100%;padding:10px 12px;border:1.5px solid #e2e5ea;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:5px">Role</label>
+          <select id="adminNewRole" style="width:100%;padding:10px 12px;border:1.5px solid #e2e5ea;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+            <option value="viewer">Viewer -- can view buildings and data</option>
+            <option value="editor">Editor -- can modify buildings and data</option>
+            <option value="admin">Admin -- full platform access</option>
+          </select>
+        </div>
+        <div id="adminCreateError" style="font-size:12px;color:#ef4444;display:none;padding:4px 2px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+          <button class="btn btn-secondary" onclick="document.getElementById('createUserModal').remove()">Cancel</button>
+          <button class="btn btn-primary" id="adminCreateBtn" onclick="adminCreateUser()">Create User</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  setTimeout(() => document.getElementById('adminNewName')?.focus(), 100);
+}
+
+async function adminCreateUser() {
+  const name = (document.getElementById('adminNewName')?.value || '').trim();
+  const email = (document.getElementById('adminNewEmail')?.value || '').trim();
+  const password = (document.getElementById('adminNewPassword')?.value || '');
+  const role = document.getElementById('adminNewRole')?.value || 'viewer';
+  const errEl = document.getElementById('adminCreateError');
+  const btn = document.getElementById('adminCreateBtn');
+
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  function showErr(msg) { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } }
+
+  if (!name) return showErr('Name is required.');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErr('Valid email is required.');
+  if (password.length < 8) return showErr('Password must be at least 8 characters.');
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
+  try {
+    const apiKey = API_KEY || localStorage.getItem('bos_api_key') || '';
+    const resp = await fetch(CONFIG.BACKEND_URL + '/api/admin/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ email, password, name, role })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      return showErr(data.detail || 'Failed to create user.');
+    }
+    document.getElementById('createUserModal')?.remove();
+    showToastNotification('User created: ' + name + ' (' + email + ')');
+    renderUserMgmtTab();
+  } catch(e) {
+    showErr('Network error: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Create User'; }
+  }
+}
+
+async function adminDeactivateUser(userId, email) {
+  if (!confirm('Are you sure you want to deactivate the account for ' + email + '? They will no longer be able to sign in.')) return;
+
+  try {
+    const apiKey = API_KEY || localStorage.getItem('bos_api_key') || '';
+    const resp = await fetch(CONFIG.BACKEND_URL + '/api/admin/deactivate-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ user_id: userId })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showToastNotification('Failed: ' + (err.detail || resp.statusText));
+      return;
+    }
+    showToastNotification('User deactivated: ' + email);
+    renderUserMgmtTab();
+  } catch(e) {
+    showToastNotification('Error: ' + e.message);
+  }
+}
+
+// ─── ANALYTICS DASHBOARD ────────────────────────────────────────
+async function renderAnalyticsTab() {
+  if (!isAdminUser()) return;
+  const statsRow = document.getElementById('analyticsStatsRow');
+  const chartEl = document.getElementById('analyticsLoginChart');
+
+  statsRow.innerHTML = '<div style="text-align:center;color:#9ca3af;font-size:13px;grid-column:1/-1;padding:12px">Loading analytics...</div>';
+
+  try {
+    const apiKey = API_KEY || localStorage.getItem('bos_api_key') || '';
+    const resp = await fetch(CONFIG.BACKEND_URL + '/api/analytics/dashboard', {
+      headers: { 'Authorization': 'Bearer ' + apiKey }
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      statsRow.innerHTML = '<div style="text-align:center;color:#ef4444;font-size:13px;grid-column:1/-1;padding:12px">Failed to load analytics: ' + escapeHtml(err.detail || resp.statusText) + '</div>';
+      return;
+    }
+    const d = await resp.json();
+
+    statsRow.innerHTML = `
+      <div class="admin-stat-card">
+        <div class="admin-stat-value">${d.active_users_7d || 0}</div>
+        <div class="admin-stat-label">Active Users</div>
+        <div class="admin-stat-sub">Last 7 days</div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="admin-stat-value">${d.logins_total || 0}</div>
+        <div class="admin-stat-label">Logins</div>
+        <div class="admin-stat-sub">Last 30 days</div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="admin-stat-value">${d.documents_uploaded || 0}</div>
+        <div class="admin-stat-label">Documents Uploaded</div>
+        <div class="admin-stat-sub">Last 30 days</div>
+      </div>
+      <div class="admin-stat-card">
+        <div class="admin-stat-value">${d.ai_queries || 0}</div>
+        <div class="admin-stat-label">AI Queries</div>
+        <div class="admin-stat-sub">Last 30 days</div>
+      </div>
+    `;
+
+    // Render simple bar chart for login_by_day
+    const loginByDay = d.login_by_day || {};
+    const days = Object.keys(loginByDay).sort();
+    if (days.length === 0) {
+      chartEl.innerHTML = '<div style="text-align:center;color:#9ca3af;font-size:13px;padding:40px 0">No login activity recorded yet. Events will appear here as users sign in.</div>';
+      return;
+    }
+    const maxVal = Math.max(1, ...Object.values(loginByDay));
+    const barHtml = days.map(day => {
+      const count = loginByDay[day];
+      const pct = Math.round((count / maxVal) * 100);
+      const label = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' });
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<div style="width:60px;font-size:11px;color:#6b7280;text-align:right;flex-shrink:0">' + label + '</div>' +
+        '<div style="flex:1;background:#f3f4f6;border-radius:4px;height:22px;overflow:hidden">' +
+          '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#6366f1,#818cf8);border-radius:4px;min-width:2px"></div>' +
+        '</div>' +
+        '<div style="width:30px;font-size:11px;font-weight:600;color:#374151">' + count + '</div>' +
+      '</div>';
+    }).join('');
+    chartEl.innerHTML = barHtml;
+  } catch(e) {
+    statsRow.innerHTML = '<div style="text-align:center;color:#ef4444;font-size:13px;grid-column:1/-1;padding:12px">Error: ' + escapeHtml(e.message) + '</div>';
+  }
 }
 
 function showSettingsPage() {
