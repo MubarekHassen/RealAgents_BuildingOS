@@ -194,26 +194,6 @@
         }
         .auth-toggle a:hover { text-decoration: underline; }
         .auth-toggle p { font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
-        .pin-input-row {
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-        }
-        .pin-digit {
-            width: 48px; height: 56px;
-            border: 1.5px solid #e2e8f0;
-            border-radius: 10px;
-            font-size: 24px;
-            font-weight: 700;
-            text-align: center;
-            background: white;
-            -webkit-appearance: none;
-        }
-        .pin-digit:focus {
-            outline: none;
-            border-color: #206A8A;
-            box-shadow: 0 0 0 3px rgba(32,106,138,0.15);
-        }
         .auth-divider {
             height: 1px;
             background: #e2e8f0;
@@ -255,7 +235,7 @@
     <button class="header-logout" id="headerLogout" onclick="handleLogout()" style="display:none;">Sign Out</button>
 </div>
 
-<!-- SCREEN: Login (Sign In mode) -->
+<!-- SCREEN: Login -->
 <div class="screen active" id="screenLogin">
     <div class="screen-pad auth-container">
         <div class="auth-logo">
@@ -264,67 +244,25 @@
             <p>Field Capture v1.3</p>
         </div>
 
-        <!-- Sign In Form -->
-        <div id="authSignIn">
-            <div class="card">
-                <div style="font-weight:700;font-size:16px;margin-bottom:16px;text-align:center;">Sign In</div>
-                <div class="input-group">
-                    <label>Email</label>
-                    <input type="email" id="loginEmail" placeholder="eric@company.com" autocomplete="email">
-                </div>
-                <div class="input-group">
-                    <label>PIN</label>
-                    <input type="password" id="loginPin" placeholder="Enter your PIN" inputmode="numeric" maxlength="6"
-                           pattern="[0-9]*" autocomplete="current-password"
-                           style="text-align:center;font-size:22px;letter-spacing:8px;">
-                </div>
-                <button class="btn btn-primary" onclick="handleSignIn()">Sign In</button>
-                <div class="auth-footer-text">Forgot PIN? Contact your administrator.</div>
+        <div class="card">
+            <div style="font-weight:700;font-size:16px;margin-bottom:16px;text-align:center;">Sign In</div>
+            <div class="input-group">
+                <label>Full Name</label>
+                <input type="text" id="loginName" placeholder="Eric Johnson" autocomplete="name">
             </div>
-            <div class="auth-toggle">
-                <p>First time here?</p>
-                <a onclick="showRegisterForm()">Create Account</a>
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="loginEmail" placeholder="eric@company.com" autocomplete="email">
             </div>
+            <div class="input-group">
+                <label>Invite Code <span style="color:#ef4444;">*</span></label>
+                <input type="text" id="loginInviteCode" placeholder="Enter 6-character code" maxlength="6"
+                       style="text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase;">
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Required. Get this from your building manager.</div>
+            </div>
+            <button class="btn btn-primary" onclick="handleSignIn()">Continue</button>
         </div>
-
-        <!-- Register Form -->
-        <div id="authRegister" style="display:none;">
-            <div class="card">
-                <div style="font-weight:700;font-size:16px;margin-bottom:16px;text-align:center;">Create Account</div>
-                <div class="input-group">
-                    <label>Full Name</label>
-                    <input type="text" id="regName" placeholder="Eric Johnson" autocomplete="name">
-                </div>
-                <div class="input-group">
-                    <label>Email</label>
-                    <input type="email" id="regEmail" placeholder="eric@company.com" autocomplete="email">
-                </div>
-                <div class="input-group">
-                    <label>Invite Code <span style="color:#ef4444;">*</span></label>
-                    <input type="text" id="regInviteCode" placeholder="6-character code" maxlength="6"
-                           style="text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase;">
-                    <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Required. Get this from your building manager.</div>
-                </div>
-                <div class="input-group">
-                    <label>Create PIN (4-6 digits) <span style="color:#ef4444;">*</span></label>
-                    <input type="password" id="regPin" placeholder="Create PIN" inputmode="numeric" maxlength="6"
-                           pattern="[0-9]*" autocomplete="new-password"
-                           style="text-align:center;font-size:22px;letter-spacing:8px;">
-                </div>
-                <div class="input-group">
-                    <label>Confirm PIN</label>
-                    <input type="password" id="regPinConfirm" placeholder="Confirm PIN" inputmode="numeric" maxlength="6"
-                           pattern="[0-9]*" autocomplete="new-password"
-                           style="text-align:center;font-size:22px;letter-spacing:8px;">
-                    <div class="pin-error" id="pinError">PINs do not match</div>
-                </div>
-                <button class="btn btn-primary" onclick="handleRegister()">Create Account</button>
-            </div>
-            <div class="auth-toggle">
-                <p>Already have an account?</p>
-                <a onclick="showSignInForm()">Sign In</a>
-            </div>
-        </div>
+        <div class="auth-footer-text" style="margin-top:16px;">Access requires a valid invite code from your administrator.</div>
     </div>
 </div>
 
@@ -680,32 +618,24 @@
         if (screenStack.length > 1) { screenStack.pop(); showScreen(screenStack[screenStack.length - 1], { noStack: true }); }
     }
 
-    // ── Auth Form Toggles ─────────────────
-    function showRegisterForm() {
-        document.getElementById('authSignIn').style.display = 'none';
-        document.getElementById('authRegister').style.display = 'block';
-    }
-
-    function showSignInForm() {
-        document.getElementById('authSignIn').style.display = 'block';
-        document.getElementById('authRegister').style.display = 'none';
-    }
-
-    // ── Auth: Sign In ─────────────────────
+    // ── Auth: Sign In (invite code is the auth) ──
     async function handleSignIn() {
+        const name = document.getElementById('loginName').value.trim();
         const email = document.getElementById('loginEmail').value.trim();
-        const pin = document.getElementById('loginPin').value.trim();
-        if (!email || !pin) { toast('Please enter your email and PIN'); return; }
-        if (pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) { toast('PIN must be 4-6 digits'); return; }
+        const inviteCode = document.getElementById('loginInviteCode').value.trim().toUpperCase();
+
+        if (!email) { toast('Please enter your email'); return; }
+        if (!inviteCode) { toast('Invite code is required'); return; }
 
         showLoading('Signing in...');
         try {
-            const r = await apiNoAuth('/api/auth/login', { email, pin });
+            const r = await apiNoAuth('/api/auth/login', { name, email, invite_code: inviteCode });
             state.user = r.user;
             state.sessionToken = r.token;
             localStorage.setItem('fc_session_token', r.token);
             localStorage.setItem('fc_user_id', r.user.id);
 
+            if (r.is_new) toast('Account created! Joined ' + (r.building?.building_name || 'building'));
             await postLoginLoad();
             hideLoading();
         } catch (e) {
@@ -714,44 +644,8 @@
         }
     }
 
-    // ── Auth: Register ────────────────────
-    async function handleRegister() {
-        const name = document.getElementById('regName').value.trim();
-        const email = document.getElementById('regEmail').value.trim();
-        const inviteCode = document.getElementById('regInviteCode').value.trim().toUpperCase();
-        const pin = document.getElementById('regPin').value.trim();
-        const pinConfirm = document.getElementById('regPinConfirm').value.trim();
-
-        if (!name || !email) { toast('Please enter your name and email'); return; }
-        if (!inviteCode) { toast('Invite code is required to create an account'); return; }
-        if (!pin || pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) { toast('PIN must be 4-6 digits'); return; }
-        if (pin !== pinConfirm) {
-            document.getElementById('pinError').classList.add('visible');
-            toast('PINs do not match');
-            return;
-        }
-        document.getElementById('pinError').classList.remove('visible');
-
-        showLoading('Creating account...');
-        try {
-            const r = await apiNoAuth('/api/auth/register', { name, email, pin, invite_code: inviteCode });
-            state.user = r.user;
-            state.sessionToken = r.token;
-            localStorage.setItem('fc_session_token', r.token);
-            localStorage.setItem('fc_user_id', r.user.id);
-
-            toast('Account created! Joined ' + (r.joined_building?.building_name || 'building'));
-            await postLoginLoad();
-            hideLoading();
-        } catch (e) {
-            hideLoading();
-            toast(e.message || 'Registration failed');
-        }
-    }
-
     // ── Auth: Post-login setup ────────────
     async function postLoginLoad() {
-        // Load sub-types config
         try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
         await loadBuildings();
         if (state.buildings.length === 1) {
@@ -771,10 +665,9 @@
         localStorage.removeItem('fc_user_id');
         screenStack = ['screenLogin'];
         showScreen('screenLogin');
-        // Clear form fields
+        document.getElementById('loginName').value = '';
         document.getElementById('loginEmail').value = '';
-        document.getElementById('loginPin').value = '';
-        showSignInForm();
+        document.getElementById('loginInviteCode').value = '';
     }
 
     // ── Auth: Session verification ────────
