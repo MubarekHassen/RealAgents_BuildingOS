@@ -1,6 +1,16 @@
 """
-BuildingOS Field Capture v1.3 — Standalone API
+BuildingOS Field Capture v1.4 — Standalone API
 A mobile-first data ingestion tool for field equipment documentation.
+
+v1.4 CHANGES (from EF Capital Pilot, Apr 22):
+  • Full unit inspection flow: 27-field Inspection Log capture per unit
+  • POST/GET inspection endpoints for unit-level inspections
+  • GET building inspections list
+  • Inspection photo uploads (fc_inspection_photos)
+  • Maintenance items endpoint: auto-extracts work orders from inspections
+  • 13-stop room walkthrough constant (INSPECTION_STOPS)
+  • v1.4 migration endpoint for new tables
+  • Bug fix: fc_capture_photos wrapped in try/except to prevent crashes
 
 v1.3 CHANGES (from EF Capital Pilot #3 feedback, Apr 15):
   • HVAC sub-types: condenser, air handler, PTAC, package unit dropdown
@@ -61,7 +71,7 @@ HEADERS = {
 
 SESSION_EXPIRY_DAYS = 7
 
-app = FastAPI(title="BuildingOS Field Capture", version="1.3.1")
+app = FastAPI(title="BuildingOS Field Capture", version="1.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,6 +80,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── v1.4: 13-stop room walkthrough ────────────────────────────────────────
+
+INSPECTION_STOPS = [
+    {"order": 0, "name": "Front Door", "icon": "\U0001f6aa", "photos": "Photo of front door + unit number sign", "notes": "Verification shot. Note if tenant present."},
+    {"order": 1, "name": "Kitchen", "icon": "\U0001f373", "photos": "Wide shot + close-ups of any damage", "notes": "Cabinets, countertops, appliances, flooring condition."},
+    {"order": 2, "name": "Family Room / Living", "icon": "\U0001f6cb\ufe0f", "photos": "Wide shot from doorway", "notes": "Walls, ceiling, windows, general condition."},
+    {"order": 3, "name": "Backyard - HVAC Unit", "icon": "\u2744\ufe0f", "photos": "Photo of outdoor condenser + model/serial plate", "notes": "Note make/model, visible condition, age."},
+    {"order": 4, "name": "Backyard - Electrical Panel", "icon": "\u26a1", "photos": "Photo of panel open + laundry room", "notes": "Panel brand, breaker count, laundry room condition."},
+    {"order": 5, "name": "Backyard - Exterior", "icon": "\U0001f3e0", "photos": "Photos of back of unit, fencing, siding", "notes": "Siding damage, fence condition, drainage."},
+    {"order": 6, "name": "1F Hallway", "icon": "\U0001f6b6", "photos": "Wide shot down hallway", "notes": "Flooring, walls, lighting."},
+    {"order": 7, "name": "1F Water Heater", "icon": "\U0001f525", "photos": "Photo of unit + data plate", "notes": "Make/model, age, visible leaks or corrosion."},
+    {"order": 8, "name": "1F Bathroom", "icon": "\U0001f6bf", "photos": "Wide shot + close-ups", "notes": "Toilet, vanity, tub/shower, flooring, ceiling."},
+    {"order": 9, "name": "Stairs", "icon": "\U0001fa9c", "photos": "Photo looking up stairway", "notes": "Tread condition, railing, walls."},
+    {"order": 10, "name": "2F Bathroom", "icon": "\U0001f6c1", "photos": "Wide shot + close-ups", "notes": "Same as 1F. CHECK CEILING FOR WATER STAINS."},
+    {"order": 11, "name": "2F Bedroom 1", "icon": "\U0001f6cf\ufe0f", "photos": "Wide shot from doorway", "notes": "Walls, windows, closet, ceiling. CHECK FOR WATER STAINS."},
+    {"order": 12, "name": "2F Bedroom 2", "icon": "\U0001f6cf\ufe0f", "photos": "Wide shot from doorway", "notes": "Same as Bedroom 1. CHECK CEILING FOR WATER STAINS."},
+    {"order": 13, "name": "Air Return / Filter", "icon": "\U0001f300", "photos": "Photo of return vent + filter", "notes": "Note filter size. Note if dirty/missing."},
+]
 
 
 # ── Supabase helpers ────────────────────────────────────────────────────────
@@ -97,6 +127,26 @@ async def sb_post(table: str, data: dict | list) -> list:
             logger.error(f"sb_post {table}: {r.status_code} {r.text}")
             raise HTTPException(500, f"Database error: {r.text}")
         return r.json() if r.text else []
+
+
+async def sb_post_safe(table: str, data: dict | list) -> list:
+    """Like sb_post but returns [] instead of raising on error.
+    Used for tables that may not exist yet (e.g. fc_capture_photos before migration).
+    """
+    try:
+        return await sb_post(table, data)
+    except HTTPException:
+        logger.warning(f"sb_post_safe: {table} write failed (table may not exist yet)")
+        return []
+
+
+async def sb_get_safe(table: str, filters: str = "") -> list:
+    """Like sb_get but explicitly catches all errors. For tables that may not exist."""
+    try:
+        return await sb_get(table, filters)
+    except Exception:
+        logger.warning(f"sb_get_safe: {table} read failed (table may not exist yet)")
+        return []
 
 
 async def sb_patch(table: str, filters: str, data: dict) -> list:
@@ -260,7 +310,7 @@ def health():
     return {
         "status": "ok",
         "app": "BuildingOS Field Capture",
-        "version": "1.3.1",
+        "version": "1.4.0",
         "supabase": bool(SUPABASE_URL),
         "anthropic": bool(ANTHROPIC_KEY),
     }
@@ -365,6 +415,103 @@ CREATE INDEX IF NOT EXISTS idx_fc_analytics_user ON fc_analytics(user_id);
 
 -- Step 4: Set PINs for existing users (they'll need to re-register or admin sets PIN)
 -- UPDATE fc_users SET pin_hash = encode(sha256(concat(lower(email), ':1234')::bytea), 'hex') WHERE pin_hash IS NULL;
+"""
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v1.4 MIGRATION ENDPOINT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/admin/migrate-v1.4")
+async def run_migration_v14():
+    """Admin endpoint: outputs v1.4 migration SQL for fc_inspections, fc_inspection_photos, and fc_capture_photos."""
+    return {
+        "message": "Run this SQL in your Supabase SQL Editor (supabase.com/dashboard → SQL Editor)",
+        "version": "1.4.0",
+        "sql": """
+-- v1.4 Migration — Full Unit Inspection Tables
+-- Run in Supabase SQL Editor
+
+-- Step 1: Create fc_inspections table (27-column Inspection Log)
+CREATE TABLE IF NOT EXISTS fc_inspections (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    building_id text NOT NULL,
+    unit_id uuid NOT NULL,
+    inspector_id uuid,
+    inspector_name text DEFAULT '',
+    walk_session_id uuid,
+    inspection_date timestamptz DEFAULT now(),
+
+    -- Safety & Habitability
+    smoke_co_detectors text DEFAULT '',
+    safety_check text DEFAULT '',
+    safety_notes text DEFAULT '',
+
+    -- Mechanicals - Systems
+    hvac_info text DEFAULT '',
+    hvac_condition text DEFAULT '',
+    water_heater_info text DEFAULT '',
+    water_heater_condition text DEFAULT '',
+    elec_panel_info text DEFAULT '',
+    windows_condition text DEFAULT '',
+    plumbing_leaks text DEFAULT '',
+    appliances_condition text DEFAULT '',
+
+    -- Finishes - Reno Scope
+    kitchen_bath_flooring text DEFAULT '',
+    kitchen_bath_condition text DEFAULT '',
+    doors_drywall text DEFAULT '',
+
+    -- Tenant Assessment
+    cleanliness_rating int CHECK (cleanliness_rating IS NULL OR (cleanliness_rating >= 1 AND cleanliness_rating <= 5)),
+    tenant_issues text DEFAULT '',
+    cooperation text DEFAULT '',
+    renewal_rec text DEFAULT '',
+
+    -- Outputs & Actions
+    immediate_wos text DEFAULT '',
+    photo_count int DEFAULT 0,
+    notes text DEFAULT '',
+
+    -- Status
+    status text DEFAULT 'draft' CHECK (status IN ('draft', 'complete')),
+
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fc_inspections_building ON fc_inspections(building_id);
+CREATE INDEX IF NOT EXISTS idx_fc_inspections_unit ON fc_inspections(unit_id);
+CREATE INDEX IF NOT EXISTS idx_fc_inspections_date ON fc_inspections(inspection_date);
+
+-- Step 2: Create fc_inspection_photos table
+CREATE TABLE IF NOT EXISTS fc_inspection_photos (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    inspection_id uuid NOT NULL REFERENCES fc_inspections(id),
+    photo_type text DEFAULT 'general',
+    stop_index int,
+    stop_name text DEFAULT '',
+    photo_url text NOT NULL,
+    photo_storage_path text DEFAULT '',
+    photo_filename text DEFAULT '',
+    sort_order int DEFAULT 0,
+    notes text DEFAULT '',
+    created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fc_inspection_photos_inspection ON fc_inspection_photos(inspection_id);
+
+-- Step 3: Create fc_capture_photos table (was missing — causing photo errors)
+CREATE TABLE IF NOT EXISTS fc_capture_photos (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    capture_id uuid NOT NULL,
+    photo_type text DEFAULT 'tag',
+    photo_url text NOT NULL,
+    photo_storage_path text DEFAULT '',
+    photo_filename text DEFAULT '',
+    sort_order int DEFAULT 0,
+    created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fc_capture_photos_capture ON fc_capture_photos(capture_id);
 """
     }
 
@@ -510,7 +657,7 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
         type_rows = [{
             "building_id": building_id,
             "name": et.get("name", ""),
-            "icon": et.get("icon", "🔧"),
+            "icon": et.get("icon", "\U0001f527"),
             "description": et.get("description", ""),
             "sub_types": json.dumps(et.get("sub_types", [])),  # v1.3
             "sort_order": i,
@@ -628,7 +775,7 @@ async def add_equipment_types(building_id: str, request: Request, session: dict 
     rows = [{
         "building_id": building_id,
         "name": t.get("name", ""),
-        "icon": t.get("icon", "🔧"),
+        "icon": t.get("icon", "\U0001f527"),
         "description": t.get("description", ""),
         "sub_types": json.dumps(t.get("sub_types", [])),  # v1.3
         "sort_order": i,
@@ -717,7 +864,7 @@ async def add_custom_equipment_type(building_id: str, request: Request, session:
     result = await sb_post("fc_equipment_types", {
         "building_id": building_id,
         "name": name,
-        "icon": body.get("icon", "🔧"),
+        "icon": body.get("icon", "\U0001f527"),
         "description": body.get("description", ""),
         "sub_types": json.dumps(body.get("sub_types", [])),
         "sort_order": next_order,
@@ -1081,9 +1228,9 @@ async def capture_equipment(
     result = await sb_post("fc_captures", capture_record)
     capture = result[0] if result else capture_record
 
-    # 4. v1.3: Store tag photo in fc_capture_photos
+    # 4. v1.3: Store tag photo in fc_capture_photos (wrapped in try/except — table may not exist)
     if capture.get("id"):
-        await sb_post("fc_capture_photos", {
+        await sb_post_safe("fc_capture_photos", {
             "capture_id": capture["id"],
             "photo_type": "tag",
             "photo_url": photo_url,
@@ -1129,11 +1276,11 @@ async def add_capture_photo(
 
     photo_url = await sb_upload("equipment-photos", storage_path, photo_bytes)
 
-    # Get next sort_order
-    existing_photos = await sb_get("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order.desc&limit=1")
+    # Get next sort_order (wrapped in try/except — table may not exist)
+    existing_photos = await sb_get_safe("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order.desc&limit=1")
     next_order = (existing_photos[0]["sort_order"] + 1) if existing_photos else 1
 
-    result = await sb_post("fc_capture_photos", {
+    result = await sb_post_safe("fc_capture_photos", {
         "capture_id": capture_id,
         "photo_type": photo_type,
         "photo_url": photo_url,
@@ -1154,8 +1301,8 @@ async def add_capture_photo(
 # v1.3: List photos for a capture
 @app.get("/api/captures/{capture_id}/photos")
 async def list_capture_photos(capture_id: str, session: dict = Depends(verify_session)):
-    """Get all photos for a capture."""
-    photos = await sb_get("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order")
+    """Get all photos for a capture (wrapped in try/except — table may not exist)."""
+    photos = await sb_get_safe("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order")
     return {"photos": photos}
 
 
@@ -1209,6 +1356,379 @@ async def manual_capture(building_id: str, unit_id: str, request: Request, sessi
     return {"capture": result[0] if result else capture_record}
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# v1.4: FULL UNIT INSPECTION ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/inspection-stops")
+async def get_inspection_stops():
+    """Return the 13-stop room walkthrough for the frontend."""
+    return {"stops": INSPECTION_STOPS, "count": len(INSPECTION_STOPS)}
+
+
+@app.post("/api/buildings/{building_id}/units/{unit_id}/inspection")
+async def create_inspection(
+    building_id: str,
+    unit_id: str,
+    request: Request,
+    session: dict = Depends(verify_session),
+):
+    """Save a full unit inspection record (27-field Inspection Log)."""
+    body = await request.json()
+
+    inspection_record = {
+        "building_id": building_id,
+        "unit_id": unit_id,
+        "inspector_id": body.get("inspector_id") or session.get("user_id"),
+        "inspector_name": body.get("inspector_name", ""),
+        "walk_session_id": body.get("walk_session_id"),
+        "inspection_date": datetime.utcnow().isoformat(),
+
+        # Safety & Habitability
+        "smoke_co_detectors": body.get("smoke_co_detectors", ""),
+        "safety_check": body.get("safety_check", ""),
+        "safety_notes": body.get("safety_notes", ""),
+
+        # Mechanicals - Systems
+        "hvac_info": body.get("hvac_info", ""),
+        "hvac_condition": body.get("hvac_condition", ""),
+        "water_heater_info": body.get("water_heater_info", ""),
+        "water_heater_condition": body.get("water_heater_condition", ""),
+        "elec_panel_info": body.get("elec_panel_info", ""),
+        "windows_condition": body.get("windows_condition", ""),
+        "plumbing_leaks": body.get("plumbing_leaks", ""),
+        "appliances_condition": body.get("appliances_condition", ""),
+
+        # Finishes - Reno Scope
+        "kitchen_bath_flooring": body.get("kitchen_bath_flooring", ""),
+        "kitchen_bath_condition": body.get("kitchen_bath_condition", ""),
+        "doors_drywall": body.get("doors_drywall", ""),
+
+        # Tenant Assessment
+        "cleanliness_rating": body.get("cleanliness_rating"),
+        "tenant_issues": body.get("tenant_issues", ""),
+        "cooperation": body.get("cooperation", ""),
+        "renewal_rec": body.get("renewal_rec", ""),
+
+        # Outputs & Actions
+        "immediate_wos": body.get("immediate_wos", ""),
+        "photo_count": body.get("photo_count", 0),
+        "notes": body.get("notes", ""),
+
+        # Status
+        "status": body.get("status", "draft"),
+    }
+
+    # Validate cleanliness_rating if provided
+    cr = inspection_record.get("cleanliness_rating")
+    if cr is not None:
+        try:
+            cr = int(cr)
+            if cr < 1 or cr > 5:
+                raise HTTPException(400, "cleanliness_rating must be between 1 and 5")
+            inspection_record["cleanliness_rating"] = cr
+        except (ValueError, TypeError):
+            raise HTTPException(400, "cleanliness_rating must be an integer 1-5")
+
+    # Validate status
+    if inspection_record["status"] not in ("draft", "complete"):
+        raise HTTPException(400, "status must be 'draft' or 'complete'")
+
+    result = await sb_post("fc_inspections", inspection_record)
+    inspection = result[0] if result else inspection_record
+
+    # Log analytics
+    await log_analytics(
+        "inspection_create",
+        user_id=session.get("user_id"),
+        building_id=building_id,
+        metadata={"inspection_id": inspection.get("id"), "unit_id": unit_id, "status": inspection_record["status"]},
+        request=request,
+    )
+
+    return {"inspection": inspection}
+
+
+@app.get("/api/buildings/{building_id}/units/{unit_id}/inspection")
+async def get_latest_inspection(
+    building_id: str,
+    unit_id: str,
+    session: dict = Depends(verify_session),
+):
+    """Retrieve the latest inspection for a unit."""
+    inspections = await sb_get(
+        "fc_inspections",
+        f"?building_id=eq.{building_id}&unit_id=eq.{unit_id}&order=inspection_date.desc&limit=1"
+    )
+    if not inspections:
+        raise HTTPException(404, "No inspection found for this unit")
+    return {"inspection": inspections[0]}
+
+
+@app.get("/api/buildings/{building_id}/inspections")
+async def list_building_inspections(
+    building_id: str,
+    session: dict = Depends(verify_session),
+):
+    """List all inspections for a building."""
+    inspections = await sb_get(
+        "fc_inspections",
+        f"?building_id=eq.{building_id}&order=inspection_date.desc"
+    )
+
+    # Enrich with unit names
+    units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
+    unit_map = {u["id"]: u for u in units}
+
+    enriched = []
+    for insp in inspections:
+        unit = unit_map.get(insp.get("unit_id"), {})
+        enriched.append({
+            **insp,
+            "unit_name": unit.get("unit_name", ""),
+        })
+
+    return {"inspections": enriched, "count": len(enriched)}
+
+
+# ── Inspection Photos ──────────────────────────────────────────────────────
+
+@app.post("/api/inspections/{inspection_id}/photos")
+async def add_inspection_photo(
+    inspection_id: str,
+    photo: UploadFile = File(...),
+    photo_type: str = Form("general"),
+    stop_index: int = Form(None),
+    stop_name: str = Form(""),
+    notes: str = Form(""),
+    session: dict = Depends(verify_session),
+):
+    """Upload a photo linked to an inspection."""
+    photo_bytes = await photo.read()
+    if not photo_bytes:
+        raise HTTPException(400, "Empty photo")
+
+    # Get inspection to build storage path
+    inspections = await sb_get("fc_inspections", f"?id=eq.{inspection_id}")
+    if not inspections:
+        raise HTTPException(404, "Inspection not found")
+    insp = inspections[0]
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    stop_slug = (stop_name or photo_type).lower().replace(" ", "_").replace("/", "_")
+    filename = f"{insp['building_id']}_insp_{stop_slug}_{timestamp}.jpg"
+    storage_path = f"field-capture/{insp['building_id']}/inspections/{inspection_id}/{filename}"
+
+    photo_url = await sb_upload("equipment-photos", storage_path, photo_bytes)
+
+    # Get next sort_order
+    existing_photos = await sb_get_safe(
+        "fc_inspection_photos",
+        f"?inspection_id=eq.{inspection_id}&order=sort_order.desc&limit=1"
+    )
+    next_order = (existing_photos[0]["sort_order"] + 1) if existing_photos else 0
+
+    result = await sb_post("fc_inspection_photos", {
+        "inspection_id": inspection_id,
+        "photo_type": photo_type,
+        "stop_index": stop_index,
+        "stop_name": stop_name,
+        "photo_url": photo_url,
+        "photo_storage_path": storage_path,
+        "photo_filename": filename,
+        "sort_order": next_order,
+        "notes": notes,
+    })
+
+    # Update photo count on the inspection
+    try:
+        all_photos = await sb_get_safe(
+            "fc_inspection_photos",
+            f"?inspection_id=eq.{inspection_id}&select=id"
+        )
+        await sb_patch("fc_inspections", f"?id=eq.{inspection_id}", {
+            "photo_count": len(all_photos),
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+    except Exception:
+        pass
+
+    await log_analytics(
+        "inspection_photo_upload",
+        user_id=session.get("user_id"),
+        building_id=insp.get("building_id"),
+        metadata={"inspection_id": inspection_id, "stop_name": stop_name},
+        request=None,
+    )
+
+    return {
+        "photo": result[0] if result else None,
+        "photo_url": photo_url,
+    }
+
+
+# ── Maintenance Items ──────────────────────────────────────────────────────
+
+@app.get("/api/buildings/{building_id}/maintenance-items")
+async def list_maintenance_items(
+    building_id: str,
+    session: dict = Depends(verify_session),
+):
+    """
+    Return all inspection findings flagged as needing work orders.
+    Scans all inspections for a building and returns items where
+    immediate_wos is non-empty, plus safety issues from safety_notes.
+    """
+    inspections = await sb_get(
+        "fc_inspections",
+        f"?building_id=eq.{building_id}&order=inspection_date.desc"
+    )
+    units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
+    unit_map = {u["id"]: u for u in units}
+
+    items = []
+    item_counter = 0
+
+    for insp in inspections:
+        unit = unit_map.get(insp.get("unit_id"), {})
+        unit_name = unit.get("unit_name", "Unknown")
+        inspector = insp.get("inspector_name", "")
+        insp_date = (insp.get("inspection_date") or "")[:10]
+        insp_id = insp.get("id", "")
+
+        # Parse immediate_wos — each line or semicolon-separated item is a work order
+        immediate_wos = (insp.get("immediate_wos") or "").strip()
+        if immediate_wos:
+            wo_lines = [line.strip() for line in immediate_wos.replace(";", "\n").split("\n") if line.strip()]
+            for wo in wo_lines:
+                item_counter += 1
+                # Try to detect system from the WO text
+                system = _detect_system(wo)
+                items.append({
+                    "id": f"{insp_id}-wo-{item_counter}",
+                    "unit": unit_name,
+                    "system": system,
+                    "item": wo,
+                    "condition": "Needs Repair",
+                    "priority": _estimate_priority(wo),
+                    "source": "Field Inspection",
+                    "inspector": inspector,
+                    "inspection_date": insp_date,
+                    "building_id": building_id,
+                })
+
+        # Parse safety_notes for issues (non-empty safety notes with fail = safety issue)
+        safety_notes = (insp.get("safety_notes") or "").strip()
+        safety_check = (insp.get("safety_check") or "").strip().lower()
+        smoke_co = (insp.get("smoke_co_detectors") or "").strip().lower()
+
+        if safety_notes:
+            item_counter += 1
+            items.append({
+                "id": f"{insp_id}-safety-{item_counter}",
+                "unit": unit_name,
+                "system": "Safety",
+                "item": safety_notes,
+                "condition": "Fail" if safety_check == "fail" else "Needs Attention",
+                "priority": 1 if safety_check == "fail" else 2,
+                "source": "Field Inspection",
+                "inspector": inspector,
+                "inspection_date": insp_date,
+                "building_id": building_id,
+            })
+
+        if smoke_co == "fail":
+            item_counter += 1
+            items.append({
+                "id": f"{insp_id}-smoke-{item_counter}",
+                "unit": unit_name,
+                "system": "Safety",
+                "item": "Smoke/CO detectors failed inspection",
+                "condition": "Fail",
+                "priority": 1,
+                "source": "Field Inspection",
+                "inspector": inspector,
+                "inspection_date": insp_date,
+                "building_id": building_id,
+            })
+
+        # Check mechanical conditions for "Poor" ratings
+        _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
+                               "hvac_condition", "HVAC", insp.get("hvac_info", ""))
+        _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
+                               "water_heater_condition", "Plumbing", insp.get("water_heater_info", ""))
+        _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
+                               "plumbing_leaks", "Plumbing", "")
+        _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
+                               "appliances_condition", "Appliances", "")
+
+    # Sort by priority (1 = highest)
+    items.sort(key=lambda x: x.get("priority", 5))
+
+    return {"maintenance_items": items, "count": len(items)}
+
+
+def _detect_system(text: str) -> str:
+    """Detect the building system from work order text."""
+    text_lower = text.lower()
+    if any(w in text_lower for w in ["hvac", "ac ", "a/c", "condenser", "air handler", "heating", "cooling", "thermostat"]):
+        return "HVAC"
+    if any(w in text_lower for w in ["plumb", "faucet", "toilet", "pipe", "leak", "drain", "water heater"]):
+        return "Plumbing"
+    if any(w in text_lower for w in ["electric", "panel", "breaker", "outlet", "switch", "wiring"]):
+        return "Electrical"
+    if any(w in text_lower for w in ["smoke", "co ", "carbon", "detector", "fire", "safety"]):
+        return "Safety"
+    if any(w in text_lower for w in ["door", "window", "lock", "drywall", "wall", "ceiling"]):
+        return "Structural"
+    if any(w in text_lower for w in ["kitchen", "bath", "floor", "tile", "counter", "cabinet"]):
+        return "Finishes"
+    if any(w in text_lower for w in ["appliance", "stove", "oven", "dishwasher", "fridge", "refrigerator", "disposal"]):
+        return "Appliances"
+    return "General"
+
+
+def _estimate_priority(text: str) -> int:
+    """Estimate priority from 1 (urgent) to 5 (cosmetic)."""
+    text_lower = text.lower()
+    if any(w in text_lower for w in ["safety", "smoke", "co ", "carbon", "fire", "hazard", "emergency", "gas leak"]):
+        return 1
+    if any(w in text_lower for w in ["leak", "flood", "broken", "no heat", "no ac", "no hot water", "inoperable"]):
+        return 2
+    if any(w in text_lower for w in ["repair", "replace", "damage", "poor", "failing", "worn"]):
+        return 3
+    if any(w in text_lower for w in ["minor", "cosmetic", "touch up", "paint", "scuff"]):
+        return 4
+    return 3  # default medium priority
+
+
+_item_counter_global = 0
+
+def _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
+                           field_name, system, extra_info):
+    """If a condition field contains 'poor' or 'fail', add a maintenance item."""
+    value = (insp.get(field_name) or "").strip()
+    if not value:
+        return
+    value_lower = value.lower()
+    if any(w in value_lower for w in ["poor", "fail", "bad", "replace", "leak", "damage"]):
+        item_text = value
+        if extra_info:
+            item_text = f"{extra_info} - {value}"
+        items.append({
+            "id": f"{insp.get('id', '')}-{field_name}",
+            "unit": unit_name,
+            "system": system,
+            "item": item_text,
+            "condition": "Poor",
+            "priority": _estimate_priority(value),
+            "source": "Field Inspection",
+            "inspector": inspector,
+            "inspection_date": insp_date,
+            "building_id": building_id,
+        })
+
+
 # ── Progress & Dashboard ────────────────────────────────────────────────────
 
 @app.get("/api/buildings/{building_id}/progress")
@@ -1238,7 +1758,7 @@ async def building_progress(building_id: str, session: dict = Depends(verify_ses
         type_progress.append({
             "id": t["id"],
             "name": t["name"],
-            "icon": t.get("icon", "🔧"),
+            "icon": t.get("icon", "\U0001f527"),
             "captured": done,
             "total": total_units,
             "pct": round(done / total_units * 100) if total_units > 0 else 0,
