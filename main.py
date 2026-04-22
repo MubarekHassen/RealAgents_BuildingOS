@@ -1,1931 +1,3290 @@
 """
-BuildingOS Field Capture v1.4 — Standalone API
-A mobile-first data ingestion tool for field equipment documentation.
+BuildingOS Backend — Real AI Document Analysis
+Uses Claude claude-sonnet-4-6 to extract 10 categories of building intelligence
+from uploaded PDFs, floor plans, specs, and drawings.
 
-v1.4 CHANGES (from EF Capital Pilot, Apr 22):
-  • Full unit inspection flow: 27-field Inspection Log capture per unit
-  • POST/GET inspection endpoints for unit-level inspections
-  • GET building inspections list
-  • Inspection photo uploads (fc_inspection_photos)
-  • Maintenance items endpoint: auto-extracts work orders from inspections
-  • 13-stop room walkthrough constant (INSPECTION_STOPS)
-  • v1.4 migration endpoint for new tables
-  • Bug fix: fc_capture_photos wrapped in try/except to prevent crashes
-
-v1.3 CHANGES (from EF Capital Pilot #3 feedback, Apr 15):
-  • HVAC sub-types: condenser, air handler, PTAC, package unit dropdown
-  • Multiple photos per capture: tag photo + unit overview photo
-  • Edit-after-save: PATCH captures to correct AI-extracted data post-save
-  • Brand vs Manufacturer distinction (e.g., Goodman brand by Daikin manufacturer)
-  • Custom equipment types: field users can add types not in the pre-set list
-  • User/timestamp stamping on every capture
-  • Phase 1 scope: 3 equipment types (HVAC, Water Heater, Electrical Panel)
-  • No photo annotation (liability concern)
-  • AI prompt updated to extract brand separately from manufacturer
-
-v1.3.1 SECURITY CHANGES (Apr 22):
-  • PIN-based authentication (4-6 digit, SHA-256 hashed with email salt)
-  • Session tokens (UUID, 7-day expiry) stored in fc_sessions
-  • All protected endpoints require valid session via Authorization header
-  • Analytics logging (fc_analytics) for key events
-  • Admin endpoint for user listing
+Run with:
+    pip install -r requirements.txt
+    cp .env.example .env   # then add your Anthropic API key
+    uvicorn main:app --reload --port 8000
 """
 
-import base64
-import hashlib
-import io
-import json
-import logging
+import asyncio
 import os
-import random
-import string
-import uuid
-from datetime import datetime, timedelta
+import base64
+import json
+import re
+import logging
+import io
+import html
+import secrets
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
-
-from dotenv import load_dotenv
-load_dotenv()
+from typing import Optional, List, Any
+from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 
 import anthropic
 import httpx
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form, Depends, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+
+load_dotenv(override=True)
+
+
+# ── Helper: safely extract text from Anthropic content blocks ──
+def _get_text(block) -> str:
+    """Extract text from an Anthropic content block (handles both object and dict)."""
+    if isinstance(block, dict):
+        return block.get("text", "")
+    return getattr(block, "text", "")
+
+
+# ── API Key authentication ──
+API_KEY = os.getenv("BUILDINGOS_API_KEY", "")
+
+
+async def verify_api_key(request: Request, authorization: Optional[str] = Header(None)):
+    """Verify API key from Authorization header (Bearer token) or x-api-key header.
+    If BUILDINGOS_API_KEY is not set, authentication is disabled (dev mode)."""
+    if not API_KEY:
+        return  # No key configured = dev mode, skip auth
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    if not token:
+        token = request.headers.get("x-api-key")
+    if token != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+from document_qa import (
+    chunk_text,
+    create_document_record,
+    delete_document as delete_rag_document,
+    extract_text_for_rag,
+    generate_embedding,
+    generate_embeddings_batch,
+    get_supabase_client,
+    insert_document_chunks,
+    is_embeddings_configured,
+    is_rag_ready,
+    is_supabase_configured,
+    list_documents as rag_list_documents,
+    load_rag_config,
+    match_document_chunks,
+    save_document_question,
+    text_search_chunks,
+    text_search_chunks_multi,
+    update_document_record,
+    upload_file_to_storage,
+)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("fieldcapture")
+logger = logging.getLogger("buildingos")
 
-# ── Config ──────────────────────────────────────────────────────────────────
+# ── Optional OAuth libraries (graceful fallback if not installed) ──
+try:
+    from google_auth_oauthlib.flow import Flow as GoogleFlow
+    from googleapiclient.discovery import build as gdrive_build
+    from googleapiclient.http import MediaIoBaseDownload
+    GOOGLE_AVAILABLE = True
+except ImportError:
+    GOOGLE_AVAILABLE = False
+    logger.warning("google-auth-oauthlib not installed — Google Drive integration disabled")
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+try:
+    import msal
+    MICROSOFT_AVAILABLE = True
+except ImportError:
+    MICROSOFT_AVAILABLE = False
+    logger.warning("msal not installed — Microsoft/OneDrive integration disabled")
 
-HEADERS = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-    "Prefer": "return=representation",
-}
+# ── In-memory token store (replace with DB for production) ──
+_tokens: dict = {}
+_oauth_states: dict = {}  # state -> provider mapping for CSRF protection
 
-SESSION_EXPIRY_DAYS = 7
+app = FastAPI(title="BuildingOS API", version="1.0.0")
 
-app = FastAPI(title="BuildingOS Field Capture", version="1.4.0")
-
+# ── CORS — restrict to known origins in production ──
+ALLOWED_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "https://buildos.it,https://www.buildos.it,https://real-agents-building-os.vercel.app,https://mvp-mvp1.vercel.app,http://localhost:8000,http://localhost:3000,http://127.0.0.1:8000"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+SUPPORTED_TYPES = {
+    "application/pdf": "document",
+    "image/png": "image",
+    "image/jpeg": "image",
+    "image/jpg": "image",
+    "image/webp": "image",
+}
 
-# ── v1.4: 13-stop room walkthrough ────────────────────────────────────────
+SPREADSHEET_TYPES = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+    "application/vnd.ms-excel",  # .xls
+    "text/csv",  # .csv
+    "application/csv",
+}
 
-INSPECTION_STOPS = [
-    {"order": 0, "name": "Front Door", "icon": "\U0001f6aa", "photos": "Photo of front door + unit number sign", "notes": "Verification shot. Note if tenant present."},
-    {"order": 1, "name": "Kitchen", "icon": "\U0001f373", "photos": "Wide shot + close-ups of any damage", "notes": "Cabinets, countertops, appliances, flooring condition."},
-    {"order": 2, "name": "Family Room / Living", "icon": "\U0001f6cb\ufe0f", "photos": "Wide shot from doorway", "notes": "Walls, ceiling, windows, general condition."},
-    {"order": 3, "name": "Backyard - HVAC Unit", "icon": "\u2744\ufe0f", "photos": "Photo of outdoor condenser + model/serial plate", "notes": "Note make/model, visible condition, age."},
-    {"order": 4, "name": "Backyard - Electrical Panel", "icon": "\u26a1", "photos": "Photo of panel open + laundry room", "notes": "Panel brand, breaker count, laundry room condition."},
-    {"order": 5, "name": "Backyard - Exterior", "icon": "\U0001f3e0", "photos": "Photos of back of unit, fencing, siding", "notes": "Siding damage, fence condition, drainage."},
-    {"order": 6, "name": "1F Hallway", "icon": "\U0001f6b6", "photos": "Wide shot down hallway", "notes": "Flooring, walls, lighting."},
-    {"order": 7, "name": "1F Water Heater", "icon": "\U0001f525", "photos": "Photo of unit + data plate", "notes": "Make/model, age, visible leaks or corrosion."},
-    {"order": 8, "name": "1F Bathroom", "icon": "\U0001f6bf", "photos": "Wide shot + close-ups", "notes": "Toilet, vanity, tub/shower, flooring, ceiling."},
-    {"order": 9, "name": "Stairs", "icon": "\U0001fa9c", "photos": "Photo looking up stairway", "notes": "Tread condition, railing, walls."},
-    {"order": 10, "name": "2F Bathroom", "icon": "\U0001f6c1", "photos": "Wide shot + close-ups", "notes": "Same as 1F. CHECK CEILING FOR WATER STAINS."},
-    {"order": 11, "name": "2F Bedroom 1", "icon": "\U0001f6cf\ufe0f", "photos": "Wide shot from doorway", "notes": "Walls, windows, closet, ceiling. CHECK FOR WATER STAINS."},
-    {"order": 12, "name": "2F Bedroom 2", "icon": "\U0001f6cf\ufe0f", "photos": "Wide shot from doorway", "notes": "Same as Bedroom 1. CHECK CEILING FOR WATER STAINS."},
-    {"order": 13, "name": "Air Return / Filter", "icon": "\U0001f300", "photos": "Photo of return vent + filter", "notes": "Note filter size. Note if dirty/missing."},
-]
+# ─────────────────────────────────────────────
+# ANALYSIS PROMPT
+# This is what drives the quality of extraction.
+# Tune this prompt to improve results over time.
+# ─────────────────────────────────────────────
+ANALYSIS_PROMPT = """You are a licensed building systems engineer and facilities management expert with 20+ years of experience in property condition assessments, MEP systems, building codes, capital planning, and commercial real estate.
 
+Analyze the attached building document and extract structured intelligence. Return ONLY a valid JSON object — no markdown, no explanation, no preamble.
 
-# ── Supabase helpers ────────────────────────────────────────────────────────
+CRITICAL RULES — READ CAREFULLY:
+- ONLY extract information that is explicitly present in this document. Do NOT invent, estimate, or assume any data.
+- If a piece of information is not clearly stated in the document, you MUST use null for scalar fields or [] for arrays. Never fabricate values.
+- Do NOT generate example assets, fictional equipment names, made-up model numbers, or placeholder costs.
+- If a whole category cannot be populated from this document, leave all its fields as null/[].
+- Be specific: only cite actual values, model numbers, room names, and measurements that appear verbatim or are directly calculable from the document.
+- For monetary values in "cost" string fields, use format like "$280K" or "$1.4M" — only if the document states or clearly implies these costs.
+- For monetary totals (yr1, yr3, yr5, totalRequired, cost_k), use integers representing thousands of dollars — only from document data.
+- In "missing_data", list every category that could NOT be populated and what type of document the user should upload to get that data.
+- EQUIPMENT EXTRACTION IS CRITICAL: List EVERY individual piece of equipment, asset, or system component found in the document — do NOT group, summarize, or skip items. If 15 RTU units are mentioned, list all 15 separately. If a schedule lists 40 pieces of equipment, include all 40 in the assets.items array. The assets list must be EXHAUSTIVE. Include equipment from schedules, tables, narratives, appendices, deficiency lists, and photo logs.
 
-async def sb_get(table: str, filters: str = "") -> list:
-    async with httpx.AsyncClient() as client:
-        r = await client.get(
-            f"{SUPABASE_URL}/rest/v1/{table}{filters}",
-            headers={**HEADERS, "Prefer": ""},
-        )
-        if r.status_code >= 400:
-            logger.error(f"sb_get {table}: {r.status_code} {r.text}")
-            return []
-        return r.json() if r.text else []
+DOCUMENT-TYPE SPECIFIC GUIDANCE:
+- PCA / Property Condition Assessment: This is the richest source. Extract building_profile (address, year built, SF, use), ALL deferred maintenance items with condition ratings and costs, capital needs by year, and all systems assessed.
+- Lease / Rent Roll: Extract tenant names, suite numbers, square footage, lease expiration dates, and rent per SF. Populate building_profile.tenants.
+- Unit Directory / Unit List: Extract EVERY unit with its name/number, sqft, bedrooms, bathrooms, rent, status, and address. Populate building_profile.units_list with ALL units. Also extract the property name, address, and total unit count for building_profile fields.
+- Floor plan / architectural drawing: THIS IS YOUR RICHEST PROFILE SOURCE. Extract everything you can for building_profile: number of floors, total SF (sum all floor areas if given), net SF, building use, room types and counts, ceiling heights, core vs shell vs tenant areas, structural grid, stair/elevator count, loading docks, parking levels, accessibility features, exterior cladding, window type, roof type. Also extract space breakdown percentages. Do NOT fabricate values not visible in the document.
+- Specification (CSI format): code compliance, approved manufacturers, and commissioning requirements may be available.
+- Equipment schedule / O&M manual: asset details, model numbers, useful life, and maintenance requirements.
+- Energy audit: EUI baseline, ASHRAE benchmarks, efficiency measures with costs and savings.
+- Inspection report: deficiency list, condition ratings, safety flags.
+- Maintenance log / work order history: recurring failures, cost trends, asset reliability.
 
+Return this exact JSON structure:
 
-async def sb_post(table: str, data: dict | list) -> list:
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            f"{SUPABASE_URL}/rest/v1/{table}",
-            headers=HEADERS,
-            json=data,
-        )
-        if r.status_code >= 400:
-            logger.error(f"sb_post {table}: {r.status_code} {r.text}")
-            raise HTTPException(500, f"Database error: {r.text}")
-        return r.json() if r.text else []
+{
+  "document_type": "one of: pca_report | lease | rent_roll | floor_plan | mep_drawing | structural | specification | equipment_manual | maintenance_report | energy_audit | inspection_report | utility_bill | general",
+  "document_summary": "2-3 sentence factual summary of what this document actually contains — no assumptions.",
+  "missing_data": [
+    {"category": "<category name>", "reason": "<why this data is not in this document>", "upload_suggestion": "<what document type would provide this data>"}
+  ],
+  "building_profile": {
+    "name": "<building name if stated, else null>",
+    "address": "<full street address if stated, else null>",
+    "city": "<city or null>",
+    "state": "<state/province or null>",
+    "year_built": <integer year or null>,
+    "year_renovated": <integer year or null>,
+    "gross_sf": <total gross square footage integer or null>,
+    "net_sf": <net rentable/usable SF integer or null>,
+    "stories": <number of above-grade floors integer or null>,
+    "basement_levels": <integer number of below-grade levels or 0>,
+    "building_use": "<Office | Retail | Industrial | Mixed-Use | Healthcare | Education | Multifamily | Hospitality | Laboratory | Data Center | Parking | Other | null>",
+    "building_use_detail": "<more specific use description e.g. 'Class A suburban office with ground-floor retail' or null>",
+    "construction_type": "<IBC type e.g. Type II-B Non-Combustible Steel Frame or null>",
+    "structural_system": "<e.g. Steel moment frame | Concrete shear wall | Wood frame | Masonry bearing wall | null>",
+    "foundation_type": "<e.g. Spread footings | Mat slab | Pile | null>",
+    "exterior_cladding": "<e.g. Curtain wall glass | Brick veneer | Metal panel | EIFS | null>",
+    "roof_type": "<e.g. TPO membrane | Built-up | Metal standing seam | null>",
+    "window_type": "<e.g. Double-pane aluminum-framed curtain wall | null>",
+    "ceiling_height_ft": <typical floor-to-floor or ceiling height in feet decimal or null>,
+    "occupancy_pct": <integer 0-100 or null>,
+    "parking_spaces": <integer or null>,
+    "parking_type": "<Surface | Underground | Structured | null>",
+    "loading_docks": <integer count or null>,
+    "elevators": <integer count or null>,
+    "stairwells": <integer count or null>,
+    "sprinklered": <true | false | null>,
+    "accessibility": "<ADA compliant | Partial | Non-compliant | null>",
+    "zoning": "<zoning designation if stated or null>",
+    "lot_sf": <site/lot area in SF integer or null>,
+    "room_types": [
+      {"type": "<room type e.g. Open Office | Private Office | Conference | Lobby | Restroom | Mechanical | Electrical | Stairwell | Corridor | Storage | Retail | Lab | Kitchen | Loading | Parking >", "count": <integer or null>, "approx_sf": <approximate total SF for this type integer or null>}
+    ],
+    "floor_breakdown": [
+      {"level": "<e.g. Basement | Ground | Level 2 | Roof >", "use": "<primary use of this floor>", "sf": <integer or null>}
+    ],
+    "amenities": ["<list of building amenities e.g. Fitness center, Rooftop terrace, Café, Conference center>"],
+    "tenants": [
+      {"name": "<tenant name>", "sf": <integer or null>, "suite": "<suite/unit or null>", "lease_exp": "<YYYY-MM or month-year string or null>", "rent_psf": <decimal annual rent per SF or null>}
+    ],
+    "units_list": [
+      {"name": "<unit number/name e.g. 101, 2-A, 8534-101>", "sqft": <integer SF or null>, "beds": <number of bedrooms or null>, "baths": <number of bathrooms decimal or null>, "rent": <monthly rent number or null>, "status": "<Occupied | Vacant | Renovation | Model | Down | null>", "address": "<unit-specific address or null>"}
+    ]
+  },
+  "deferred_maintenance": {
+    "total_cost_k": <total deferred maintenance cost in $K integer or null>,
+    "immediate_cost_k": <cost of items needed within 1-2 years in $K integer or null>,
+    "items": [
+      {
+        "system": "<HVAC | Electrical | Plumbing | Roofing | Envelope | Structure | Life Safety | Elevators | Site | Interior | Other>",
+        "item": "<specific description of deficiency or needed work>",
+        "condition": "<Good | Fair | Poor | Critical>",
+        "action": "<recommended corrective action>",
+        "cost_k": <estimated cost in $K integer or null>,
+        "priority": <1-5 integer where 1=immediate safety, 2=urgent, 3=near-term, 4=planned, 5=monitor>,
+        "timeline_yr": <years from now integer, 0=immediate, 1=within 1 year, etc.>
+      }
+    ]
+  },
+  "assets": {
+    "total": <integer count of ALL individual equipment items listed below>,
+    "hvac": <integer>,
+    "electrical": <integer>,
+    "plumbing": <integer>,
+    "mechanical": <integer>,
+    "items": [
+      {"name": "<asset name>", "mfr": "<manufacturer or null>", "model": "<model number or null>", "age": "<age or 'Unknown'>", "status": "Operational | Monitor | End-of-Life", "location": "<location/floor/zone if mentioned or null>", "qty": <integer quantity if stated, default 1>}
+    ]
+  },
+  "capital": {
+    "totalRequired": <integer in $K>,
+    "yr1": <integer in $K>,
+    "yr3": <integer in $K>,
+    "yr5": <integer in $K>,
+    "items": [
+      {"asset": "<description>", "yr": "<timeline e.g. Year 1-2>", "cost": "<e.g. $280K>", "priority": "HIGH | MEDIUM | LOW"}
+    ]
+  },
+  "energy": {
+    "eui": <integer kBtu/sf/yr or null>,
+    "ashraePct": <integer % gap vs ASHRAE 90.1 benchmark, positive means worse than benchmark>,
+    "insulation": "<e.g. R-19 or null>",
+    "glazingU": "<decimal e.g. 0.38 or null>",
+    "lightingPower": "<decimal W/sf e.g. 1.2 or null>",
+    "opportunities": [
+      {"item": "<description>", "savings": "<e.g. $45K/yr>", "cost": "<e.g. $60K>", "payback": "<e.g. 1.3 yrs>"}
+    ]
+  },
+  "compliance": {
+    "gaps": <integer>,
+    "critical": <integer>,
+    "codes": ["<code name>"],
+    "flags": [
+      {"sev": "high | medium | low", "code": "<code reference>", "issue": "<specific violation or concern>"}
+    ]
+  },
+  "space": {
+    "grossSF": <integer or null>,
+    "ntr": <integer net-to-gross ratio % or null>,
+    "rooms": <integer or null>,
+    "types": {"office": <integer %, or null>, "mechanical": <integer %, or null>, "common": <integer %, or null>, "storage": <integer %, or null>},
+    "opportunities": ["<specific optimization opportunity>"]
+  },
+  "structural": {
+    "system": "<structural system type or null>",
+    "foundation": "<foundation type or null>",
+    "seismic": "<seismic zone e.g. Zone 3 (ASCE 7-22) or null>",
+    "vintage": <year integer or null>,
+    "flags": [
+      {"sev": "high | medium | low", "issue": "<specific structural or safety concern>"}
+    ]
+  },
+  "commissioning": {
+    "deviations": <integer>,
+    "items": [
+      {"system": "<system name>", "spec": "<design intent>", "actual": "<observed condition>", "impact": "High | Medium | Low"}
+    ]
+  },
+  "vendors": {
+    "specs": <integer number of spec sections scanned>,
+    "mfrs": <integer number of manufacturers referenced>,
+    "items": [
+      {"type": "<equipment category>", "approved": ["<manufacturer>"], "warranty": "<warranty terms>"}
+    ],
+    "opportunities": ["<cost saving or procurement opportunity>"]
+  },
+  "sustainability": {
+    "energyStarScore": <integer estimated score 1-100 or null>,
+    "waterIssues": <integer count or 0>,
+    "opportunities": [
+      {"cert": "<certification name>", "current": <integer score>, "target": <integer target>, "gap": "<e.g. 12pts>", "actions": "<specific actions to close gap>"}
+    ]
+  },
+  "insurance": {
+    "replacementValue": "<e.g. $12M or null>",
+    "systemAge": "<e.g. 11 yr avg or null>",
+    "risks": <integer count>,
+    "items": [
+      {"risk": "<specific risk>", "impact": "<insurance implication>", "action": "<recommended action>"}
+    ]
+  }
+}"""
 
+QUESTION_ANSWER_PROMPT = """You answer questions about a building document using only the supplied context.
 
-async def sb_post_safe(table: str, data: dict | list) -> list:
-    """Like sb_post but returns [] instead of raising on error.
-    Used for tables that may not exist yet (e.g. fc_capture_photos before migration).
-    """
-    try:
-        return await sb_post(table, data)
-    except HTTPException:
-        logger.warning(f"sb_post_safe: {table} write failed (table may not exist yet)")
-        return []
-
-
-async def sb_get_safe(table: str, filters: str = "") -> list:
-    """Like sb_get but explicitly catches all errors. For tables that may not exist."""
-    try:
-        return await sb_get(table, filters)
-    except Exception:
-        logger.warning(f"sb_get_safe: {table} read failed (table may not exist yet)")
-        return []
-
-
-async def sb_patch(table: str, filters: str, data: dict) -> list:
-    async with httpx.AsyncClient() as client:
-        r = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/{table}{filters}",
-            headers=HEADERS,
-            json=data,
-        )
-        if r.status_code >= 400:
-            logger.error(f"sb_patch {table}: {r.status_code} {r.text}")
-            raise HTTPException(500, f"Database error: {r.text}")
-        return r.json() if r.text else []
-
-
-async def sb_delete(table: str, filters: str) -> list:
-    async with httpx.AsyncClient() as client:
-        r = await client.delete(
-            f"{SUPABASE_URL}/rest/v1/{table}{filters}",
-            headers=HEADERS,
-        )
-        if r.status_code >= 400:
-            logger.error(f"sb_delete {table}: {r.status_code} {r.text}")
-            return []
-        return r.json() if r.text else []
-
-
-async def sb_upload(bucket: str, path: str, data: bytes, content_type: str = "image/jpeg") -> str:
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": content_type,
-            },
-            content=data,
-        )
-        if r.status_code >= 400:
-            r = await client.put(
-                f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path}",
-                headers={
-                    "apikey": SUPABASE_KEY,
-                    "Authorization": f"Bearer {SUPABASE_KEY}",
-                    "Content-Type": content_type,
-                },
-                content=data,
-            )
-        if r.status_code >= 400:
-            logger.error(f"Storage upload failed: {r.status_code} {r.text}")
-            raise HTTPException(500, f"Photo upload failed: {r.text}")
-
-    return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}"
-
-
-# ── PIN hashing ─────────────────────────────────────────────────────────────
-
-def hash_pin(pin: str, email: str) -> str:
-    """SHA-256 hash a PIN with the user's email as salt."""
-    salted = f"{email.lower().strip()}:{pin}"
-    return hashlib.sha256(salted.encode("utf-8")).hexdigest()
-
-
-def verify_pin(pin: str, email: str, stored_hash: str) -> bool:
-    """Verify a PIN against a stored hash."""
-    return hash_pin(pin, email) == stored_hash
-
-
-# ── Session management ──────────────────────────────────────────────────────
-
-async def create_session(user_id: str, request: Request) -> dict:
-    """Create a new session token for a user."""
-    token = str(uuid.uuid4())
-    now = datetime.utcnow()
-    expires = now + timedelta(days=SESSION_EXPIRY_DAYS)
-
-    device_info = request.headers.get("User-Agent", "")
-    ip_address = request.client.host if request.client else ""
-
-    session = await sb_post("fc_sessions", {
-        "user_id": user_id,
-        "token": token,
-        "created_at": now.isoformat(),
-        "expires_at": expires.isoformat(),
-        "device_info": device_info[:500],
-        "ip_address": ip_address,
-    })
-    return {
-        "token": token,
-        "expires_at": expires.isoformat(),
-        "session": session[0] if session else None,
-    }
-
-
-async def verify_session(request: Request) -> dict:
-    """Dependency: extract and verify session token from Authorization header.
-    Returns the session row (includes user_id).
-    """
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(401, "Missing or invalid Authorization header")
-
-    token = auth[7:].strip()
-    if not token:
-        raise HTTPException(401, "Empty session token")
-
-    sessions = await sb_get("fc_sessions", f"?token=eq.{token}")
-    if not sessions:
-        raise HTTPException(401, "Invalid session token")
-
-    session = sessions[0]
-    expires_at = session.get("expires_at", "")
-    if expires_at:
-        try:
-            exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00").replace("+00:00", ""))
-            if exp < datetime.utcnow():
-                raise HTTPException(401, "Session expired")
-        except ValueError:
-            pass
-
-    return session
-
-
-# ── Analytics logging ───────────────────────────────────────────────────────
-
-async def log_analytics(
-    event_type: str,
-    user_id: str = None,
-    building_id: str = None,
-    metadata: dict = None,
-    request: Request = None,
-):
-    """Fire-and-forget analytics event logging."""
-    try:
-        event = {
-            "event_type": event_type,
-            "user_id": user_id,
-            "building_id": building_id,
-            "metadata": metadata or {},
-            "timestamp": datetime.utcnow().isoformat(),
-            "device_info": request.headers.get("User-Agent", "")[:500] if request else "",
-            "ip_address": (request.client.host if request and request.client else ""),
-        }
-        await sb_post("fc_analytics", event)
-    except Exception as e:
-        logger.warning(f"Analytics logging failed: {e}")
-
-
-# ── Frontend ────────────────────────────────────────────────────────────────
-
-@app.get("/", response_class=HTMLResponse)
-def serve_app():
-    html_path = Path(__file__).parent / "index.html"
-    if not html_path.exists():
-        return HTMLResponse("<h1>Field Capture app not found</h1>", status_code=404)
-    return HTMLResponse(html_path.read_text(encoding="utf-8"))
-
-
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "app": "BuildingOS Field Capture",
-        "version": "1.4.0",
-        "supabase": bool(SUPABASE_URL),
-        "anthropic": bool(ANTHROPIC_KEY),
-    }
-
-
-# ── Database Migration (self-bootstrapping) ────────────────────────────────
-
-_migration_done = False
-
-async def ensure_schema():
-    """Ensure required tables/columns exist. Idempotent, runs once per process."""
-    global _migration_done
-    if _migration_done:
-        return
-    _migration_done = True
-
-    # Check if fc_sessions table exists
-    async with httpx.AsyncClient() as client:
-        r = await client.get(
-            f"{SUPABASE_URL}/rest/v1/fc_sessions?select=id&limit=1",
-            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-        )
-        sessions_exist = r.status_code != 404 and "PGRST" not in r.text
-
-    if not sessions_exist:
-        logger.warning("fc_sessions table missing — schema migration required!")
-        logger.warning("Run the following SQL in Supabase SQL Editor:")
-        logger.warning("""
--- v1.3.1 Auth Migration
-ALTER TABLE fc_users ADD COLUMN IF NOT EXISTS pin_hash text;
-ALTER TABLE fc_users ADD COLUMN IF NOT EXISTS last_login_at timestamptz;
-
-CREATE TABLE IF NOT EXISTS fc_sessions (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id uuid NOT NULL,
-    token text NOT NULL UNIQUE,
-    created_at timestamptz DEFAULT now(),
-    expires_at timestamptz NOT NULL,
-    device_info text DEFAULT '',
-    ip_address text DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_fc_sessions_token ON fc_sessions(token);
-CREATE INDEX IF NOT EXISTS idx_fc_sessions_user_id ON fc_sessions(user_id);
-
-CREATE TABLE IF NOT EXISTS fc_analytics (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    event_type text NOT NULL,
-    user_id uuid,
-    building_id text,
-    metadata jsonb DEFAULT '{}',
-    timestamp timestamptz DEFAULT now(),
-    device_info text DEFAULT '',
-    ip_address text DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_fc_analytics_event ON fc_analytics(event_type);
-CREATE INDEX IF NOT EXISTS idx_fc_analytics_user ON fc_analytics(user_id);
-        """)
-
-
-@app.on_event("startup")
-async def startup_event():
-    await ensure_schema()
-
-
-@app.post("/api/admin/migrate")
-async def run_migration():
-    """Admin endpoint: outputs migration SQL to run in Supabase SQL Editor."""
-    return {
-        "message": "Run this SQL in your Supabase SQL Editor (supabase.com/dashboard → SQL Editor)",
-        "sql": """
--- v1.3.1 Auth Migration — Run in Supabase SQL Editor
--- Step 1: Add columns to fc_users
-ALTER TABLE fc_users ADD COLUMN IF NOT EXISTS pin_hash text;
-ALTER TABLE fc_users ADD COLUMN IF NOT EXISTS last_login_at timestamptz;
-
--- Step 2: Create sessions table
-CREATE TABLE IF NOT EXISTS fc_sessions (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id uuid NOT NULL,
-    token text NOT NULL UNIQUE,
-    created_at timestamptz DEFAULT now(),
-    expires_at timestamptz NOT NULL,
-    device_info text DEFAULT '',
-    ip_address text DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_fc_sessions_token ON fc_sessions(token);
-CREATE INDEX IF NOT EXISTS idx_fc_sessions_user_id ON fc_sessions(user_id);
-
--- Step 3: Create analytics table
-CREATE TABLE IF NOT EXISTS fc_analytics (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    event_type text NOT NULL,
-    user_id uuid,
-    building_id text,
-    metadata jsonb DEFAULT '{}',
-    timestamp timestamptz DEFAULT now(),
-    device_info text DEFAULT '',
-    ip_address text DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_fc_analytics_event ON fc_analytics(event_type);
-CREATE INDEX IF NOT EXISTS idx_fc_analytics_user ON fc_analytics(user_id);
-
--- Step 4: Set PINs for existing users (they'll need to re-register or admin sets PIN)
--- UPDATE fc_users SET pin_hash = encode(sha256(concat(lower(email), ':1234')::bytea), 'hex') WHERE pin_hash IS NULL;
+Rules:
+- Use only the retrieved context chunks below. Do not use outside knowledge.
+- If the answer is not supported by the context, say you could not find it in the uploaded document.
+- Keep the answer concise and factual.
+- Return ONLY valid JSON in this shape:
+{
+  "answer": "<answer text>",
+  "citations": [
+    {"chunk_index": 0, "page_refs": [1], "quote": "<short direct quote from the context>"}
+  ],
+  "confidence": "high | medium | low"
+}
 """
-    }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# v1.4 MIGRATION ENDPOINT
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.post("/api/admin/migrate-v1.4")
-async def run_migration_v14():
-    """Admin endpoint: outputs v1.4 migration SQL for fc_inspections, fc_inspection_photos, and fc_capture_photos."""
-    return {
-        "message": "Run this SQL in your Supabase SQL Editor (supabase.com/dashboard → SQL Editor)",
-        "version": "1.4.0",
-        "sql": """
--- v1.4 Migration — Full Unit Inspection Tables
--- Run in Supabase SQL Editor
-
--- Step 1: Create fc_inspections table (27-column Inspection Log)
-CREATE TABLE IF NOT EXISTS fc_inspections (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    building_id text NOT NULL,
-    unit_id uuid NOT NULL,
-    inspector_id uuid,
-    inspector_name text DEFAULT '',
-    walk_session_id uuid,
-    inspection_date timestamptz DEFAULT now(),
-
-    -- Safety & Habitability
-    smoke_co_detectors text DEFAULT '',
-    safety_check text DEFAULT '',
-    safety_notes text DEFAULT '',
-
-    -- Mechanicals - Systems
-    hvac_info text DEFAULT '',
-    hvac_condition text DEFAULT '',
-    water_heater_info text DEFAULT '',
-    water_heater_condition text DEFAULT '',
-    elec_panel_info text DEFAULT '',
-    windows_condition text DEFAULT '',
-    plumbing_leaks text DEFAULT '',
-    appliances_condition text DEFAULT '',
-
-    -- Finishes - Reno Scope
-    kitchen_bath_flooring text DEFAULT '',
-    kitchen_bath_condition text DEFAULT '',
-    doors_drywall text DEFAULT '',
-
-    -- Tenant Assessment
-    cleanliness_rating int CHECK (cleanliness_rating IS NULL OR (cleanliness_rating >= 1 AND cleanliness_rating <= 5)),
-    tenant_issues text DEFAULT '',
-    cooperation text DEFAULT '',
-    renewal_rec text DEFAULT '',
-
-    -- Outputs & Actions
-    immediate_wos text DEFAULT '',
-    photo_count int DEFAULT 0,
-    notes text DEFAULT '',
-
-    -- Status
-    status text DEFAULT 'draft' CHECK (status IN ('draft', 'complete')),
-
-    created_at timestamptz DEFAULT now(),
-    updated_at timestamptz DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_fc_inspections_building ON fc_inspections(building_id);
-CREATE INDEX IF NOT EXISTS idx_fc_inspections_unit ON fc_inspections(unit_id);
-CREATE INDEX IF NOT EXISTS idx_fc_inspections_date ON fc_inspections(inspection_date);
-
--- Step 2: Create fc_inspection_photos table
-CREATE TABLE IF NOT EXISTS fc_inspection_photos (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    inspection_id uuid NOT NULL REFERENCES fc_inspections(id),
-    photo_type text DEFAULT 'general',
-    stop_index int,
-    stop_name text DEFAULT '',
-    photo_url text NOT NULL,
-    photo_storage_path text DEFAULT '',
-    photo_filename text DEFAULT '',
-    sort_order int DEFAULT 0,
-    notes text DEFAULT '',
-    created_at timestamptz DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_fc_inspection_photos_inspection ON fc_inspection_photos(inspection_id);
-
--- Step 3: Create fc_capture_photos table (was missing — causing photo errors)
-CREATE TABLE IF NOT EXISTS fc_capture_photos (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    capture_id uuid NOT NULL,
-    photo_type text DEFAULT 'tag',
-    photo_url text NOT NULL,
-    photo_storage_path text DEFAULT '',
-    photo_filename text DEFAULT '',
-    sort_order int DEFAULT 0,
-    created_at timestamptz DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_fc_capture_photos_capture ON fc_capture_photos(capture_id);
-"""
-    }
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# AUTH ENDPOINTS (v1.3.2 — invite-code login + session)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.post("/api/auth/login")
-async def login_field_user(request: Request):
-    """Login/register with name + email + invite code. The invite code IS the auth.
-    - If user exists and has access to a building matching the invite code → session created.
-    - If user doesn't exist → auto-register, join building, create session.
+def extract_json_from_response(text: str) -> dict:
     """
-    body = await request.json()
-    name = body.get("name", "").strip()
-    email = body.get("email", "").strip().lower()
-    invite_code = body.get("invite_code", "").strip().upper()
-
-    if not email:
-        raise HTTPException(400, "Email required")
-    if not invite_code:
-        raise HTTPException(400, "Invite code required")
-
-    # Validate invite code
-    invites = await sb_get("fc_invite_codes", f"?code=eq.{invite_code}&is_active=eq.true")
-    if not invites:
-        raise HTTPException(404, "Invalid or expired invite code")
-    invite = invites[0]
-    if invite.get("uses", 0) >= invite.get("max_uses", 10):
-        raise HTTPException(410, "Invite code has reached maximum uses")
-
-    # Find or create user
-    users = await sb_get("fc_users", f"?email=eq.{email}")
-    is_new = False
-    if users:
-        user = users[0]
-        # Update name if provided and different
-        if name and name != user.get("name", ""):
-            try:
-                await sb_patch("fc_users", f"?id=eq.{user['id']}", {"name": name})
-                user["name"] = name
-            except Exception:
-                pass
-    else:
-        if not name:
-            raise HTTPException(400, "Name and email required for new accounts")
-        created = await sb_post("fc_users", {
-            "name": name,
-            "email": email,
-            "phone": body.get("phone", ""),
-        })
-        if not created:
-            raise HTTPException(500, "Failed to create account")
-        user = created[0]
-        is_new = True
-
-    # Ensure user is a member of the building from the invite code
-    existing_member = await sb_get(
-        "fc_building_members",
-        f"?user_id=eq.{user['id']}&building_id=eq.{invite['building_id']}"
-    )
-    if not existing_member:
-        await sb_post("fc_building_members", {
-            "user_id": user["id"],
-            "building_id": invite["building_id"],
-            "invite_code_id": invite["id"],
-        })
-        await sb_patch("fc_invite_codes", f"?id=eq.{invite['id']}", {"uses": invite.get("uses", 0) + 1})
-
-    # Create session
-    session_info = await create_session(user["id"], request)
-
-    # Update last login
+    Robustly extract JSON from Claude's response.
+    Handles cases where Claude adds explanation text around the JSON.
+    """
+    # Try direct parse first
     try:
-        await sb_patch("fc_users", f"?id=eq.{user['id']}", {"last_login_at": datetime.utcnow().isoformat()})
-    except Exception:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
         pass
 
-    # Log analytics
-    event = "register" if is_new else "login"
-    await log_analytics(event, user_id=user["id"], building_id=invite["building_id"], request=request)
+    # Look for JSON block in markdown fences
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1))
+        except json.JSONDecodeError:
+            pass
 
-    safe_user = {k: v for k, v in user.items() if k != "pin_hash"}
+    # Find the outermost { ... } block
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError("Could not extract valid JSON from Claude response")
+
+
+class DocumentQuestionRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=2000)
+    match_count: int = Field(default=6, ge=1, le=12)
+    match_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
+
+
+class BuildingQuestionRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=2000)
+    document_ids: List[str] = Field(default_factory=list)
+    deferred_items: List[dict[str, Any]] = Field(default_factory=list)
+    match_count: int = Field(default=8, ge=1, le=16)
+    match_threshold: float = Field(default=0.2, ge=0.0, le=1.0)
+
+
+class SharedLinkImportRequest(BaseModel):
+    url: str = Field(min_length=10, max_length=4000)
+    building_id: Optional[str] = Field(default=None)
+
+
+def normalize_content_type(content_type: str) -> str:
+    return "image/jpeg" if content_type == "image/jpg" else content_type
+
+
+def ensure_supported_upload(content_type: str, file_bytes: bytes) -> tuple[str, str]:
+    normalized = normalize_content_type(content_type or "")
+    message_type = SUPPORTED_TYPES.get(normalized)
+    # Also accept spreadsheet types
+    if not message_type and normalized in SPREADSHEET_TYPES:
+        message_type = "spreadsheet"
+    if not message_type:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {normalized}. Supported: PDF, PNG, JPG, WEBP, Excel, CSV.",
+        )
+    max_upload_mb = int(os.getenv("MAX_UPLOAD_MB", "500"))
+    if len(file_bytes) > max_upload_mb * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {max_upload_mb}MB.")
+    return normalized, message_type
+
+
+def build_claude_document_content(file_bytes: bytes, content_type: str, message_type: str) -> dict[str, Any]:
+    b64_data = base64.standard_b64encode(file_bytes).decode("utf-8")
     return {
-        "user": safe_user,
-        "token": session_info["token"],
-        "expires_at": session_info["expires_at"],
-        "is_new": is_new,
-        "building": {
-            "building_id": invite["building_id"],
-            "building_name": invite.get("building_name", ""),
-            "building_address": invite.get("building_address", ""),
+        "type": message_type,
+        "source": {
+            "type": "base64",
+            "media_type": content_type,
+            "data": b64_data,
         },
     }
 
 
-@app.get("/api/auth/verify")
-async def verify_auth(session: dict = Depends(verify_session)):
-    """Verify a session token is still valid. Returns user info."""
-    users = await sb_get("fc_users", f"?id=eq.{session['user_id']}")
-    if not users:
-        raise HTTPException(401, "User not found")
-    safe_user = {k: v for k, v in users[0].items() if k != "pin_hash"}
-    return {"valid": True, "user": safe_user}
+def spreadsheet_to_text(file_bytes: bytes, filename: str, content_type: str) -> str:
+    """Convert Excel/CSV file bytes into a text representation for Claude analysis."""
+    import io
+    lines = []
+    lines.append(f"=== SPREADSHEET DATA: {filename} ===\n")
+
+    if content_type in ("text/csv", "application/csv") or filename.lower().endswith(".csv"):
+        import csv
+        text = file_bytes.decode("utf-8", errors="replace")
+        reader = csv.reader(io.StringIO(text))
+        rows = list(reader)
+        lines.append(f"CSV file with {len(rows)} rows\n")
+        for i, row in enumerate(rows[:500]):  # cap at 500 rows
+            lines.append("\t".join(str(c) for c in row))
+    else:
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            lines.append(f"\n--- Sheet: {sheet_name} ---")
+            row_count = 0
+            for row in ws.iter_rows(values_only=True):
+                if row_count >= 500:
+                    lines.append(f"... (truncated, sheet has more rows)")
+                    break
+                cells = [str(c) if c is not None else "" for c in row]
+                if any(cells):
+                    lines.append("\t".join(cells))
+                    row_count += 1
+        wb.close()
+
+    return "\n".join(lines)
 
 
-@app.post("/api/auth/logout")
-async def logout(session: dict = Depends(verify_session)):
-    """Invalidate the current session."""
-    await sb_delete("fc_sessions", f"?token=eq.{session['token']}")
-    return {"logged_out": True}
+def analyze_spreadsheet_bytes(file_bytes: bytes, filename: str, content_type: str, api_key: str) -> dict:
+    """Analyze an Excel/CSV file by converting to text and sending to Claude."""
+    text_repr = spreadsheet_to_text(file_bytes, filename, content_type)
+    logger.info(f"Spreadsheet converted to text: {filename} ({len(text_repr)} chars)")
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# OFFICE USER ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.post("/api/buildings/{building_id}/setup")
-async def setup_building_for_field_capture(building_id: str, request: Request):
-    body = await request.json()
-    building_name = body.get("building_name", "")
-    building_address = body.get("building_address", "")
-    units = body.get("units", [])
-    equipment_types = body.get("equipment_types", [])
-    created_by = body.get("created_by", "")
-
-    if units:
-        unit_rows = [{
-            "building_id": building_id,
-            "unit_name": u.get("name", u.get("unit_name", "")),
-            "floor": u.get("floor", ""),
-            "unit_type": u.get("unit_type", "residential"),
-            "sqft": u.get("sqft"),
-            "bedrooms": u.get("bedrooms"),
-            "bathrooms": u.get("bathrooms"),
-            "notes": u.get("notes", ""),
-            "sort_order": i,
-        } for i, u in enumerate(units)]
-        await sb_post("fc_units", unit_rows)
-
-    if equipment_types:
-        type_rows = [{
-            "building_id": building_id,
-            "name": et.get("name", ""),
-            "icon": et.get("icon", "\U0001f527"),
-            "description": et.get("description", ""),
-            "sub_types": json.dumps(et.get("sub_types", [])),  # v1.3
-            "sort_order": i,
-        } for i, et in enumerate(equipment_types)]
-        await sb_post("fc_equipment_types", type_rows)
-
-    code = _generate_invite_code()
-    await sb_post("fc_invite_codes", {
-        "code": code,
-        "building_id": building_id,
-        "building_name": building_name,
-        "building_address": building_address,
-        "created_by": created_by,
-        "max_uses": 10,
-        "expires_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
-    })
-
-    return {
-        "building_id": building_id,
-        "units_created": len(units),
-        "equipment_types_created": len(equipment_types),
-        "invite_code": code,
-        "invite_url": f"/join/{code}",
-    }
-
-
-@app.post("/api/invite-codes")
-async def create_invite_code(request: Request):
-    body = await request.json()
-    code = _generate_invite_code()
-    invite = await sb_post("fc_invite_codes", {
-        "code": code,
-        "building_id": body["building_id"],
-        "building_name": body.get("building_name", ""),
-        "building_address": body.get("building_address", ""),
-        "created_by": body.get("created_by", ""),
-        "max_uses": body.get("max_uses", 10),
-        "expires_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
-    })
-    return {"code": code, "invite": invite[0] if invite else None}
-
-
-@app.get("/api/invite-codes/{code}")
-async def validate_invite_code(code: str):
-    rows = await sb_get("fc_invite_codes", f"?code=eq.{code}&is_active=eq.true")
-    if not rows:
-        raise HTTPException(404, "Invalid or expired invite code")
-    invite = rows[0]
-    if invite.get("uses", 0) >= invite.get("max_uses", 10):
-        raise HTTPException(410, "Invite code has reached maximum uses")
-    return {
-        "valid": True,
-        "building_id": invite["building_id"],
-        "building_name": invite["building_name"],
-        "building_address": invite.get("building_address", ""),
-    }
-
-
-def _generate_invite_code() -> str:
-    chars = string.ascii_uppercase + string.digits
-    return ''.join(random.choices(chars, k=6))
-
-
-# ── Building config endpoints ───────────────────────────────────────────────
-
-@app.post("/api/buildings/{building_id}/units")
-async def add_units(building_id: str, request: Request, session: dict = Depends(verify_session)):
-    body = await request.json()
-    units = body if isinstance(body, list) else body.get("units", [])
-    rows = [{
-        "building_id": building_id,
-        "unit_name": u.get("name", u.get("unit_name", "")),
-        "floor": u.get("floor", ""),
-        "unit_type": u.get("unit_type", "residential"),
-        "sqft": u.get("sqft"),
-        "bedrooms": u.get("bedrooms"),
-        "bathrooms": u.get("bathrooms"),
-        "sort_order": i,
-    } for i, u in enumerate(units)]
-    result = await sb_post("fc_units", rows)
-    return {"units_created": len(result), "units": result}
-
-
-@app.get("/api/buildings/{building_id}/units")
-async def list_units(building_id: str, session: dict = Depends(verify_session)):
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}&order=sort_order,unit_name")
-    equip_types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&order=sort_order")
-    captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&select=id,unit_id,equipment_type_id")
-
-    type_count = len(equip_types)
-    capture_map = {}
-    for c in captures:
-        uid = c.get("unit_id")
-        if uid not in capture_map:
-            capture_map[uid] = set()
-        capture_map[uid].add(c.get("equipment_type_id"))
-
-    enriched = []
-    for u in units:
-        captured_types = capture_map.get(u["id"], set())
-        enriched.append({
-            **u,
-            "captures_done": len(captured_types),
-            "captures_total": type_count,
-            "is_complete": len(captured_types) >= type_count if type_count > 0 else False,
-        })
-
-    return {"units": enriched, "equipment_type_count": type_count}
-
-
-@app.post("/api/buildings/{building_id}/equipment-types")
-async def add_equipment_types(building_id: str, request: Request, session: dict = Depends(verify_session)):
-    body = await request.json()
-    types = body if isinstance(body, list) else body.get("equipment_types", [])
-    rows = [{
-        "building_id": building_id,
-        "name": t.get("name", ""),
-        "icon": t.get("icon", "\U0001f527"),
-        "description": t.get("description", ""),
-        "sub_types": json.dumps(t.get("sub_types", [])),  # v1.3
-        "sort_order": i,
-    } for i, t in enumerate(types)]
-    result = await sb_post("fc_equipment_types", rows)
-    return {"types_created": len(result), "equipment_types": result}
-
-
-@app.get("/api/buildings/{building_id}/equipment-types")
-async def list_equipment_types(building_id: str, session: dict = Depends(verify_session)):
-    types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&order=sort_order")
-    return {"equipment_types": types}
-
-
-# v1.3: Get pre-configured sub-types for equipment categories
-@app.get("/api/equipment-sub-types")
-async def get_equipment_sub_types(session: dict = Depends(verify_session)):
-    """Return pre-configured sub-types for each equipment category."""
-    return {"sub_types": EQUIPMENT_SUB_TYPES}
-
-
-# v1.3: AI equipment identification (no tag visible)
-@app.post("/api/identify-equipment")
-async def identify_equipment(
-    photo: UploadFile = File(...),
-    session: dict = Depends(verify_session),
-):
-    """Send a photo of equipment (no tag) to AI for visual identification."""
-    photo_bytes = await photo.read()
-    if not photo_bytes:
-        raise HTTPException(400, "Empty photo")
-
-    if not ANTHROPIC_KEY:
-        raise HTTPException(503, "AI service not configured")
-
+    client = anthropic.Anthropic(api_key=api_key)
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-        b64_photo = base64.b64encode(photo_bytes).decode("utf-8")
-        media_type = photo.content_type or "image/jpeg"
-
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=16384,
             messages=[{
                 "role": "user",
                 "content": [
-                    {
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": media_type, "data": b64_photo},
-                    },
-                    {"type": "text", "text": EQUIPMENT_IDENTIFICATION_PROMPT},
+                    {"type": "text", "text": f"The following is data extracted from a building-related spreadsheet.\n\n{text_repr}"},
+                    {"type": "text", "text": ANALYSIS_PROMPT},
                 ],
             }],
         )
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=401, detail="Invalid Anthropic API key.")
+    except anthropic.RateLimitError:
+        raise HTTPException(status_code=429, detail="Rate limit reached. Please wait and retry.")
+    except anthropic.APIError as exc:
+        raise HTTPException(status_code=502, detail=f"AI analysis failed: {str(exc)}")
 
-        raw_text = response.content[0].text.strip()
-        if raw_text.startswith("```"):
-            raw_text = raw_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    raw_text = _get_text(response.content[0])
+    try:
+        intelligence = extract_json_from_response(raw_text)
+    except ValueError:
+        raise HTTPException(status_code=500, detail="AI returned malformed data from spreadsheet. Try re-uploading.")
 
-        result = json.loads(raw_text)
-        return {"identification": result, "success": True}
-
-    except Exception as e:
-        logger.error(f"Equipment identification failed: {e}")
-        return {"identification": None, "success": False, "error": str(e)}
-
-
-# v1.3: Custom equipment type creation by field users
-@app.post("/api/buildings/{building_id}/equipment-types/custom")
-async def add_custom_equipment_type(building_id: str, request: Request, session: dict = Depends(verify_session)):
-    """Field user adds a custom equipment type not in the pre-set list."""
-    body = await request.json()
-    name = body.get("name", "").strip()
-    if not name:
-        raise HTTPException(400, "Equipment type name required")
-
-    # Check for duplicates
-    existing = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&name=eq.{name}")
-    if existing:
-        return {"equipment_type": existing[0], "already_exists": True}
-
-    # Get current max sort_order
-    all_types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&order=sort_order.desc&limit=1")
-    next_order = (all_types[0]["sort_order"] + 1) if all_types else 0
-
-    result = await sb_post("fc_equipment_types", {
-        "building_id": building_id,
-        "name": name,
-        "icon": body.get("icon", "\U0001f527"),
-        "description": body.get("description", ""),
-        "sub_types": json.dumps(body.get("sub_types", [])),
-        "sort_order": next_order,
-        "is_custom": True,
-    })
-    return {"equipment_type": result[0] if result else None, "already_exists": False}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# FIELD USER ENDPOINTS (protected by session)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.post("/api/join/{code}")
-async def join_building(code: str, request: Request, session: dict = Depends(verify_session)):
-    body = await request.json()
-    user_id = body.get("user_id") or session.get("user_id")
-    if not user_id:
-        raise HTTPException(400, "user_id required")
-
-    invites = await sb_get("fc_invite_codes", f"?code=eq.{code}&is_active=eq.true")
-    if not invites:
-        raise HTTPException(404, "Invalid or expired invite code")
-    invite = invites[0]
-
-    if invite.get("uses", 0) >= invite.get("max_uses", 10):
-        raise HTTPException(410, "Invite code has reached maximum uses")
-
-    existing = await sb_get(
-        "fc_building_members",
-        f"?user_id=eq.{user_id}&building_id=eq.{invite['building_id']}"
-    )
-    if existing:
-        return {"already_member": True, "building_id": invite["building_id"], "building_name": invite["building_name"]}
-
-    await sb_post("fc_building_members", {
-        "user_id": user_id,
-        "building_id": invite["building_id"],
-        "invite_code_id": invite["id"],
-    })
-
-    await sb_patch("fc_invite_codes", f"?id=eq.{invite['id']}", {"uses": invite.get("uses", 0) + 1})
-
-    return {
-        "joined": True,
-        "building_id": invite["building_id"],
-        "building_name": invite["building_name"],
-        "building_address": invite.get("building_address", ""),
+    intelligence["_meta"] = {
+        "filename": filename,
+        "file_size_kb": round(len(file_bytes) / 1024, 1),
+        "content_type": content_type,
+        "model": "claude-haiku-4-5-20251001",
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+        "source_type": "spreadsheet",
     }
+    return intelligence
 
 
-@app.get("/api/users/{user_id}/buildings")
-async def list_user_buildings(user_id: str, session: dict = Depends(verify_session)):
-    # Ensure user can only see their own buildings
-    if session.get("user_id") != user_id:
-        raise HTTPException(403, "Access denied")
+def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_key: str) -> dict:
+    normalized_type, message_type = ensure_supported_upload(content_type, file_bytes)
+    logger.info(f"Analyzing: {filename} ({len(file_bytes)/1024:.1f} KB, {normalized_type})")
 
-    memberships = await sb_get("fc_building_members", f"?user_id=eq.{user_id}")
-    buildings = []
-    for m in memberships:
-        bid = m["building_id"]
-        units = await sb_get("fc_units", f"?building_id=eq.{bid}&select=id")
-        types = await sb_get("fc_equipment_types", f"?building_id=eq.{bid}&select=id")
-        captures = await sb_get("fc_captures", f"?building_id=eq.{bid}&select=id")
-        total_expected = len(units) * len(types)
-        buildings.append({
-            "building_id": bid,
-            "role": m.get("role", "field_tech"),
-            "joined_at": m.get("joined_at"),
-            "unit_count": len(units),
-            "equipment_type_count": len(types),
-            "captures_done": len(captures),
-            "captures_total": total_expected,
-        })
+    doc_content = build_claude_document_content(file_bytes, normalized_type, message_type)
 
-    for b in buildings:
-        invites = await sb_get("fc_invite_codes", f"?building_id=eq.{b['building_id']}&limit=1")
-        if invites:
-            b["building_name"] = invites[0].get("building_name", "")
-            b["building_address"] = invites[0].get("building_address", "")
-
-    return {"buildings": buildings}
-
-
-# ── Walk Sessions ───────────────────────────────────────────────────────────
-
-@app.post("/api/buildings/{building_id}/walks")
-async def start_walk(building_id: str, request: Request, session: dict = Depends(verify_session)):
-    body = await request.json()
-    walk = await sb_post("fc_walk_sessions", {
-        "building_id": building_id,
-        "user_id": body.get("user_id") or session.get("user_id"),
-        "user_name": body.get("user_name", ""),
-    })
-
-    await log_analytics("walk_start", user_id=session.get("user_id"), building_id=building_id, request=request)
-
-    return {"walk": walk[0]}
-
-
-@app.patch("/api/walks/{walk_id}")
-async def update_walk(walk_id: str, request: Request, session: dict = Depends(verify_session)):
-    body = await request.json()
-    update = {}
-    if "status" in body:
-        update["status"] = body["status"]
-        if body["status"] == "completed":
-            update["completed_at"] = datetime.utcnow().isoformat()
-    if "notes" in body:
-        update["notes"] = body["notes"]
-    if "units_visited" in body:
-        update["units_visited"] = body["units_visited"]
-    if "captures_made" in body:
-        update["captures_made"] = body["captures_made"]
-
-    result = await sb_patch("fc_walk_sessions", f"?id=eq.{walk_id}", update)
-
-    if body.get("status") == "completed":
-        await log_analytics("walk_end", user_id=session.get("user_id"), metadata={"walk_id": walk_id}, request=request)
-
-    return {"walk": result[0] if result else None}
-
-
-# ── Unit Visits ─────────────────────────────────────────────────────────────
-
-@app.post("/api/buildings/{building_id}/units/{unit_id}/visit")
-async def visit_unit(building_id: str, unit_id: str, request: Request, session: dict = Depends(verify_session)):
-    body = await request.json()
-    visit = await sb_post("fc_unit_visits", {
-        "walk_session_id": body.get("walk_session_id"),
-        "unit_id": unit_id,
-        "building_id": building_id,
-        "user_id": body.get("user_id") or session.get("user_id"),
-    })
-    return {"visit": visit[0]}
-
-
-@app.patch("/api/visits/{visit_id}")
-async def update_visit(visit_id: str, request: Request, session: dict = Depends(verify_session)):
-    body = await request.json()
-    update = {}
-    if "status" in body:
-        update["status"] = body["status"]
-        if body["status"] in ("completed", "skipped", "access_issue"):
-            update["completed_at"] = datetime.utcnow().isoformat()
-    if "access_note" in body:
-        update["access_note"] = body["access_note"]
-    result = await sb_patch("fc_unit_visits", f"?id=eq.{visit_id}", update)
-    return {"visit": result[0] if result else None}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# CAPTURE — photo → AI extraction → store
-# v1.3: Updated prompt to extract brand vs manufacturer separately
-# ═══════════════════════════════════════════════════════════════════════════════
-
-TAG_EXTRACTION_PROMPT = """You are analyzing a photo of an equipment tag/nameplate from a building.
-Extract ALL readable information from the tag. Return a JSON object with these fields:
-
-{
-  "brand": "brand name visible on the unit (e.g. 'Goodman', 'Carrier', 'Rheem')",
-  "make": "parent manufacturer if different from brand (e.g. 'Daikin' makes 'Goodman'). If same as brand, repeat it.",
-  "model_name": "model name if visible",
-  "model_number": "model/part number",
-  "serial_number": "serial number",
-  "manufacture_year": "year of manufacture if visible",
-  "description": "brief description of the equipment based on what you see",
-  "additional_specs": {
-    "btu": "BTU rating if visible",
-    "voltage": "voltage if visible",
-    "amperage": "amperage if visible",
-    "phase": "single phase or three phase if visible",
-    "refrigerant_type": "refrigerant type if visible (e.g. R-410A, R-22)",
-    "refrigerant_charge": "refrigerant charge amount if visible",
-    "capacity": "capacity/tonnage if visible",
-    "efficiency": "SEER/EER/AFUE/UEF rating if visible",
-    "wattage": "wattage if visible",
-    "gallons": "tank capacity in gallons if visible (water heaters)",
-    "recovery_rate": "recovery rate GPH if visible (water heaters)",
-    "breaker_amps": "main breaker amperage if visible (electrical panels)",
-    "bus_rating": "bus bar rating if visible (electrical panels)",
-    "fuel_type": "gas/electric/heat pump/propane if determinable",
-    "min_circuit_amps": "minimum circuit ampacity if visible",
-    "max_fuse_size": "maximum fuse/breaker size if visible",
-    "weight": "unit weight if visible",
-    "dimensions": "physical dimensions if visible"
-  },
-  "tag_condition": "good/fair/poor/illegible",
-  "confidence": "high/medium/low"
-}
-
-IMPORTANT:
-- "brand" is the name prominently displayed on the equipment (what a field tech sees).
-- "make" is the parent manufacturer (may differ — e.g., Goodman brand is made by Daikin).
-- If they are the same company, put the same value in both fields.
-- Extract EVERY piece of technical data visible on the tag — voltages, amperages, BTU, efficiency ratings, refrigerant type, capacity, etc.
-- If a field is not readable, use null. Be precise — don't guess serial numbers.
-- Return ONLY valid JSON, no markdown."""
-
-
-EQUIPMENT_IDENTIFICATION_PROMPT = """You are analyzing a photo of building equipment. There is NO readable tag or nameplate.
-Based on the visual appearance of the equipment, identify what it is.
-
-Return a JSON object:
-{
-  "identified_type": "what this equipment appears to be (e.g. 'HVAC Condenser', 'Tankless Water Heater', 'Electrical Sub-Panel')",
-  "equipment_category": "one of: 'HVAC', 'Water Heater', 'Electrical Panel', 'Other'",
-  "suggested_sub_type": "specific sub-type (e.g. 'Condenser', 'Air Handler', 'PTAC', 'Tank', 'Tankless', 'Main Panel', 'Sub-Panel')",
-  "brand": "brand name if visible on the unit body (not tag), or null",
-  "description": "brief description of what you see — color, size, mounting, visible features",
-  "estimated_age": "rough age estimate based on appearance if possible, or null",
-  "condition_visual": "visual condition assessment: excellent/good/fair/poor",
-  "confidence": "high/medium/low — how confident you are in the identification"
-}
-
-Be helpful but honest. If you can't tell what it is, say so. Return ONLY valid JSON, no markdown."""
-
-
-# Pre-configured sub-types for Phase 1 equipment categories
-EQUIPMENT_SUB_TYPES = {
-    "HVAC": [
-        "Condenser (Outdoor Unit)",
-        "Air Handler (Indoor Unit)",
-        "PTAC (Packaged Terminal AC)",
-        "Package Unit (All-in-One)",
-        "Mini-Split (Ductless)",
-        "Furnace",
-        "Heat Pump",
-        "Rooftop Unit (RTU)",
-        "Thermostat",
-    ],
-    "Water Heater": [
-        "Tank (Gas)",
-        "Tank (Electric)",
-        "Tankless (Gas)",
-        "Tankless (Electric)",
-        "Heat Pump Water Heater",
-        "Boiler",
-        "Recirculation Pump",
-    ],
-    "Electrical Panel": [
-        "Main Panel",
-        "Sub-Panel",
-        "Disconnect Box",
-        "Meter",
-        "Transfer Switch",
-        "Breaker Panel",
-    ],
-}
-
-
-@app.post("/api/buildings/{building_id}/units/{unit_id}/capture")
-async def capture_equipment(
-    building_id: str,
-    unit_id: str,
-    photo: UploadFile = File(...),
-    equipment_type_id: str = Form(...),
-    sub_type: str = Form(None),              # v1.3: HVAC sub-type
-    walk_session_id: str = Form(None),
-    unit_visit_id: str = Form(None),
-    user_id: str = Form(None),
-    user_name: str = Form(""),
-    condition_rating: str = Form(None),
-    condition_notes: str = Form(""),
-    tag_readable: bool = Form(True),
-    session: dict = Depends(verify_session),
-):
-    """
-    Core capture endpoint:
-    1. Upload photo to Supabase Storage
-    2. Send to Claude Vision for tag extraction
-    3. Store capture record with AI-extracted data
-    4. v1.3: Store photo in fc_capture_photos for multi-photo support
-    """
-    photo_bytes = await photo.read()
-    if not photo_bytes:
-        raise HTTPException(400, "Empty photo")
-
-    eq_types = await sb_get("fc_equipment_types", f"?id=eq.{equipment_type_id}")
-    eq_type_name = eq_types[0]["name"] if eq_types else "unknown"
-    eq_type_slug = eq_type_name.lower().replace(" ", "_").replace("/", "_")
-
-    units = await sb_get("fc_units", f"?id=eq.{unit_id}")
-    unit_name = units[0]["unit_name"] if units else "unknown"
-    unit_slug = unit_name.lower().replace(" ", "_").replace("/", "_")
-
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename = f"{building_id}_{unit_slug}_{eq_type_slug}_{timestamp}.jpg"
-    storage_path = f"field-capture/{building_id}/{unit_slug}/{filename}"
-
-    # 1. Upload photo
-    photo_url = await sb_upload("equipment-photos", storage_path, photo_bytes)
-
-    # 2. AI extraction
-    ai_data = {}
-    ai_confidence = None
-    ai_raw = None
-
-    if tag_readable and ANTHROPIC_KEY:
-        try:
-            client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-            b64_photo = base64.b64encode(photo_bytes).decode("utf-8")
-            media_type = photo.content_type or "image/jpeg"
-
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1024,
-                messages=[{
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=16384,
+            messages=[
+                {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {"type": "base64", "media_type": media_type, "data": b64_photo},
-                        },
-                        {"type": "text", "text": TAG_EXTRACTION_PROMPT},
-                    ],
-                }],
+                    "content": [doc_content, {"type": "text", "text": ANALYSIS_PROMPT}],
+                }
+            ],
+        )
+    except anthropic.AuthenticationError as exc:
+        logger.error("Anthropic auth error: %s", exc)
+        raise HTTPException(status_code=401, detail="Invalid Anthropic API key. Check your .env file.")
+    except anthropic.PermissionDeniedError as exc:
+        logger.error("Anthropic permission denied (likely low credits): %s", exc)
+        raise HTTPException(status_code=403, detail="Anthropic API access denied — your credit balance may be too low. Check console.anthropic.com.")
+    except anthropic.RateLimitError:
+        raise HTTPException(status_code=429, detail="Anthropic rate limit reached. Please wait a moment and retry.")
+    except anthropic.BadRequestError as exc:
+        logger.error("Anthropic bad request: %s", exc)
+        raise HTTPException(status_code=400, detail=f"Document could not be processed: {str(exc)}")
+    except anthropic.APIError as exc:
+        logger.error("Anthropic API error: %s", exc)
+        raise HTTPException(status_code=502, detail=f"AI analysis failed: {str(exc)}")
+    except Exception as exc:
+        logger.error("Unexpected error calling Claude: %s: %s", type(exc).__name__, exc)
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {type(exc).__name__}: {str(exc)}")
+
+    raw_text = _get_text(response.content[0])
+    logger.info("Claude response length: %s chars", len(raw_text))
+
+    try:
+        intelligence = extract_json_from_response(raw_text)
+    except ValueError:
+        logger.error("JSON extraction failed. Raw response:\n%s", raw_text[:500])
+        raise HTTPException(
+            status_code=500,
+            detail="AI returned malformed data. Try re-uploading the document.",
+        )
+
+    intelligence["_meta"] = {
+        "filename": filename,
+        "file_size_kb": round(len(file_bytes) / 1024, 1),
+        "content_type": normalized_type,
+        "model": "claude-haiku-4-5-20251001",
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    }
+    return intelligence
+
+
+def guess_content_type_from_filename(filename: str) -> str:
+    suffix = Path(filename or "").suffix.lower()
+    return {
+        ".pdf": "application/pdf",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(suffix, "application/octet-stream")
+
+
+def filename_from_headers(headers: httpx.Headers) -> Optional[str]:
+    disposition = headers.get("content-disposition", "")
+    if not disposition:
+        return None
+    match = re.search(r"filename\*=UTF-8''([^;]+)", disposition, re.IGNORECASE)
+    if match:
+        return unquote(match.group(1)).strip().strip('"')
+    match = re.search(r'filename="?([^";]+)"?', disposition, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+def filename_from_url(url: str) -> Optional[str]:
+    name = Path(urlparse(url).path.rstrip("/")).name
+    if name and "." in name:
+        return unquote(name)
+    return None
+
+
+def extract_google_drive_file_id(url: str) -> Optional[str]:
+    for pattern in [r"/file/d/([a-zA-Z0-9_-]+)", r"[?&]id=([a-zA-Z0-9_-]+)", r"/d/([a-zA-Z0-9_-]+)"]:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def extract_google_drive_folder_id(url: str) -> Optional[str]:
+    for pattern in [r"/folders/([a-zA-Z0-9_-]+)", r"[?&]folder=([a-zA-Z0-9_-]+)"]:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def extract_google_confirm_url(page_html: str, fallback_url: str) -> Optional[str]:
+    match = re.search(r'href="([^"]*confirm[^"]*)"', page_html, re.IGNORECASE)
+    if not match:
+        match = re.search(r'action="([^"]*uc[^"]*)"', page_html, re.IGNORECASE)
+    if not match:
+        return None
+
+    raw = html.unescape(match.group(1))
+    if raw.startswith("/"):
+        parsed = urlparse(fallback_url)
+        return f"{parsed.scheme}://{parsed.netloc}{raw}"
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    return None
+
+
+def is_google_drive_folder_url(url: str) -> bool:
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    return ("drive.google.com" in host or "docs.google.com" in host) and extract_google_drive_folder_id(url) is not None
+
+
+def build_shared_link_candidates(url: str) -> tuple[list[str], str, Optional[str]]:
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if "drive.google.com" in host or "docs.google.com" in host:
+        file_id = extract_google_drive_file_id(url)
+        if not file_id:
+            raise HTTPException(status_code=400, detail="Google Drive link is missing a file ID.")
+        query = parse_qs(parsed.query)
+        params = {"export": "download", "id": file_id}
+        resource_key = query.get("resourcekey", [None])[0]
+        if resource_key:
+            params["resourcekey"] = resource_key
+        direct_url = f"https://drive.google.com/uc?{urlencode(params)}"
+        return [
+            direct_url,
+            f"https://drive.google.com/uc?id={file_id}&export=download",
+            url,
+        ], "google_drive_link", file_id
+    if any(part in host for part in ["1drv.ms", "onedrive.live.com", "sharepoint.com"]):
+        query = parse_qs(parsed.query)
+        query["download"] = ["1"]
+        return [
+            urlunparse(parsed._replace(query=urlencode(query, doseq=True))),
+            url,
+        ], "onedrive_link", None
+    return [url], "shared_link", None
+
+
+async def download_shared_file(url: str) -> tuple[bytes, str, str, dict[str, Any]]:
+    candidates, source_kind, google_file_id = build_shared_link_candidates(url)
+    headers = {"User-Agent": "BuildingOS/1.0"}
+    last_status: Optional[int] = None
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=45.0) as client:
+        for candidate in candidates:
+            response = await client.get(candidate, headers=headers)
+            last_status = response.status_code
+            content_type = normalize_content_type(
+                response.headers.get("content-type", "").split(";")[0].strip().lower()
             )
 
-            raw_text = response.content[0].text.strip()
-            if raw_text.startswith("```"):
-                raw_text = raw_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            if google_file_id and content_type == "text/html" and "drive.google.com" in str(response.url):
+                confirm_match = re.search(r"confirm=([0-9A-Za-z_-]+)", response.text)
+                if confirm_match:
+                    confirm_url = (
+                        "https://drive.google.com/uc"
+                        f"?export=download&confirm={confirm_match.group(1)}&id={google_file_id}"
+                    )
+                    response = await client.get(confirm_url, headers=headers)
+                    last_status = response.status_code
+                    content_type = normalize_content_type(
+                        response.headers.get("content-type", "").split(";")[0].strip().lower()
+                    )
+                else:
+                    confirm_url = extract_google_confirm_url(response.text, str(response.url))
+                    if confirm_url:
+                        response = await client.get(confirm_url, headers=headers)
+                        last_status = response.status_code
+                        content_type = normalize_content_type(
+                            response.headers.get("content-type", "").split(";")[0].strip().lower()
+                        )
 
-            ai_data = json.loads(raw_text)
-            ai_confidence = ai_data.get("confidence", "medium")
-            ai_raw = ai_data
-            logger.info(f"AI extraction successful for {filename}: confidence={ai_confidence}")
+            if response.status_code >= 400:
+                continue
 
-        except Exception as e:
-            logger.error(f"AI extraction failed: {e}")
-            ai_data = {}
-            ai_confidence = "failed"
+            filename = (
+                filename_from_headers(response.headers)
+                or filename_from_url(str(response.url))
+                or filename_from_url(url)
+                or "shared-document.pdf"
+            )
+            if content_type in {"", "application/octet-stream"}:
+                content_type = guess_content_type_from_filename(filename)
+            if content_type == "text/html":
+                continue
 
-    # 3. Store capture record
-    capture_record = {
-        "building_id": building_id,
-        "unit_id": unit_id,
-        "unit_visit_id": unit_visit_id,
-        "equipment_type_id": equipment_type_id,
-        "walk_session_id": walk_session_id,
-        "captured_by": user_id or session.get("user_id"),
-        "captured_by_name": user_name,
-        "sub_type": sub_type,                 # v1.3
-        "photo_url": photo_url,
-        "photo_storage_path": storage_path,
-        "photo_filename": filename,
-        "brand": ai_data.get("brand"),        # v1.3
-        "make": ai_data.get("make"),
-        "model_name": ai_data.get("model_name"),
-        "model_number": ai_data.get("model_number"),
-        "serial_number": ai_data.get("serial_number"),
-        "manufacture_year": ai_data.get("manufacture_year"),
-        "description": ai_data.get("description"),
-        "additional_specs": ai_data.get("additional_specs", {}),
-        "ai_confidence": ai_confidence,
-        "ai_raw_response": ai_raw,
-        "condition_rating": condition_rating,
-        "condition_notes": condition_notes,
-        "tag_readable": tag_readable,
-    }
+            file_bytes = response.content
+            if not file_bytes:
+                continue
 
-    result = await sb_post("fc_captures", capture_record)
-    capture = result[0] if result else capture_record
+            normalized_type, _ = ensure_supported_upload(content_type, file_bytes)
+            if Path(filename).suffix.lower() not in {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".xlsx", ".xls", ".csv"}:
+                default_ext = {
+                    "application/pdf": ".pdf",
+                    "image/png": ".png",
+                    "image/jpeg": ".jpg",
+                    "image/webp": ".webp",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+                    "application/vnd.ms-excel": ".xls",
+                    "text/csv": ".csv",
+                }.get(normalized_type, "")
+                filename = f"{Path(filename).stem or 'shared-document'}{default_ext}"
 
-    # 4. v1.3: Store tag photo in fc_capture_photos (wrapped in try/except — table may not exist)
-    if capture.get("id"):
-        await sb_post_safe("fc_capture_photos", {
-            "capture_id": capture["id"],
-            "photo_type": "tag",
-            "photo_url": photo_url,
-            "photo_storage_path": storage_path,
-            "photo_filename": filename,
-            "sort_order": 0,
-        })
+            return (
+                file_bytes,
+                filename,
+                normalized_type,
+                {
+                    "source": source_kind,
+                    "source_url": url,
+                    "resolved_url": str(response.url),
+                },
+            )
 
-    # Log analytics
-    await log_analytics("capture", user_id=session.get("user_id"), building_id=building_id,
-                        metadata={"capture_id": capture.get("id"), "equipment_type": eq_type_name}, request=None)
-
-    return {
-        "capture": capture,
-        "ai_extracted": bool(ai_data),
-        "photo_url": photo_url,
-        "filename": filename,
-    }
-
-
-# v1.3: Additional photo upload for an existing capture (unit overview, detail, etc.)
-@app.post("/api/captures/{capture_id}/photos")
-async def add_capture_photo(
-    capture_id: str,
-    photo: UploadFile = File(...),
-    photo_type: str = Form("unit"),  # 'unit', 'detail', 'condition'
-    session: dict = Depends(verify_session),
-):
-    """Upload an additional photo for an existing capture (e.g., unit overview photo)."""
-    photo_bytes = await photo.read()
-    if not photo_bytes:
-        raise HTTPException(400, "Empty photo")
-
-    # Get capture to build storage path
-    captures = await sb_get("fc_captures", f"?id=eq.{capture_id}")
-    if not captures:
-        raise HTTPException(404, "Capture not found")
-    cap = captures[0]
-
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename = f"{cap['building_id']}_{photo_type}_{timestamp}.jpg"
-    storage_path = f"field-capture/{cap['building_id']}/{photo_type}/{filename}"
-
-    photo_url = await sb_upload("equipment-photos", storage_path, photo_bytes)
-
-    # Get next sort_order (wrapped in try/except — table may not exist)
-    existing_photos = await sb_get_safe("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order.desc&limit=1")
-    next_order = (existing_photos[0]["sort_order"] + 1) if existing_photos else 1
-
-    result = await sb_post_safe("fc_capture_photos", {
-        "capture_id": capture_id,
-        "photo_type": photo_type,
-        "photo_url": photo_url,
-        "photo_storage_path": storage_path,
-        "photo_filename": filename,
-        "sort_order": next_order,
-    })
-
-    await log_analytics("photo_upload", user_id=session.get("user_id"), building_id=cap.get("building_id"),
-                        metadata={"capture_id": capture_id, "photo_type": photo_type}, request=None)
-
-    return {
-        "photo": result[0] if result else None,
-        "photo_url": photo_url,
-    }
-
-
-# v1.3: List photos for a capture
-@app.get("/api/captures/{capture_id}/photos")
-async def list_capture_photos(capture_id: str, session: dict = Depends(verify_session)):
-    """Get all photos for a capture (wrapped in try/except — table may not exist)."""
-    photos = await sb_get_safe("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order")
-    return {"photos": photos}
-
-
-@app.patch("/api/captures/{capture_id}")
-async def update_capture(capture_id: str, request: Request, session: dict = Depends(verify_session)):
-    """Update/correct a capture — v1.3: supports edit-after-save, brand field."""
-    body = await request.json()
-    allowed = [
-        "brand", "make", "model_name", "model_number", "serial_number",
-        "manufacture_year", "description", "condition_rating", "condition_notes",
-        "verification_notes", "manually_verified", "tag_readable",
-        "sub_type", "additional_specs",  # v1.3: expanded
-    ]
-    update = {k: v for k, v in body.items() if k in allowed}
-    if body.get("manually_verified"):
-        update["verified_at"] = datetime.utcnow().isoformat()
-        update["verified_by"] = body.get("verified_by")
-    update["updated_at"] = datetime.utcnow().isoformat()
-
-    result = await sb_patch("fc_captures", f"?id=eq.{capture_id}", update)
-    return {"capture": result[0] if result else None}
-
-
-@app.post("/api/buildings/{building_id}/units/{unit_id}/manual-capture")
-async def manual_capture(building_id: str, unit_id: str, request: Request, session: dict = Depends(verify_session)):
-    """Manual capture when tag is unreadable."""
-    body = await request.json()
-    capture_record = {
-        "building_id": building_id,
-        "unit_id": unit_id,
-        "equipment_type_id": body.get("equipment_type_id"),
-        "walk_session_id": body.get("walk_session_id"),
-        "unit_visit_id": body.get("unit_visit_id"),
-        "captured_by": body.get("user_id") or session.get("user_id"),
-        "captured_by_name": body.get("user_name", ""),
-        "sub_type": body.get("sub_type"),     # v1.3
-        "brand": body.get("brand"),           # v1.3
-        "make": body.get("make"),
-        "model_name": body.get("model_name"),
-        "model_number": body.get("model_number"),
-        "serial_number": body.get("serial_number"),
-        "manufacture_year": body.get("manufacture_year"),
-        "description": body.get("description"),
-        "condition_rating": body.get("condition_rating"),
-        "condition_notes": body.get("condition_notes"),
-        "tag_readable": False,
-        "manually_verified": True,
-        "verified_at": datetime.utcnow().isoformat(),
-    }
-    result = await sb_post("fc_captures", capture_record)
-    return {"capture": result[0] if result else capture_record}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# v1.4: FULL UNIT INSPECTION ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.get("/api/inspection-stops")
-async def get_inspection_stops():
-    """Return the 13-stop room walkthrough for the frontend."""
-    return {"stops": INSPECTION_STOPS, "count": len(INSPECTION_STOPS)}
-
-
-@app.post("/api/buildings/{building_id}/units/{unit_id}/inspection")
-async def create_inspection(
-    building_id: str,
-    unit_id: str,
-    request: Request,
-    session: dict = Depends(verify_session),
-):
-    """Save a full unit inspection record (27-field Inspection Log)."""
-    body = await request.json()
-
-    inspection_record = {
-        "building_id": building_id,
-        "unit_id": unit_id,
-        "inspector_id": body.get("inspector_id") or session.get("user_id"),
-        "inspector_name": body.get("inspector_name", ""),
-        "walk_session_id": body.get("walk_session_id"),
-        "inspection_date": datetime.utcnow().isoformat(),
-
-        # Safety & Habitability
-        "smoke_co_detectors": body.get("smoke_co_detectors", ""),
-        "safety_check": body.get("safety_check", ""),
-        "safety_notes": body.get("safety_notes", ""),
-
-        # Mechanicals - Systems
-        "hvac_info": body.get("hvac_info", ""),
-        "hvac_condition": body.get("hvac_condition", ""),
-        "water_heater_info": body.get("water_heater_info", ""),
-        "water_heater_condition": body.get("water_heater_condition", ""),
-        "elec_panel_info": body.get("elec_panel_info", ""),
-        "windows_condition": body.get("windows_condition", ""),
-        "plumbing_leaks": body.get("plumbing_leaks", ""),
-        "appliances_condition": body.get("appliances_condition", ""),
-
-        # Finishes - Reno Scope
-        "kitchen_bath_flooring": body.get("kitchen_bath_flooring", ""),
-        "kitchen_bath_condition": body.get("kitchen_bath_condition", ""),
-        "doors_drywall": body.get("doors_drywall", ""),
-
-        # Tenant Assessment
-        "cleanliness_rating": body.get("cleanliness_rating"),
-        "tenant_issues": body.get("tenant_issues", ""),
-        "cooperation": body.get("cooperation", ""),
-        "renewal_rec": body.get("renewal_rec", ""),
-
-        # Outputs & Actions
-        "immediate_wos": body.get("immediate_wos", ""),
-        "photo_count": body.get("photo_count", 0),
-        "notes": body.get("notes", ""),
-
-        # Status
-        "status": body.get("status", "draft"),
-    }
-
-    # Validate cleanliness_rating if provided
-    cr = inspection_record.get("cleanliness_rating")
-    if cr is not None:
-        try:
-            cr = int(cr)
-            if cr < 1 or cr > 5:
-                raise HTTPException(400, "cleanliness_rating must be between 1 and 5")
-            inspection_record["cleanliness_rating"] = cr
-        except (ValueError, TypeError):
-            raise HTTPException(400, "cleanliness_rating must be an integer 1-5")
-
-    # Validate status
-    if inspection_record["status"] not in ("draft", "complete"):
-        raise HTTPException(400, "status must be 'draft' or 'complete'")
-
-    result = await sb_post("fc_inspections", inspection_record)
-    inspection = result[0] if result else inspection_record
-
-    # Log analytics
-    await log_analytics(
-        "inspection_create",
-        user_id=session.get("user_id"),
-        building_id=building_id,
-        metadata={"inspection_id": inspection.get("id"), "unit_id": unit_id, "status": inspection_record["status"]},
-        request=request,
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Could not download a supported file from this shared link. "
+            f"Make sure it is a public Google Drive or OneDrive PDF/image link. Last status: {last_status or 'unknown'}."
+        ),
     )
 
-    return {"inspection": inspection}
 
+def extract_drive_folder_entries(page_html: str) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Parse a Google Drive folder page and return (file_entries, subfolder_entries)."""
+    files: list[dict[str, str]] = []
+    subfolders: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
 
-@app.get("/api/buildings/{building_id}/units/{unit_id}/inspection")
-async def get_latest_inspection(
-    building_id: str,
-    unit_id: str,
-    session: dict = Depends(verify_session),
-):
-    """Retrieve the latest inspection for a unit."""
-    inspections = await sb_get(
-        "fc_inspections",
-        f"?building_id=eq.{building_id}&unit_id=eq.{unit_id}&order=inspection_date.desc&limit=1"
+    # Extract file links (anchor tags)
+    link_pattern = re.compile(
+        r'<a[^>]+href="([^"]*(?:/file/d/|[?&]id=)[^"]+)"[^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
     )
-    if not inspections:
-        raise HTTPException(404, "No inspection found for this unit")
-    return {"inspection": inspections[0]}
-
-
-@app.get("/api/buildings/{building_id}/inspections")
-async def list_building_inspections(
-    building_id: str,
-    session: dict = Depends(verify_session),
-):
-    """List all inspections for a building."""
-    inspections = await sb_get(
-        "fc_inspections",
-        f"?building_id=eq.{building_id}&order=inspection_date.desc"
-    )
-
-    # Enrich with unit names
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
-    unit_map = {u["id"]: u for u in units}
-
-    enriched = []
-    for insp in inspections:
-        unit = unit_map.get(insp.get("unit_id"), {})
-        enriched.append({
-            **insp,
-            "unit_name": unit.get("unit_name", ""),
-        })
-
-    return {"inspections": enriched, "count": len(enriched)}
-
-
-# ── Inspection Photos ──────────────────────────────────────────────────────
-
-@app.post("/api/inspections/{inspection_id}/photos")
-async def add_inspection_photo(
-    inspection_id: str,
-    photo: UploadFile = File(...),
-    photo_type: str = Form("general"),
-    stop_index: int = Form(None),
-    stop_name: str = Form(""),
-    notes: str = Form(""),
-    session: dict = Depends(verify_session),
-):
-    """Upload a photo linked to an inspection."""
-    photo_bytes = await photo.read()
-    if not photo_bytes:
-        raise HTTPException(400, "Empty photo")
-
-    # Get inspection to build storage path
-    inspections = await sb_get("fc_inspections", f"?id=eq.{inspection_id}")
-    if not inspections:
-        raise HTTPException(404, "Inspection not found")
-    insp = inspections[0]
-
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    stop_slug = (stop_name or photo_type).lower().replace(" ", "_").replace("/", "_")
-    filename = f"{insp['building_id']}_insp_{stop_slug}_{timestamp}.jpg"
-    storage_path = f"field-capture/{insp['building_id']}/inspections/{inspection_id}/{filename}"
-
-    photo_url = await sb_upload("equipment-photos", storage_path, photo_bytes)
-
-    # Get next sort_order
-    existing_photos = await sb_get_safe(
-        "fc_inspection_photos",
-        f"?inspection_id=eq.{inspection_id}&order=sort_order.desc&limit=1"
-    )
-    next_order = (existing_photos[0]["sort_order"] + 1) if existing_photos else 0
-
-    result = await sb_post("fc_inspection_photos", {
-        "inspection_id": inspection_id,
-        "photo_type": photo_type,
-        "stop_index": stop_index,
-        "stop_name": stop_name,
-        "photo_url": photo_url,
-        "photo_storage_path": storage_path,
-        "photo_filename": filename,
-        "sort_order": next_order,
-        "notes": notes,
-    })
-
-    # Update photo count on the inspection
-    try:
-        all_photos = await sb_get_safe(
-            "fc_inspection_photos",
-            f"?inspection_id=eq.{inspection_id}&select=id"
+    for match in link_pattern.finditer(page_html):
+        href = html.unescape(match.group(1))
+        file_id = extract_google_drive_file_id(href)
+        if not file_id or file_id in seen_ids:
+            continue
+        raw_name = re.sub(r"<[^>]+>", "", html.unescape(match.group(2))).strip()
+        name = re.sub(r"\s+", " ", raw_name)
+        files.append(
+            {
+                "file_id": file_id,
+                "name": name or f"{file_id}.pdf",
+                "url": f"https://drive.google.com/file/d/{file_id}/view?usp=sharing",
+            }
         )
-        await sb_patch("fc_inspections", f"?id=eq.{inspection_id}", {
-            "photo_count": len(all_photos),
-            "updated_at": datetime.utcnow().isoformat(),
-        })
-    except Exception:
-        pass
+        seen_ids.add(file_id)
 
-    await log_analytics(
-        "inspection_photo_upload",
-        user_id=session.get("user_id"),
-        building_id=insp.get("building_id"),
-        metadata={"inspection_id": inspection_id, "stop_name": stop_name},
-        request=None,
+    # Extract subfolder links (anchor tags)
+    folder_link_pattern = re.compile(
+        r'<a[^>]+href="([^"]*(?:/folders/)[^"]+)"[^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    for match in folder_link_pattern.finditer(page_html):
+        href = html.unescape(match.group(1))
+        folder_id = extract_google_drive_folder_id(href)
+        if not folder_id or folder_id in seen_ids:
+            continue
+        raw_name = re.sub(r"<[^>]+>", "", html.unescape(match.group(2))).strip()
+        name = re.sub(r"\s+", " ", raw_name)
+        subfolders.append(
+            {
+                "folder_id": folder_id,
+                "name": name or folder_id,
+                "url": href if href.startswith("http") else f"https://drive.google.com/drive/folders/{folder_id}",
+            }
+        )
+        seen_ids.add(folder_id)
+
+    # Extract from JSON-like patterns: file IDs with file extensions
+    json_pattern = re.compile(
+        r'"([A-Za-z0-9_-]{20,})","([^"]+\.(?:pdf|png|jpg|jpeg|webp|xlsx|xls|csv|doc|docx))"',
+        re.IGNORECASE,
+    )
+    for match in json_pattern.finditer(page_html):
+        file_id = match.group(1)
+        if file_id in seen_ids:
+            continue
+        files.append(
+            {
+                "file_id": file_id,
+                "name": html.unescape(match.group(2)),
+                "url": f"https://drive.google.com/file/d/{file_id}/view?usp=sharing",
+            }
+        )
+        seen_ids.add(file_id)
+
+    # Extract ALL /folders/ references from JS data blobs and HTML
+    folder_json_pattern = re.compile(
+        r'/folders/([A-Za-z0-9_-]{20,})',
+        re.IGNORECASE,
+    )
+    for match in folder_json_pattern.finditer(page_html):
+        folder_id = match.group(1)
+        if folder_id in seen_ids:
+            continue
+        # Try to find a name near this reference
+        context_start = max(0, match.start() - 200)
+        context_end = min(len(page_html), match.end() + 200)
+        context = page_html[context_start:context_end]
+        name_match = re.search(r'"([^"]{2,60})"', context)
+        name = name_match.group(1) if name_match else folder_id
+        name = re.sub(r'<[^>]+>', '', name).strip()
+        if name and not name.startswith('http') and not name.startswith('/'):
+            subfolders.append({
+                "folder_id": folder_id,
+                "name": name,
+                "url": f"https://drive.google.com/drive/folders/{folder_id}",
+            })
+            seen_ids.add(folder_id)
+
+    # Extract file/folder IDs from Google's JS data arrays:
+    # Google embeds data as arrays like ["0","FILE_ID","FILE_NAME",...]
+    # Also look for patterns: [null,"FILE_ID","name.pdf","application/pdf",...]
+    js_array_pattern = re.compile(
+        r'\["[^"]*","([A-Za-z0-9_-]{25,60})","([^"]{2,120})"(?:,"([^"]*)")?',
+    )
+    for match in js_array_pattern.finditer(page_html):
+        item_id = match.group(1)
+        item_name = html.unescape(match.group(2))
+        mime_hint = match.group(3) or ""
+        if item_id in seen_ids:
+            continue
+        # Determine if this is a folder or file based on mime type or name
+        is_folder = (
+            "folder" in mime_hint.lower()
+            or "vnd.google-apps.folder" in mime_hint
+            or (not "." in item_name and not "application/" in mime_hint and not "image/" in mime_hint)
+        )
+        if is_folder and len(item_id) >= 25:
+            subfolders.append({
+                "folder_id": item_id,
+                "name": item_name,
+                "url": f"https://drive.google.com/drive/folders/{item_id}",
+            })
+            seen_ids.add(item_id)
+        elif not is_folder and any(
+            item_name.lower().endswith(ext)
+            for ext in ('.pdf', '.png', '.jpg', '.jpeg', '.webp', '.xlsx', '.csv', '.doc', '.docx')
+        ):
+            files.append({
+                "file_id": item_id,
+                "name": item_name,
+                "url": f"https://drive.google.com/file/d/{item_id}/view?usp=sharing",
+            })
+            seen_ids.add(item_id)
+
+    return files, subfolders
+
+
+async def _try_google_drive_api_public_folder(folder_id: str) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Try the Google Drive API v3 with API key to list contents of a public folder.
+    This fallback works when HTML scraping fails to parse Google's changing page structure."""
+    api_key = os.getenv("GOOGLE_API_KEY", "")  # Optional: set in .env for public folder listing
+    if not api_key:
+        return [], []
+    files = []
+    subfolders = []
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            url = (
+                f"https://www.googleapis.com/drive/v3/files"
+                f"?q=%27{folder_id}%27+in+parents+and+trashed%3Dfalse"
+                f"&key={api_key}"
+                f"&fields=files(id,name,mimeType)"
+                f"&pageSize=100"
+            )
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return [], []
+            data = resp.json()
+            for f in data.get("files", []):
+                if f["mimeType"] == "application/vnd.google-apps.folder":
+                    subfolders.append({
+                        "folder_id": f["id"],
+                        "name": f["name"],
+                        "url": f"https://drive.google.com/drive/folders/{f['id']}",
+                    })
+                else:
+                    files.append({
+                        "file_id": f["id"],
+                        "name": f["name"],
+                        "url": f"https://drive.google.com/file/d/{f['id']}/view?usp=sharing",
+                    })
+    except Exception as e:
+        logger.warning(f"Google Drive API fallback failed: {e}")
+    return files, subfolders
+
+
+async def list_google_drive_shared_folder_files(url: str, max_depth: int = 6, _depth: int = 0) -> list[dict[str, str]]:
+    """Recursively list files from a shared Google Drive folder and ALL subfolders."""
+    if _depth > max_depth:
+        return []
+
+    folder_id = extract_google_drive_folder_id(url)
+    if not folder_id:
+        raise HTTPException(status_code=400, detail="Google Drive folder link is missing a folder ID.")
+
+    # Try Google Drive API first (fastest), fall back to HTML scraping
+    candidates = [
+        f"https://drive.google.com/embeddedfolderview?id={folder_id}#list",
+        f"https://drive.google.com/drive/folders/{folder_id}?usp=sharing",
+    ]
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    last_status: Optional[int] = None
+    all_entries: list[dict[str, str]] = []
+    all_subfolders: list[dict[str, str]] = []
+    seen_file_ids: set[str] = set()
+    seen_folder_ids: set[str] = set()
+
+    # Try Google Drive API first (much faster than scraping)
+    api_files, api_subfolders = await _try_google_drive_api_public_folder(folder_id)
+    for f in api_files:
+        fid = f.get("file_id", f.get("name", ""))
+        if fid not in seen_file_ids:
+            seen_file_ids.add(fid)
+            all_entries.append(f)
+    for sf in api_subfolders:
+        sfid = sf.get("folder_id", sf.get("name", ""))
+        if sfid not in seen_folder_ids:
+            seen_folder_ids.add(sfid)
+            all_subfolders.append(sf)
+
+    # Fall back to HTML scraping only if API found nothing
+    if not all_entries and not all_subfolders:
+        logger.info(f"API found nothing for folder {folder_id}, falling back to HTML scraping")
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+            for candidate in candidates:
+                try:
+                    response = await client.get(candidate, headers=headers)
+                except Exception:
+                    continue
+                last_status = response.status_code
+                if response.status_code >= 400:
+                    continue
+                file_entries, subfolder_entries = extract_drive_folder_entries(response.text)
+
+                for f in file_entries:
+                    fid = f.get("file_id", f.get("name", ""))
+                    if fid not in seen_file_ids:
+                        seen_file_ids.add(fid)
+                        all_entries.append(f)
+
+                for sf in subfolder_entries:
+                    sfid = sf.get("folder_id", sf.get("name", ""))
+                    if sfid not in seen_folder_ids:
+                        seen_folder_ids.add(sfid)
+                        all_subfolders.append(sf)
+
+                if all_entries or all_subfolders:
+                    break
+
+    # Recurse into ALL discovered subfolders in parallel (much faster)
+    if all_subfolders and len(all_entries) < 200:
+        async def _crawl_subfolder(subfolder):
+            try:
+                subfolder_files = await list_google_drive_shared_folder_files(
+                    subfolder["url"], max_depth=max_depth, _depth=_depth + 1,
+                )
+                for sf in subfolder_files:
+                    sf["name"] = f"{subfolder['name']}/{sf['name']}"
+                return subfolder_files
+            except Exception as exc:
+                logger.warning("Could not read subfolder %s: %s", subfolder.get("name"), exc)
+                return []
+
+        subfolder_results = await asyncio.gather(*[_crawl_subfolder(sf) for sf in all_subfolders])
+        for files in subfolder_results:
+            all_entries.extend(files)
+            if len(all_entries) >= 200:
+                break
+
+    if _depth == 0 and not all_entries:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Could not read files from this shared Google Drive folder. "
+                f"Make sure the folder is public and contains PDFs or images. Last status: {last_status or 'unknown'}."
+            ),
+        )
+    return all_entries[:200]
+
+
+def index_document_bytes(
+    *,
+    client,
+    rag_config,
+    api_key: str,
+    file_bytes: bytes,
+    filename: str,
+    content_type: str,
+    building_id: Optional[str],
+    source_meta: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    content_type, _ = ensure_supported_upload(content_type, file_bytes)
+    document_id = secrets.token_hex(12)
+    storage_path = upload_file_to_storage(
+        client,
+        rag_config,
+        document_id=document_id,
+        filename=filename,
+        file_bytes=file_bytes,
+        content_type=content_type,
     )
 
-    return {
-        "photo": result[0] if result else None,
-        "photo_url": photo_url,
-    }
-
-
-# ── Maintenance Items ──────────────────────────────────────────────────────
-
-@app.get("/api/buildings/{building_id}/maintenance-items")
-async def list_maintenance_items(
-    building_id: str,
-    session: dict = Depends(verify_session),
-):
-    """
-    Return all inspection findings flagged as needing work orders.
-    Scans all inspections for a building and returns items where
-    immediate_wos is non-empty, plus safety issues from safety_notes.
-    """
-    inspections = await sb_get(
-        "fc_inspections",
-        f"?building_id=eq.{building_id}&order=inspection_date.desc"
+    create_document_record(
+        client,
+        document_id=document_id,
+        building_id=building_id,
+        filename=filename,
+        storage_path=storage_path,
+        mime_type=content_type,
+        size_bytes=len(file_bytes),
     )
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
-    unit_map = {u["id"]: u for u in units}
 
-    items = []
-    item_counter = 0
+    try:
+        # ── PARALLEL: Run Claude analysis + text extraction concurrently ──
+        analysis = None
+        extracted_text = None
+        analysis_error = None
+        text_error = None
 
-    for insp in inspections:
-        unit = unit_map.get(insp.get("unit_id"), {})
-        unit_name = unit.get("unit_name", "Unknown")
-        inspector = insp.get("inspector_name", "")
-        insp_date = (insp.get("inspection_date") or "")[:10]
-        insp_id = insp.get("id", "")
+        # Route spreadsheets to the spreadsheet analyzer
+        _is_spreadsheet = (
+            content_type in SPREADSHEET_TYPES
+            or filename.lower().endswith((".xlsx", ".xls", ".csv"))
+        )
+        _analyze_fn = analyze_spreadsheet_bytes if _is_spreadsheet else analyze_file_bytes
 
-        # Parse immediate_wos — each line or semicolon-separated item is a work order
-        immediate_wos = (insp.get("immediate_wos") or "").strip()
-        if immediate_wos:
-            wo_lines = [line.strip() for line in immediate_wos.replace(";", "\n").split("\n") if line.strip()]
-            for wo in wo_lines:
-                item_counter += 1
-                # Try to detect system from the WO text
-                system = _detect_system(wo)
-                items.append({
-                    "id": f"{insp_id}-wo-{item_counter}",
-                    "unit": unit_name,
-                    "system": system,
-                    "item": wo,
-                    "condition": "Needs Repair",
-                    "priority": _estimate_priority(wo),
-                    "source": "Field Inspection",
-                    "inspector": inspector,
-                    "inspection_date": insp_date,
-                    "building_id": building_id,
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_analysis = executor.submit(_analyze_fn, file_bytes, filename, content_type, api_key)
+            future_text = executor.submit(extract_text_for_rag, file_bytes, content_type, api_key)
+
+            try:
+                analysis = future_analysis.result()
+            except Exception as exc:
+                analysis_error = exc
+
+            try:
+                extracted_text = future_text.result()
+            except Exception as exc:
+                text_error = exc
+
+        if analysis_error:
+            raise analysis_error
+        if source_meta:
+            analysis.setdefault("_meta", {}).update(source_meta)
+
+        if text_error or not extracted_text or not extracted_text.strip():
+            # For spreadsheets, still return the analysis even if RAG text extraction fails
+            if _is_spreadsheet and analysis:
+                logger.warning("Spreadsheet RAG text extraction failed but analysis succeeded — skipping RAG indexing")
+                row = update_document_record(client, document_id, {
+                    "status": "ready",
+                    "document_summary": analysis.get("document_summary"),
+                    "analysis_json": analysis,
+                    "chunk_count": 0,
                 })
+                return {"document": serialize_document_record(row), "analysis": analysis}
+            raise HTTPException(
+                status_code=400,
+                detail="No readable text could be extracted from this document for question answering.",
+            )
 
-        # Parse safety_notes for issues (non-empty safety notes with fail = safety issue)
-        safety_notes = (insp.get("safety_notes") or "").strip()
-        safety_check = (insp.get("safety_check") or "").strip().lower()
-        smoke_co = (insp.get("smoke_co_detectors") or "").strip().lower()
+        chunks = chunk_text(extracted_text)
+        if not chunks:
+            if _is_spreadsheet and analysis:
+                logger.warning("Spreadsheet produced no searchable chunks but analysis succeeded — skipping RAG indexing")
+                row = update_document_record(client, document_id, {
+                    "status": "ready",
+                    "document_summary": analysis.get("document_summary"),
+                    "analysis_json": analysis,
+                    "chunk_count": 0,
+                })
+                return {"document": serialize_document_record(row), "analysis": analysis}
+            raise HTTPException(
+                status_code=400,
+                detail="The document did not produce any searchable chunks.",
+            )
 
-        if safety_notes:
-            item_counter += 1
-            items.append({
-                "id": f"{insp_id}-safety-{item_counter}",
-                "unit": unit_name,
-                "system": "Safety",
-                "item": safety_notes,
-                "condition": "Fail" if safety_check == "fail" else "Needs Attention",
-                "priority": 1 if safety_check == "fail" else 2,
-                "source": "Field Inspection",
-                "inspector": inspector,
-                "inspection_date": insp_date,
-                "building_id": building_id,
+        # Store chunks with zero-vector placeholder — text search handles Q&A (no OpenAI needed)
+        _zero_emb = [0.0] * 1536
+        chunk_rows = []
+        for i, chunk in enumerate(chunks):
+            chunk_rows.append(
+                {
+                    "document_id": document_id,
+                    "chunk_index": chunk["chunk_index"],
+                    "content": chunk["content"],
+                    "token_count": chunk["token_count"],
+                    "page_refs": chunk["page_refs"],
+                    "embedding": _zero_emb,
+                }
+            )
+        insert_document_chunks(client, chunk_rows)
+        row = update_document_record(
+            client,
+            document_id,
+            {
+                "status": "ready",
+                "document_summary": analysis.get("document_summary"),
+                "analysis_json": analysis,
+                "extracted_text": extracted_text,
+                "chunk_count": len(chunk_rows),
+                "error_message": None,
+            },
+        )
+        return {"document": serialize_document_record(row), "analysis": analysis}
+    except HTTPException as exc:
+        update_document_record(client, document_id, {"status": "error", "error_message": exc.detail})
+        raise
+    except Exception as exc:
+        logger.exception("Document upload/indexing failed for %s", filename)
+        update_document_record(client, document_id, {"status": "error", "error_message": str(exc)})
+        raise HTTPException(status_code=500, detail=f"Document indexing failed: {str(exc)}")
+
+
+def _index_existing_document(
+    *,
+    client,
+    rag_config,
+    api_key: str,
+    document_id: str,
+    file_bytes: bytes,
+    filename: str,
+    content_type: str,
+    source_meta: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Run Claude analysis + RAG indexing on a pre-created document record."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    content_type, _ = ensure_supported_upload(content_type, file_bytes)
+
+    # Route spreadsheets to the spreadsheet analyzer
+    _is_spreadsheet = (
+        content_type in SPREADSHEET_TYPES
+        or filename.lower().endswith((".xlsx", ".xls", ".csv"))
+    )
+    _analyze_fn = analyze_spreadsheet_bytes if _is_spreadsheet else analyze_file_bytes
+
+    try:
+        analysis = None
+        extracted_text = None
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_analysis = executor.submit(_analyze_fn, file_bytes, filename, content_type, api_key)
+            future_text = executor.submit(extract_text_for_rag, file_bytes, content_type, api_key)
+            analysis = future_analysis.result()
+            extracted_text = future_text.result()
+
+        if source_meta:
+            analysis.setdefault("_meta", {}).update(source_meta)
+
+        if not extracted_text or not extracted_text.strip():
+            if _is_spreadsheet and analysis:
+                update_document_record(client, document_id, {"status": "ready", "document_summary": analysis.get("document_summary"), "analysis_json": analysis, "chunk_count": 0})
+                return {"status": "ready", "analysis": analysis}
+            update_document_record(client, document_id, {"status": "error", "error_message": "No readable text extracted"})
+            return {"status": "error"}
+
+        chunks = chunk_text(extracted_text)
+        if not chunks:
+            if _is_spreadsheet and analysis:
+                update_document_record(client, document_id, {"status": "ready", "document_summary": analysis.get("document_summary"), "analysis_json": analysis, "chunk_count": 0})
+                return {"status": "ready", "analysis": analysis}
+            update_document_record(client, document_id, {"status": "error", "error_message": "No searchable chunks produced"})
+            return {"status": "error"}
+
+        # Store chunks with zero-vector placeholder — text search handles Q&A
+        _zero_emb = [0.0] * 1536
+        chunk_rows = []
+        for chunk in chunks:
+            chunk_rows.append({
+                "document_id": document_id,
+                "chunk_index": chunk["chunk_index"],
+                "content": chunk["content"],
+                "token_count": chunk["token_count"],
+                "page_refs": chunk["page_refs"],
+                "embedding": _zero_emb,
             })
-
-        if smoke_co == "fail":
-            item_counter += 1
-            items.append({
-                "id": f"{insp_id}-smoke-{item_counter}",
-                "unit": unit_name,
-                "system": "Safety",
-                "item": "Smoke/CO detectors failed inspection",
-                "condition": "Fail",
-                "priority": 1,
-                "source": "Field Inspection",
-                "inspector": inspector,
-                "inspection_date": insp_date,
-                "building_id": building_id,
-            })
-
-        # Check mechanical conditions for "Poor" ratings
-        _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
-                               "hvac_condition", "HVAC", insp.get("hvac_info", ""))
-        _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
-                               "water_heater_condition", "Plumbing", insp.get("water_heater_info", ""))
-        _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
-                               "plumbing_leaks", "Plumbing", "")
-        _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
-                               "appliances_condition", "Appliances", "")
-
-    # Sort by priority (1 = highest)
-    items.sort(key=lambda x: x.get("priority", 5))
-
-    return {"maintenance_items": items, "count": len(items)}
-
-
-def _detect_system(text: str) -> str:
-    """Detect the building system from work order text."""
-    text_lower = text.lower()
-    if any(w in text_lower for w in ["hvac", "ac ", "a/c", "condenser", "air handler", "heating", "cooling", "thermostat"]):
-        return "HVAC"
-    if any(w in text_lower for w in ["plumb", "faucet", "toilet", "pipe", "leak", "drain", "water heater"]):
-        return "Plumbing"
-    if any(w in text_lower for w in ["electric", "panel", "breaker", "outlet", "switch", "wiring"]):
-        return "Electrical"
-    if any(w in text_lower for w in ["smoke", "co ", "carbon", "detector", "fire", "safety"]):
-        return "Safety"
-    if any(w in text_lower for w in ["door", "window", "lock", "drywall", "wall", "ceiling"]):
-        return "Structural"
-    if any(w in text_lower for w in ["kitchen", "bath", "floor", "tile", "counter", "cabinet"]):
-        return "Finishes"
-    if any(w in text_lower for w in ["appliance", "stove", "oven", "dishwasher", "fridge", "refrigerator", "disposal"]):
-        return "Appliances"
-    return "General"
-
-
-def _estimate_priority(text: str) -> int:
-    """Estimate priority from 1 (urgent) to 5 (cosmetic)."""
-    text_lower = text.lower()
-    if any(w in text_lower for w in ["safety", "smoke", "co ", "carbon", "fire", "hazard", "emergency", "gas leak"]):
-        return 1
-    if any(w in text_lower for w in ["leak", "flood", "broken", "no heat", "no ac", "no hot water", "inoperable"]):
-        return 2
-    if any(w in text_lower for w in ["repair", "replace", "damage", "poor", "failing", "worn"]):
-        return 3
-    if any(w in text_lower for w in ["minor", "cosmetic", "touch up", "paint", "scuff"]):
-        return 4
-    return 3  # default medium priority
-
-
-_item_counter_global = 0
-
-def _check_condition_field(items, insp, unit_name, inspector, insp_date, building_id,
-                           field_name, system, extra_info):
-    """If a condition field contains 'poor' or 'fail', add a maintenance item."""
-    value = (insp.get(field_name) or "").strip()
-    if not value:
-        return
-    value_lower = value.lower()
-    if any(w in value_lower for w in ["poor", "fail", "bad", "replace", "leak", "damage"]):
-        item_text = value
-        if extra_info:
-            item_text = f"{extra_info} - {value}"
-        items.append({
-            "id": f"{insp.get('id', '')}-{field_name}",
-            "unit": unit_name,
-            "system": system,
-            "item": item_text,
-            "condition": "Poor",
-            "priority": _estimate_priority(value),
-            "source": "Field Inspection",
-            "inspector": inspector,
-            "inspection_date": insp_date,
-            "building_id": building_id,
+        insert_document_chunks(client, chunk_rows)
+        update_document_record(client, document_id, {
+            "status": "ready",
+            "document_summary": analysis.get("document_summary"),
+            "analysis_json": analysis,
+            "extracted_text": extracted_text,
+            "chunk_count": len(chunk_rows),
+            "error_message": None,
         })
+        return {"status": "ready", "analysis": analysis}
+    except Exception as exc:
+        logger.exception("Indexing failed for document %s (%s)", document_id, filename)
+        update_document_record(client, document_id, {"status": "error", "error_message": str(exc)[:500]})
+        return {"status": "error", "error": str(exc)}
 
 
-# ── Progress & Dashboard ────────────────────────────────────────────────────
-
-@app.get("/api/buildings/{building_id}/progress")
-async def building_progress(building_id: str, session: dict = Depends(verify_session)):
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}&select=id,unit_name")
-    types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&select=id,name,icon")
-    captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&select=id,unit_id,equipment_type_id,captured_by_name,created_at,make,brand,model_name,ai_confidence,manually_verified")
-
-    total_units = len(units)
-    total_types = len(types)
-    total_expected = total_units * total_types
-
-    unit_captures = {}
-    for c in captures:
-        uid = c["unit_id"]
-        if uid not in unit_captures:
-            unit_captures[uid] = set()
-        unit_captures[uid].add(c["equipment_type_id"])
-
-    units_complete = sum(1 for uid, types_done in unit_captures.items() if len(types_done) >= total_types)
-    units_partial = sum(1 for uid, types_done in unit_captures.items() if 0 < len(types_done) < total_types)
-    units_pending = total_units - units_complete - units_partial
-
-    type_progress = []
-    for t in types:
-        done = sum(1 for c in captures if c["equipment_type_id"] == t["id"])
-        type_progress.append({
-            "id": t["id"],
-            "name": t["name"],
-            "icon": t.get("icon", "\U0001f527"),
-            "captured": done,
-            "total": total_units,
-            "pct": round(done / total_units * 100) if total_units > 0 else 0,
-        })
-
-    recent = sorted(captures, key=lambda c: c.get("created_at", ""), reverse=True)[:10]
-
+def serialize_document_record(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    if not row:
+        return None
     return {
-        "total_units": total_units,
-        "total_equipment_types": total_types,
-        "total_captures": len(captures),
-        "total_expected": total_expected,
-        "completion_pct": round(len(captures) / total_expected * 100) if total_expected > 0 else 0,
-        "units_complete": units_complete,
-        "units_partial": units_partial,
-        "units_pending": units_pending,
-        "type_progress": type_progress,
-        "recent_captures": recent,
+        "id": row.get("id"),
+        "building_id": row.get("building_id"),
+        "filename": row.get("filename"),
+        "mime_type": row.get("mime_type"),
+        "size_bytes": row.get("size_bytes"),
+        "status": row.get("status"),
+        "chunk_count": row.get("chunk_count", 0),
+        "document_summary": row.get("document_summary"),
+        "error_message": row.get("error_message"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+        "ready_for_qa": row.get("status") == "ready" and (row.get("chunk_count") or 0) > 0,
     }
 
 
-@app.get("/api/buildings/{building_id}/captures")
-async def list_captures(building_id: str, unit_id: str = None, session: dict = Depends(verify_session)):
-    filters = f"?building_id=eq.{building_id}&order=created_at.desc"
-    if unit_id:
-        filters += f"&unit_id=eq.{unit_id}"
-    captures = await sb_get("fc_captures", filters)
-    return {"captures": captures}
+def build_question_context(matches: list[dict[str, Any]]) -> str:
+    parts = []
+    for match in matches:
+        pages = match.get("page_refs") or []
+        page_label = ", ".join(str(page) for page in pages) if pages else "unknown"
+        parts.append(
+            f"[Source: {match.get('source') or 'unknown'} | Chunk {match.get('chunk_index')} | Pages: {page_label} | Similarity: {round(match.get('similarity', 0), 3)}]\n"
+            f"{match.get('content', '')}"
+        )
+    return "\n\n".join(parts)
 
 
-# ── Export ──────────────────────────────────────────────────────────────────
+def normalize_search_text(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
-@app.get("/api/buildings/{building_id}/export/csv")
-async def export_csv(building_id: str, session: dict = Depends(verify_session)):
-    """Export all captures as CSV — v1.3: includes brand, sub_type, timestamp."""
-    captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&order=created_at")
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
-    types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}")
 
-    unit_map = {u["id"]: u for u in units}
-    type_map = {t["id"]: t for t in types}
+def build_document_search_targets(row: dict[str, Any]) -> list[str]:
+    targets: list[str] = []
+    filename = row.get("filename") or ""
+    if filename:
+        stem = Path(filename).stem
+        targets.extend([filename, stem])
+    analysis = row.get("analysis_json") or {}
+    building_profile = analysis.get("building_profile") or {}
+    if building_profile.get("name"):
+        targets.append(building_profile["name"])
+    if analysis.get("document_summary"):
+        targets.append(analysis["document_summary"])
+    return [normalize_search_text(target) for target in targets if normalize_search_text(target)]
 
-    # v1.3: added Brand, Sub-Type, Captured At columns
-    lines = ["Unit,Equipment Type,Sub-Type,Brand,Manufacturer,Model,Model Number,Serial Number,Year,Condition,Description,Captured By,Captured At,Verified"]
-    for c in captures:
-        unit = unit_map.get(c.get("unit_id"), {})
-        etype = type_map.get(c.get("equipment_type_id"), {})
-        line = ",".join([
-            _csv_escape(unit.get("unit_name", "")),
-            _csv_escape(etype.get("name", "")),
-            _csv_escape(c.get("sub_type", "")),
-            _csv_escape(c.get("brand", "")),
-            _csv_escape(c.get("make", "")),
-            _csv_escape(c.get("model_name", "")),
-            _csv_escape(c.get("model_number", "")),
-            _csv_escape(c.get("serial_number", "")),
-            _csv_escape(c.get("manufacture_year", "")),
-            _csv_escape(c.get("condition_rating", "")),
-            _csv_escape(c.get("description", "")),
-            _csv_escape(c.get("captured_by_name", "")),
-            _csv_escape(c.get("created_at", "")),  # v1.3: full timestamp
-            "Yes" if c.get("manually_verified") else "No",
-        ])
-        lines.append(line)
 
-    csv_content = "\n".join(lines)
-    return StreamingResponse(
-        io.StringIO(csv_content),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=field_capture_{building_id}.csv"},
+def filter_documents_for_question(question: str, document_map: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    normalized_question = normalize_search_text(question)
+    if not normalized_question:
+        return document_map
+
+    preferred: dict[str, dict[str, Any]] = {}
+    letter_match = re.search(r"\b(?:building|file|doc|document)\s+([a-z])\b", question, re.I)
+    requested_letter = letter_match.group(1).lower() if letter_match else None
+
+    for doc_id, row in document_map.items():
+        targets = build_document_search_targets(row)
+        filename = normalize_search_text(row.get("filename"))
+        if any(target and target in normalized_question for target in targets):
+            preferred[doc_id] = row
+            continue
+        if requested_letter and re.search(rf"(^|[^a-z0-9]){re.escape(requested_letter)}($|[^a-z0-9])", filename):
+            preferred[doc_id] = row
+
+    return preferred or document_map
+
+
+def resolve_cited_sources(answer: dict[str, Any], matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    citations = answer.get("citations") or []
+    resolved: list[dict[str, Any]] = []
+    for citation in citations:
+        source = citation.get("source")
+        chunk_index = citation.get("chunk_index")
+        matched = next(
+            (
+                match
+                for match in matches
+                if (source is None or match.get("source") == source)
+                and (chunk_index is None or match.get("chunk_index") == chunk_index)
+            ),
+            None,
+        )
+        if matched:
+            resolved.append(
+                {
+                    "source": matched.get("source"),
+                    "chunk_index": matched.get("chunk_index"),
+                    "page_refs": citation.get("page_refs") or matched.get("page_refs") or [],
+                    "similarity": matched.get("similarity"),
+                    "content": citation.get("quote") or matched.get("content"),
+                }
+            )
+        elif citation:
+            resolved.append(
+                {
+                    "source": citation.get("source"),
+                    "chunk_index": citation.get("chunk_index"),
+                    "page_refs": citation.get("page_refs") or [],
+                    "similarity": None,
+                    "content": citation.get("quote") or "",
+                }
+            )
+    return resolved
+
+
+def build_deferred_context(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return ""
+    rows = []
+    for idx, item in enumerate(items[:25], start=1):
+        rows.append(
+            f"[Deferred Item {idx}]\n"
+            f"Source: {item.get('source') or item.get('_source') or 'unknown'}\n"
+            f"System: {item.get('system') or 'unknown'}\n"
+            f"Item: {item.get('item') or 'unknown'}\n"
+            f"Condition: {item.get('condition') or 'unknown'}\n"
+            f"Action: {item.get('action') or 'unknown'}\n"
+            f"Priority: {item.get('priority') if item.get('priority') is not None else 'unknown'}\n"
+            f"Timeline: {item.get('timeline_yr') if item.get('timeline_yr') is not None else 'unknown'}\n"
+            f"Cost_k: {item.get('cost_k') if item.get('cost_k') is not None else 'unknown'}"
+        )
+    return "\n\n".join(rows)
+
+
+def answer_question_from_matches(
+    *,
+    question: str,
+    matches: list[dict[str, Any]],
+    api_key: str,
+) -> dict[str, Any]:
+    if not matches:
+        return {
+            "answer": "I couldn't find that in the uploaded document.",
+            "citations": [],
+            "confidence": "low",
+        }
+
+    prompt = (
+        f"{QUESTION_ANSWER_PROMPT}\n\n"
+        f"Question:\n{question}\n\n"
+        f"Retrieved context:\n{build_question_context(matches)}"
+    )
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1400,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw_text = _get_text(response.content[0])
+    try:
+        parsed = extract_json_from_response(raw_text)
+    except ValueError:
+        parsed = {
+            "answer": raw_text.strip() or "I couldn't find that in the uploaded document.",
+            "citations": [],
+            "confidence": "low",
+        }
+    parsed["_meta"] = {
+        "model": "claude-sonnet-4-6",
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    }
+    return parsed
+
+
+def answer_building_question(
+    *,
+    question: str,
+    deferred_items: list[dict[str, Any]],
+    matches: list[dict[str, Any]],
+    api_key: str,
+) -> dict[str, Any]:
+    if not deferred_items and not matches:
+        return {
+            "answer": "I couldn't find enough maintenance context to answer that yet.",
+            "citations": [],
+            "confidence": "low",
+        }
+
+    prompt = (
+        "You answer questions about a building's maintenance register using only the supplied context.\n\n"
+        "Rules:\n"
+        "- Prioritize the structured maintenance rows because they are the normalized register.\n"
+        "- Use retrieved document excerpts only to support or clarify the answer.\n"
+        "- If the answer is not supported by the provided context, say so clearly.\n"
+        "- Return ONLY valid JSON in this shape:\n"
+        "{\n"
+        '  "answer": "<answer text>",\n'
+        '  "citations": [\n'
+        '    {"type": "deferred_item | document_chunk", "label": "<short label>", "source": "<document/source name>", "page_refs": [1]}\n'
+        "  ],\n"
+        '  "confidence": "high | medium | low"\n'
+        "}\n\n"
+        f"Question:\n{question}\n\n"
+        f"Deferred maintenance register rows:\n{build_deferred_context(deferred_items) or 'None'}\n\n"
+        f"Retrieved document excerpts:\n{build_question_context(matches) or 'None'}"
+    )
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1400,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw_text = _get_text(response.content[0])
+    try:
+        parsed = extract_json_from_response(raw_text)
+    except ValueError:
+        parsed = {"answer": raw_text.strip(), "citations": [], "confidence": "low"}
+    parsed["_meta"] = {
+        "model": "claude-sonnet-4-6",
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    }
+    return parsed
+
+
+def answer_documents_question(
+    *,
+    question: str,
+    matches: list[dict[str, Any]],
+    api_key: str,
+) -> dict[str, Any]:
+    if not matches:
+        return {
+            "answer": "I couldn't find enough information in the uploaded documents to answer that.",
+            "citations": [],
+            "confidence": "low",
+        }
+
+    prompt = (
+        "You answer questions about uploaded building documents using only the supplied retrieved context.\n\n"
+        "Rules:\n"
+        "- Use only the provided document excerpts.\n"
+        "- If the answer is not supported by the excerpts, say so clearly.\n"
+        "- Be concise and factual.\n"
+        "- Do not use markdown markers like **, bullet symbols, or headings with markdown syntax.\n"
+        "- Return ONLY valid JSON in this shape:\n"
+        "{\n"
+        '  "answer": "<answer text>",\n'
+        '  "citations": [\n'
+        '    {"source": "<document name>", "chunk_index": 0, "page_refs": [1], "quote": "<short quote>"}\n'
+        "  ],\n"
+        '  "confidence": "high | medium | low"\n'
+        "}\n\n"
+        f"Question:\n{question}\n\n"
+        f"Retrieved context:\n{build_question_context(matches)}"
+    )
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1400,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw_text = _get_text(response.content[0])
+    try:
+        parsed = extract_json_from_response(raw_text)
+    except ValueError:
+        parsed = {"answer": raw_text.strip(), "citations": [], "confidence": "low"}
+    parsed["_meta"] = {
+        "model": "claude-sonnet-4-6",
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    }
+    return parsed
+
+
+def stream_question_answer(
+    *,
+    question: str,
+    matches: list[dict[str, Any]],
+    api_key: str,
+    prompt_prefix: str = "",
+):
+    """Generator that yields Server-Sent Events with streaming Claude Q&A response."""
+    if not matches:
+        yield f"data: {json.dumps({'type': 'answer', 'text': 'I could not find that in the uploaded documents.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'confidence': 'low'})}\n\n"
+        return
+
+    context = build_question_context(matches)
+    prompt = f"{prompt_prefix or QUESTION_ANSWER_PROMPT}\n\nQuestion:\n{question}\n\nRetrieved context:\n{context}"
+
+    client = anthropic.Anthropic(api_key=api_key)
+    accumulated = ""
+    with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=1400,
+        messages=[{"role": "user", "content": prompt}],
+    ) as stream:
+        for text in stream.text_stream:
+            accumulated += text
+            yield f"data: {json.dumps({'type': 'token', 'text': text})}\n\n"
+
+    # Try to parse the final JSON response for citations
+    try:
+        parsed = extract_json_from_response(accumulated)
+        yield f"data: {json.dumps({'type': 'done', 'parsed': parsed})}\n\n"
+    except ValueError:
+        yield f"data: {json.dumps({'type': 'done', 'parsed': {'answer': accumulated.strip(), 'citations': [], 'confidence': 'low'}})}\n\n"
+
+
+def require_rag_configuration() -> None:
+    config = load_rag_config()
+    if not is_supabase_configured(config):
+        raise HTTPException(
+            status_code=500,
+            detail="Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, then apply supabase/schema.sql.",
+        )
+    # Embeddings are optional — text search is used as fallback
+
+
+@app.get("/", response_class=HTMLResponse)
+def serve_frontend():
+    """Serve the BuildingOS frontend app."""
+    html_path = Path(__file__).parent / "buildingos-mvp.html"
+    if not html_path.exists():
+        return HTMLResponse("<h1>buildingos-mvp.html not found</h1>", status_code=404)
+    return HTMLResponse(
+        html_path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
     )
 
 
-def _csv_escape(val: str) -> str:
-    if not val:
-        return ""
-    val = str(val)
-    if "," in val or '"' in val or "\n" in val:
-        return '"' + val.replace('"', '""') + '"'
-    return val
+@app.get("/health")
+def health():
+    """Health check — confirms API keys and Supabase connectivity."""
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    rag_config = load_rag_config()
+    supabase_ok = False
+    supabase_error = None
+    if is_supabase_configured(rag_config):
+        try:
+            client = get_supabase_client(rag_config)
+            # Use RPC or a simple storage check instead of table query
+            # which may fail if PostgREST doesn't expose the table
+            try:
+                client.table("documents").select("id").limit(1).execute()
+            except Exception:
+                # Fallback: use direct HTTP to check Supabase connectivity
+                # (avoid supabase-py storage client bug with resp.text on dicts)
+                sb_url = rag_config.supabase_url
+                sb_key = rag_config.supabase_service_role_key
+                r = httpx.get(
+                    f"{sb_url}/storage/v1/bucket",
+                    headers={"apikey": sb_key, "Authorization": f"Bearer {sb_key}"},
+                    timeout=10,
+                )
+                r.raise_for_status()
+            supabase_ok = True
+        except Exception as e:
+            supabase_error = str(e)[:200]
+    return {
+        "status": "ok" if supabase_ok else "degraded",
+        "api_key_configured": bool(key and key.startswith("sk-ant-")),
+        "supabase_configured": is_supabase_configured(rag_config),
+        "supabase_connected": supabase_ok,
+        "supabase_error": supabase_error,
+        "embeddings_configured": is_embeddings_configured(rag_config),
+        "rag_ready": is_rag_ready(rag_config),
+        "auth_enabled": bool(API_KEY),
+        "max_upload_mb": int(os.getenv("MAX_UPLOAD_MB", "500")),
+    }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# ANALYTICS ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════════════
+@app.get("/config/public")
+def public_config():
+    """Public config values safe to expose to the browser.
+
+    Exposes the Supabase project URL and the ANON key so the frontend
+    can initialize the supabase-js client for Supabase Auth and
+    user-scoped RLS-protected queries. Never exposes the service role key.
+    """
+    rag_config = load_rag_config()
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "").strip()
+    return {
+        "supabase_url": rag_config.supabase_url or None,
+        "supabase_anon_key": anon_key or None,
+        "auth_enabled": bool(rag_config.supabase_url and anon_key),
+    }
+
+
+# ── In-memory analytics store (replace with DB table for production) ──
+_analytics_events: list[dict] = []
+
+
+# ─────────────────────────────────────────────
+# ADMIN: User Management via Supabase Auth Admin API
+# ─────────────────────────────────────────────
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+    role: str = "viewer"  # admin | editor | viewer
+
+
+class DeactivateUserRequest(BaseModel):
+    user_id: str
+
+
+def _supabase_admin_headers() -> dict:
+    """Return headers for Supabase Auth Admin API calls."""
+    rag_config = load_rag_config()
+    service_key = rag_config.supabase_service_role_key
+    if not service_key or not rag_config.supabase_url:
+        raise HTTPException(status_code=500, detail="Supabase is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing).")
+    return {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }
+
+
+@app.post("/api/admin/create-user", dependencies=[Depends(verify_api_key)])
+async def admin_create_user(body: CreateUserRequest):
+    """Create a new user via Supabase Auth Admin API. Requires BUILDINGOS_API_KEY."""
+    if body.role not in ("admin", "editor", "viewer"):
+        raise HTTPException(status_code=400, detail="role must be one of: admin, editor, viewer")
+    if not body.email or not body.password:
+        raise HTTPException(status_code=400, detail="email and password are required")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    rag_config = load_rag_config()
+    headers = _supabase_admin_headers()
+    url = f"{rag_config.supabase_url}/auth/v1/admin/users"
+
+    payload = {
+        "email": body.email,
+        "password": body.password,
+        "email_confirm": True,
+        "user_metadata": {
+            "name": body.name,
+            "role": body.role,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+
+    if resp.status_code >= 400:
+        detail = "Failed to create user"
+        try:
+            err = resp.json()
+            detail = err.get("msg") or err.get("message") or err.get("error_description") or detail
+        except Exception:
+            pass
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    user_data = resp.json()
+    # Log analytics event
+    _analytics_events.append({
+        "event": "admin_user_created",
+        "email": body.email,
+        "role": body.role,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return {
+        "id": user_data.get("id"),
+        "email": user_data.get("email"),
+        "name": body.name,
+        "role": body.role,
+        "created_at": user_data.get("created_at"),
+    }
+
+
+@app.get("/api/admin/users", dependencies=[Depends(verify_api_key)])
+async def admin_list_users():
+    """List all Supabase Auth users with metadata. Requires BUILDINGOS_API_KEY."""
+    rag_config = load_rag_config()
+    headers = _supabase_admin_headers()
+    url = f"{rag_config.supabase_url}/auth/v1/admin/users"
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, headers=headers, params={"page": 1, "per_page": 500})
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail="Failed to list users from Supabase")
+
+    data = resp.json()
+    users_raw = data.get("users", data) if isinstance(data, dict) else data
+
+    users = []
+    for u in (users_raw if isinstance(users_raw, list) else []):
+        meta = u.get("user_metadata") or {}
+        users.append({
+            "id": u.get("id"),
+            "email": u.get("email"),
+            "name": meta.get("name", ""),
+            "role": meta.get("role", "viewer"),
+            "created_at": u.get("created_at"),
+            "last_sign_in_at": u.get("last_sign_in_at"),
+            "email_confirmed_at": u.get("email_confirmed_at"),
+            "banned": u.get("banned_until") is not None,
+        })
+
+    return {"users": users, "total": len(users)}
+
+
+@app.post("/api/admin/deactivate-user", dependencies=[Depends(verify_api_key)])
+async def admin_deactivate_user(body: DeactivateUserRequest):
+    """Ban/deactivate a Supabase Auth user by ID. Requires BUILDINGOS_API_KEY."""
+    if not body.user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+
+    rag_config = load_rag_config()
+    headers = _supabase_admin_headers()
+    url = f"{rag_config.supabase_url}/auth/v1/admin/users/{body.user_id}"
+
+    payload = {
+        "ban_duration": "876000h",  # ~100 years effectively permanent
+    }
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.put(url, json=payload, headers=headers)
+
+    if resp.status_code >= 400:
+        detail = "Failed to deactivate user"
+        try:
+            err = resp.json()
+            detail = err.get("msg") or err.get("message") or detail
+        except Exception:
+            pass
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    _analytics_events.append({
+        "event": "admin_user_deactivated",
+        "user_id": body.user_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"status": "deactivated", "user_id": body.user_id}
+
+
+# ─────────────────────────────────────────────
+# ANALYTICS
+# ─────────────────────────────────────────────
+
+class AnalyticsEventRequest(BaseModel):
+    event: str  # login, document_upload, ai_query, building_view
+    user_email: Optional[str] = None
+    metadata: Optional[dict] = None
+
 
 @app.post("/api/analytics/event")
-async def log_analytics_event(request: Request, session: dict = Depends(verify_session)):
-    """Log an analytics event from the frontend."""
-    body = await request.json()
-    await log_analytics(
-        event_type=body.get("event_type", "unknown"),
-        user_id=session.get("user_id"),
-        building_id=body.get("building_id"),
-        metadata=body.get("metadata"),
-        request=request,
-    )
-    return {"logged": True}
+async def track_analytics_event(body: AnalyticsEventRequest):
+    """Log a platform analytics event."""
+    event_record = {
+        "event": body.event,
+        "user_email": body.user_email,
+        "metadata": body.metadata or {},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    _analytics_events.append(event_record)
+    # Cap in-memory store at 10,000 events
+    if len(_analytics_events) > 10000:
+        _analytics_events[:] = _analytics_events[-5000:]
+    return {"status": "ok"}
 
 
-@app.get("/api/analytics/summary")
-async def analytics_summary(session: dict = Depends(verify_session)):
-    """Return analytics summary: login counts, active users, captures per day."""
-    all_events = await sb_get("fc_analytics", "?order=timestamp.desc&limit=1000")
+@app.get("/api/analytics/dashboard", dependencies=[Depends(verify_api_key)])
+async def analytics_dashboard():
+    """Return usage summaries for the analytics dashboard. Requires BUILDINGOS_API_KEY."""
+    now = datetime.now(timezone.utc)
+    thirty_days_ago = (now - timedelta(days=30)).isoformat()
+    seven_days_ago = (now - timedelta(days=7)).isoformat()
+    today_str = now.strftime("%Y-%m-%d")
 
-    login_count = sum(1 for e in all_events if e.get("event_type") == "login")
-    register_count = sum(1 for e in all_events if e.get("event_type") == "register")
-    capture_count = sum(1 for e in all_events if e.get("event_type") == "capture")
-    walk_count = sum(1 for e in all_events if e.get("event_type") == "walk_start")
+    recent = [e for e in _analytics_events if e.get("timestamp", "") >= thirty_days_ago]
 
-    active_users = len(set(e.get("user_id") for e in all_events if e.get("user_id")))
+    logins = [e for e in recent if e["event"] == "login"]
+    doc_uploads = [e for e in recent if e["event"] == "document_upload"]
+    ai_queries = [e for e in recent if e["event"] == "ai_query"]
+    building_views = [e for e in recent if e["event"] == "building_view"]
 
-    # Captures per day (last 7 days)
-    captures_per_day = {}
-    for e in all_events:
-        if e.get("event_type") == "capture" and e.get("timestamp"):
-            day = e["timestamp"][:10]
-            captures_per_day[day] = captures_per_day.get(day, 0) + 1
+    unique_users_7d = len(set(e.get("user_email", "") for e in _analytics_events if e.get("timestamp", "") >= seven_days_ago and e.get("user_email")))
+
+    # Daily login counts for chart (last 30 days)
+    login_by_day: dict[str, int] = {}
+    for e in logins:
+        day = e.get("timestamp", "")[:10]
+        login_by_day[day] = login_by_day.get(day, 0) + 1
 
     return {
-        "total_logins": login_count,
-        "total_registrations": register_count,
-        "total_captures": capture_count,
-        "total_walks": walk_count,
-        "active_users": active_users,
-        "captures_per_day": captures_per_day,
-        "recent_events": all_events[:20],
+        "period": "last_30_days",
+        "logins_total": len(logins),
+        "documents_uploaded": len(doc_uploads),
+        "ai_queries": len(ai_queries),
+        "building_views": len(building_views),
+        "active_users_7d": unique_users_7d,
+        "login_by_day": login_by_day,
+        "total_events": len(recent),
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# ADMIN ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════════════
+_api_key_cache: dict[str, Any] = {"result": None, "tested_key": None, "ts": 0}
 
-@app.get("/api/admin/users")
-async def admin_list_users(session: dict = Depends(verify_session)):
-    """List all registered users with last login, buildings, capture counts."""
-    users = await sb_get("fc_users", "?order=created_at.desc")
-
-    result = []
-    for u in users:
-        uid = u["id"]
-        memberships = await sb_get("fc_building_members", f"?user_id=eq.{uid}")
-        captures = await sb_get("fc_captures", f"?captured_by=eq.{uid}&select=id")
-
-        building_names = []
-        for m in memberships:
-            invites = await sb_get("fc_invite_codes", f"?building_id=eq.{m['building_id']}&limit=1")
-            if invites:
-                building_names.append(invites[0].get("building_name", m["building_id"]))
-
-        result.append({
-            "id": uid,
-            "name": u.get("name", ""),
-            "email": u.get("email", ""),
-            "created_at": u.get("created_at", ""),
-            "last_login_at": u.get("last_login_at", ""),
-            "building_count": len(memberships),
-            "buildings": building_names,
-            "capture_count": len(captures),
-        })
-
-    return {"users": result}
+@app.get("/test-api-key")
+def test_api_key():
+    """Test the Anthropic API key (cached for 5 min to avoid repeated Claude calls)."""
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not key:
+        return {"valid": False, "error": "ANTHROPIC_API_KEY not set in .env"}
+    # Return cached result if same key tested within 5 minutes
+    import time as _time
+    if _api_key_cache["tested_key"] == key and (_time.time() - _api_key_cache["ts"]) < 300:
+        return _api_key_cache["result"]
+    try:
+        client = anthropic.Anthropic(api_key=key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Say OK"}],
+        )
+        result = {"valid": True, "response": _get_text(response.content[0]), "key_prefix": key[:20] + "..."}
+    except anthropic.AuthenticationError as e:
+        result = {"valid": False, "error": f"AuthenticationError: {str(e)}", "key_prefix": key[:20] + "..."}
+    except anthropic.PermissionDeniedError as e:
+        result = {"valid": False, "error": f"PermissionDenied: {str(e)}", "key_prefix": key[:20] + "..."}
+    except Exception as e:
+        result = {"valid": False, "error": f"{type(e).__name__}: {str(e)}", "key_prefix": key[:20] + "..."}
+    _api_key_cache.update({"result": result, "tested_key": key, "ts": _time.time()})
+    return result
 
 
-# ── Run ─────────────────────────────────────────────────────────────────────
+@app.delete("/documents/clear-errors")
+def clear_errored_documents():
+    """Delete all documents with status='error' from Supabase."""
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+    # Get all error documents
+    response = client.table("documents").select("id").eq("status", "error").execute()
+    error_docs = response.data or []
+    deleted = 0
+    for doc in error_docs:
+        try:
+            delete_rag_document(client, rag_config, doc["id"])
+            deleted += 1
+        except Exception as e:
+            logger.warning(f"Failed to delete error doc {doc['id']}: {e}")
+    return {"deleted": deleted, "total_errors_found": len(error_docs)}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8001")))
+
+@app.post("/documents/retry-errors")
+async def retry_errored_documents(background_tasks: BackgroundTasks):
+    """Re-index all documents with status='error' or stuck 'processing' — processes sequentially to avoid rate limits.
+    Documents with no storage file (size_bytes=0, no storage_path) are deleted as orphans."""
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured.")
+
+    # Find both errored and stuck-processing docs
+    error_resp = client.table("documents").select("*").eq("status", "error").execute()
+    stuck_resp = client.table("documents").select("*").eq("status", "processing").execute()
+    all_broken = (error_resp.data or []) + (stuck_resp.data or [])
+    if not all_broken:
+        return {"message": "No errored or stuck documents to retry", "count": 0}
+
+    # Separate orphans (no file stored) from retryable docs
+    retryable = []
+    deleted_orphans = 0
+    for doc in all_broken:
+        has_file = doc.get("storage_path") and doc.get("size_bytes", 0) > 0
+        if not has_file:
+            try:
+                delete_rag_document(client, rag_config, doc["id"])
+                deleted_orphans += 1
+                logger.info("Deleted orphan document %s (%s) — no stored file", doc["id"], doc.get("filename"))
+            except Exception as e:
+                logger.warning("Failed to delete orphan %s: %s", doc["id"], e)
+        else:
+            retryable.append(doc)
+
+    if not retryable:
+        return {"message": f"Cleaned up {deleted_orphans} orphan documents. Nothing left to retry.", "deleted_orphans": deleted_orphans, "count": 0}
+
+    # Reset status to processing so frontend shows spinner
+    for doc in retryable:
+        update_document_record(client, doc["id"], {"status": "processing", "error_message": None})
+
+    async def _retry_in_background():
+        for idx, doc in enumerate(retryable):
+            if idx > 0:
+                await asyncio.sleep(10)  # Stagger to avoid rate limits
+            try:
+                storage_path = doc.get("storage_path", "")
+                # Download file from Supabase storage
+                file_bytes = client.storage.from_(rag_config.supabase_bucket).download(storage_path)
+                await asyncio.to_thread(
+                    _index_existing_document,
+                    client=client, rag_config=rag_config, api_key=api_key,
+                    document_id=doc["id"], file_bytes=file_bytes,
+                    filename=doc.get("filename", "document"),
+                    content_type=doc.get("mime_type", "application/pdf"),
+                )
+                logger.info("Retry indexing succeeded for %s (%s)", doc["id"], doc.get("filename"))
+            except Exception as exc:
+                logger.exception("Retry indexing failed for %s", doc["id"])
+                try:
+                    update_document_record(client, doc["id"], {"status": "error", "error_message": f"Retry failed: {str(exc)[:400]}"})
+                except Exception:
+                    pass
+
+    asyncio.create_task(_retry_in_background())
+    return {"message": f"Cleaned up {deleted_orphans} orphans. Retrying {len(retryable)} documents.", "deleted_orphans": deleted_orphans, "count": len(retryable)}
+
+
+# ─────────────────────────────────────────────────────────────
+# INTEGRATIONS — Status & OAuth
+# ─────────────────────────────────────────────────────────────
+
+GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+]
+_base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
+GOOGLE_REDIRECT_URI = f"{_base_url}/auth/google/callback"
+MICROSOFT_REDIRECT_URI = f"{_base_url}/auth/microsoft/callback"
+MICROSOFT_SCOPES = ["Files.Read", "Files.Read.All", "offline_access"]
+
+# File types to look for in connected drives
+BUILDING_DOC_MIME_TYPES = [
+    "application/pdf",
+    "image/png", "image/jpeg",
+]
+
+# Google Sheets MIME type (exported as xlsx or read via Sheets API)
+GOOGLE_SHEETS_MIME = "application/vnd.google-apps.spreadsheet"
+GOOGLE_DOCS_MIME = "application/vnd.google-apps.document"
+# Keywords that suggest a building document
+BUILDING_DOC_KEYWORDS = [
+    "PCA", "condition assessment", "floor plan", "architectural", "MEP",
+    "inspection", "maintenance", "lease", "rent roll", "energy audit",
+    "specification", "structural", "O&M", "commissioning", "permit",
+]
+
+
+@app.get("/integrations/status")
+def integration_status():
+    """Check which integrations are connected."""
+    return {
+        "google_drive": {
+            "connected": "google" in _tokens,
+            "available": GOOGLE_AVAILABLE,
+            "client_configured": bool(os.getenv("GOOGLE_CLIENT_ID")),
+        },
+        "onedrive": {
+            "connected": "microsoft" in _tokens,
+            "available": MICROSOFT_AVAILABLE,
+            "client_configured": bool(os.getenv("MICROSOFT_CLIENT_ID")),
+        },
+    }
+
+
+# ── Google Drive ──────────────────────────────────────────────
+
+@app.get("/auth/google/start")
+def google_auth_start():
+    """Redirect user to Google OAuth consent screen."""
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    if not GOOGLE_AVAILABLE:
+        raise HTTPException(503, "Google auth library not installed. Run: pip install google-auth-oauthlib google-api-python-client")
+    if not client_id or not client_secret:
+        raise HTTPException(400, "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not set in .env")
+
+    state = secrets.token_urlsafe(16)
+    client_config = {
+        "web": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [GOOGLE_REDIRECT_URI],
+        }
+    }
+    flow = GoogleFlow.from_client_config(client_config, scopes=GOOGLE_SCOPES, state=state)
+    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+    # Store the PKCE code_verifier so the callback can use it for token exchange
+    _oauth_states[state] = {"provider": "google", "code_verifier": flow.code_verifier}
+    return RedirectResponse(auth_url)
+
+
+@app.get("/auth/google/callback")
+def google_auth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    """Handle Google OAuth callback."""
+    # Handle error responses from Google (e.g. user denied access)
+    if error:
+        logger.warning(f"Google OAuth error: {error}")
+        return RedirectResponse(f"{_base_url}/?integration=google_error&reason={error}")
+    if not code or not state:
+        raise HTTPException(400, "Missing code or state parameter")
+    if state not in _oauth_states:
+        raise HTTPException(400, "Invalid OAuth state — possible CSRF attempt")
+    oauth_data = _oauth_states.pop(state)
+    code_verifier = oauth_data.get("code_verifier") if isinstance(oauth_data, dict) else None
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    client_config = {
+        "web": {
+            "client_id": client_id, "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [GOOGLE_REDIRECT_URI],
+        }
+    }
+    flow = GoogleFlow.from_client_config(client_config, scopes=GOOGLE_SCOPES)
+    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    # Restore the PKCE code_verifier from the original auth request
+    flow.code_verifier = code_verifier
+    flow.fetch_token(code=code)
+    _tokens["google"] = flow.credentials
+    logger.info("Google Drive connected successfully")
+    return RedirectResponse(f"{_base_url}/?integration=google_connected")
+
+
+@app.get("/auth/google/disconnect")
+def google_disconnect():
+    _tokens.pop("google", None)
+    return {"status": "disconnected"}
+
+
+def _gdrive_list_files_recursive(service, folder_id: Optional[str] = None, query: str = "", max_depth: int = 5, _depth: int = 0) -> list[dict]:
+    """Recursively list PDF/image files from Google Drive, scanning all subfolders."""
+    if _depth > max_depth:
+        return []
+
+    files: list[dict] = []
+    # Build query for files in this folder
+    q_parts = [
+        "(mimeType='application/pdf' or mimeType='image/png' or mimeType='image/jpeg' or mimeType='application/vnd.google-apps.folder' or mimeType='application/vnd.google-apps.spreadsheet')",
+        "trashed=false",
+    ]
+    if folder_id:
+        q_parts.append(f"'{folder_id}' in parents")
+    if query:
+        q_parts.append(f"name contains '{query}'")
+    q = " and ".join(q_parts)
+
+    page_token = None
+    while True:
+        results = service.files().list(
+            q=q, pageSize=100,
+            fields="nextPageToken, files(id,name,mimeType,size,modifiedTime,parents)",
+            orderBy="modifiedTime desc",
+            pageToken=page_token,
+        ).execute()
+
+        for f in results.get("files", []):
+            if f["mimeType"] == "application/vnd.google-apps.folder":
+                # Recurse into subfolder
+                subfolder_files = _gdrive_list_files_recursive(
+                    service, folder_id=f["id"], query=query,
+                    max_depth=max_depth, _depth=_depth + 1,
+                )
+                # Prefix subfolder name to child files for context
+                for sf in subfolder_files:
+                    sf["_folder_path"] = f"{f['name']}/{sf.get('_folder_path', '')}" if sf.get("_folder_path") else f["name"]
+                files.extend(subfolder_files)
+            elif f["mimeType"] == GOOGLE_SHEETS_MIME:
+                # Google Sheets don't have a binary size — mark specially
+                f["size"] = f.get("size", "0")
+                files.append(f)
+            else:
+                files.append(f)
+
+        page_token = results.get("nextPageToken")
+        if not page_token:
+            break
+
+    return files
+
+
+@app.get("/integrations/google-drive/files")
+def list_google_drive_files(query: str = "", folder_id: Optional[str] = None):
+    """List building-relevant PDF files from Google Drive, including all subfolders."""
+    if "google" not in _tokens:
+        raise HTTPException(401, "Google Drive not connected")
+    try:
+        service = gdrive_build("drive", "v3", credentials=_tokens["google"])
+        files = _gdrive_list_files_recursive(service, folder_id=folder_id, query=query)
+
+        # Deduplicate by file ID
+        seen = set()
+        unique_files = []
+        for f in files:
+            if f["id"] not in seen:
+                seen.add(f["id"])
+                unique_files.append(f)
+
+        # Score files by building-document relevance
+        def relevance(f):
+            name_lower = f["name"].lower()
+            return sum(1 for kw in BUILDING_DOC_KEYWORDS if kw.lower() in name_lower)
+        unique_files.sort(key=relevance, reverse=True)
+        return {
+            "files": [
+                {
+                    "id": f["id"], "name": f["name"],
+                    "folder": f.get("_folder_path", ""),
+                    "size_kb": round(int(f.get("size", 0)) / 1024, 1),
+                    "modified": f.get("modifiedTime", "")[:10],
+                    "relevance": relevance(f),
+                    "mime_type": f["mimeType"],
+                }
+                for f in unique_files
+            ],
+            "total": len(unique_files),
+        }
+    except Exception as e:
+        logger.error(f"Google Drive list error: {e}")
+        raise HTTPException(500, f"Could not list Google Drive files: {str(e)}")
+
+
+@app.post("/integrations/google-drive/analyze")
+async def analyze_google_drive_files(file_ids: List[str], building_id: Optional[str] = None):
+    """Download files from Google Drive, analyze with Claude, and store in Supabase."""
+    if "google" not in _tokens:
+        raise HTTPException(401, "Google Drive not connected")
+    if not file_ids:
+        raise HTTPException(400, "No file IDs provided")
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    rag_config = load_rag_config()
+    rag_enabled = is_rag_ready(rag_config)
+    supabase_client = get_supabase_client(rag_config) if rag_enabled else None
+
+    service = gdrive_build("drive", "v3", credentials=_tokens["google"])
+    results = []
+
+    for file_id in file_ids[:20]:  # Cap at 20 files per batch
+        try:
+            # Get file metadata
+            meta = service.files().get(fileId=file_id, fields="name,mimeType,size").execute()
+            filename = meta["name"]
+            mime_type = meta["mimeType"]
+
+            if mime_type == GOOGLE_SHEETS_MIME:
+                # Export Google Sheet as xlsx
+                request = service.files().export_media(
+                    fileId=file_id,
+                    mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+                buf = io.BytesIO()
+                downloader = MediaIoBaseDownload(buf, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                file_bytes = buf.getvalue()
+                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                filename = filename if filename.endswith(".xlsx") else filename + ".xlsx"
+            elif mime_type not in BUILDING_DOC_MIME_TYPES:
+                results.append({"file_id": file_id, "name": filename, "status": "skipped", "reason": "Unsupported file type"})
+                continue
+            else:
+                # Download file content
+                request = service.files().get_media(fileId=file_id)
+                buf = io.BytesIO()
+                downloader = MediaIoBaseDownload(buf, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                file_bytes = buf.getvalue()
+
+            # Use the full RAG pipeline if Supabase is configured
+            if rag_enabled and supabase_client:
+                result = index_document_bytes(
+                    client=supabase_client,
+                    rag_config=rag_config,
+                    api_key=api_key,
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    content_type=mime_type,
+                    building_id=building_id,
+                    source_meta={"source": "google_drive", "drive_file_id": file_id},
+                )
+                # Return analysis at top level so frontend can use it directly
+                analysis = result.get("analysis", {})
+                doc_record = result.get("document", {})
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": analysis, "document_id": doc_record.get("id")})
+            else:
+                # Fallback: direct Claude analysis without storage
+                intelligence = analyze_file_bytes(file_bytes, filename, mime_type, api_key)
+                intelligence["_meta"]["source"] = "google_drive"
+                intelligence["_meta"]["drive_file_id"] = file_id
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
+            logger.info(f"Drive file analyzed: {filename}")
+
+        except HTTPException as e:
+            logger.error(f"Error analyzing Drive file {file_id}: {e.detail}")
+            results.append({"file_id": file_id, "name": filename if 'filename' in dir() else file_id, "status": "error", "error": e.detail})
+        except Exception as e:
+            logger.error(f"Error analyzing Drive file {file_id}: {e}")
+            results.append({"file_id": file_id, "status": "error", "error": str(e)})
+
+    return {"results": results, "analyzed": sum(1 for r in results if r["status"] == "analyzed")}
+
+
+# ── Google Sheets ─────────────────────────────────────────────
+
+@app.get("/integrations/google-sheets/files")
+def list_google_sheets_files(query: str = ""):
+    """List Google Sheets from the connected Google account."""
+    if "google" not in _tokens:
+        raise HTTPException(401, "Google Drive not connected")
+    try:
+        service = gdrive_build("drive", "v3", credentials=_tokens["google"])
+        q_parts = [
+            f"mimeType='{GOOGLE_SHEETS_MIME}'",
+            "trashed=false",
+        ]
+        if query:
+            q_parts.append(f"name contains '{query}'")
+        q = " and ".join(q_parts)
+
+        all_sheets = []
+        page_token = None
+        while True:
+            results = service.files().list(
+                q=q, pageSize=100,
+                fields="nextPageToken, files(id,name,mimeType,size,modifiedTime,owners,webViewLink)",
+                orderBy="modifiedTime desc",
+                pageToken=page_token,
+            ).execute()
+            all_sheets.extend(results.get("files", []))
+            page_token = results.get("nextPageToken")
+            if not page_token:
+                break
+
+        return {
+            "files": [
+                {
+                    "id": f["id"],
+                    "name": f["name"],
+                    "modified": f.get("modifiedTime", "")[:10],
+                    "web_link": f.get("webViewLink", ""),
+                    "mime_type": GOOGLE_SHEETS_MIME,
+                    "owner": (f.get("owners") or [{}])[0].get("displayName", ""),
+                }
+                for f in all_sheets
+            ],
+            "total": len(all_sheets),
+        }
+    except Exception as e:
+        logger.error(f"Google Sheets list error: {e}")
+        raise HTTPException(500, f"Could not list Google Sheets: {str(e)}")
+
+
+@app.get("/integrations/google-sheets/read/{file_id}")
+def read_google_sheet(file_id: str, sheet_name: Optional[str] = None):
+    """Read the contents of a Google Sheet and return as structured data."""
+    if "google" not in _tokens:
+        raise HTTPException(401, "Google account not connected")
+    try:
+        sheets_service = gdrive_build("sheets", "v4", credentials=_tokens["google"])
+        drive_service = gdrive_build("drive", "v3", credentials=_tokens["google"])
+
+        # Get file metadata
+        meta = drive_service.files().get(fileId=file_id, fields="name").execute()
+        filename = meta["name"]
+
+        # Get spreadsheet info (all sheet names)
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=file_id).execute()
+        sheet_titles = [s["properties"]["title"] for s in spreadsheet.get("sheets", [])]
+
+        # Read the requested sheet or all sheets
+        all_data = {}
+        targets = [sheet_name] if sheet_name and sheet_name in sheet_titles else sheet_titles
+        for title in targets:
+            result = sheets_service.spreadsheets().values().get(
+                spreadsheetId=file_id,
+                range=f"'{title}'",
+            ).execute()
+            rows = result.get("values", [])
+            all_data[title] = rows
+
+        return {
+            "file_id": file_id,
+            "name": filename,
+            "sheets": sheet_titles,
+            "data": all_data,
+            "total_rows": sum(len(rows) for rows in all_data.values()),
+        }
+    except Exception as e:
+        logger.error(f"Google Sheets read error: {e}")
+        raise HTTPException(500, f"Could not read Google Sheet: {str(e)}")
+
+
+@app.post("/integrations/google-sheets/analyze")
+async def analyze_google_sheets(file_ids: List[str]):
+    """Read Google Sheets and analyze with Claude for building intelligence."""
+    if "google" not in _tokens:
+        raise HTTPException(401, "Google account not connected")
+    if not file_ids:
+        raise HTTPException(400, "No file IDs provided")
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    rag_config = load_rag_config()
+    rag_enabled = is_rag_ready(rag_config)
+    supabase_client = get_supabase_client(rag_config) if rag_enabled else None
+
+    sheets_service = gdrive_build("sheets", "v4", credentials=_tokens["google"])
+    drive_service = gdrive_build("drive", "v3", credentials=_tokens["google"])
+    results = []
+
+    for file_id in file_ids[:20]:
+        try:
+            meta = drive_service.files().get(fileId=file_id, fields="name").execute()
+            filename = meta["name"]
+
+            # Get all sheet data
+            spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=file_id).execute()
+            sheet_titles = [s["properties"]["title"] for s in spreadsheet.get("sheets", [])]
+
+            all_text_parts = [f"# Google Sheet: {filename}\n"]
+            for title in sheet_titles:
+                result = sheets_service.spreadsheets().values().get(
+                    spreadsheetId=file_id, range=f"'{title}'",
+                ).execute()
+                rows = result.get("values", [])
+                all_text_parts.append(f"\n## Sheet: {title}\n")
+                for row in rows:
+                    all_text_parts.append(" | ".join(str(cell) for cell in row))
+
+            sheet_text = "\n".join(all_text_parts)
+
+            # Use RAG pipeline if available
+            if rag_enabled and supabase_client:
+                # Convert text to bytes for the RAG pipeline
+                text_bytes = sheet_text.encode("utf-8")
+                result = index_document_bytes(
+                    client=supabase_client,
+                    rag_config=rag_config,
+                    api_key=api_key,
+                    file_bytes=text_bytes,
+                    filename=f"{filename}.txt",
+                    content_type="text/plain",
+                    building_id=None,
+                    source_meta={"source": "google_sheets", "sheet_file_id": file_id},
+                )
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": result})
+            else:
+                # Direct Claude analysis
+                client = anthropic.Anthropic(api_key=api_key)
+                msg = client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=4096,
+                    messages=[{"role": "user", "content": f"Analyze this spreadsheet data for building intelligence. Extract any relevant information about building systems, equipment, maintenance, costs, leases, energy, or space data.\n\n{sheet_text[:30000]}"}],
+                )
+                intelligence = {
+                    "_meta": {"filename": filename, "source": "google_sheets", "sheet_file_id": file_id},
+                    "summary": _get_text(msg.content[0]) if msg.content else "",
+                }
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
+
+            logger.info(f"Sheet analyzed: {filename}")
+        except Exception as e:
+            logger.error(f"Error analyzing Sheet {file_id}: {e}")
+            results.append({"file_id": file_id, "status": "error", "error": str(e)})
+
+    return {"results": results, "analyzed": sum(1 for r in results if r["status"] == "analyzed")}
+
+
+# ── Microsoft OneDrive ────────────────────────────────────────
+
+@app.get("/auth/microsoft/start")
+def microsoft_auth_start():
+    """Redirect user to Microsoft OAuth consent screen."""
+    client_id = os.getenv("MICROSOFT_CLIENT_ID")
+    tenant_id = os.getenv("MICROSOFT_TENANT_ID", "common")
+    if not MICROSOFT_AVAILABLE:
+        raise HTTPException(503, "msal not installed. Run: pip install msal")
+    if not client_id:
+        raise HTTPException(400, "MICROSOFT_CLIENT_ID not set in .env")
+
+    state = secrets.token_urlsafe(16)
+    _oauth_states[state] = "microsoft"
+    app_msal = msal.PublicClientApplication(client_id, authority=f"https://login.microsoftonline.com/{tenant_id}")
+    auth_url = app_msal.get_authorization_request_url(
+        scopes=MICROSOFT_SCOPES,
+        redirect_uri=MICROSOFT_REDIRECT_URI,
+        state=state,
+    )
+    return RedirectResponse(auth_url)
+
+
+@app.get("/auth/microsoft/callback")
+def microsoft_auth_callback(code: str, state: str):
+    """Handle Microsoft OAuth callback."""
+    if state not in _oauth_states:
+        raise HTTPException(400, "Invalid OAuth state")
+    del _oauth_states[state]
+    client_id = os.getenv("MICROSOFT_CLIENT_ID")
+    client_secret = os.getenv("MICROSOFT_CLIENT_SECRET", "")
+    tenant_id = os.getenv("MICROSOFT_TENANT_ID", "common")
+
+    if client_secret:
+        app_msal = msal.ConfidentialClientApplication(
+            client_id, authority=f"https://login.microsoftonline.com/{tenant_id}",
+            client_credential=client_secret,
+        )
+    else:
+        app_msal = msal.PublicClientApplication(client_id, authority=f"https://login.microsoftonline.com/{tenant_id}")
+
+    result = app_msal.acquire_token_by_authorization_code(
+        code, scopes=MICROSOFT_SCOPES, redirect_uri=MICROSOFT_REDIRECT_URI
+    )
+    if "error" in result:
+        raise HTTPException(400, f"Microsoft auth error: {result.get('error_description', result['error'])}")
+    _tokens["microsoft"] = result
+    logger.info("Microsoft OneDrive connected successfully")
+    return RedirectResponse("http://localhost:8000/?integration=microsoft_connected")
+
+
+@app.get("/auth/microsoft/disconnect")
+def microsoft_disconnect():
+    _tokens.pop("microsoft", None)
+    return {"status": "disconnected"}
+
+
+@app.get("/integrations/onedrive/files")
+async def list_onedrive_files(query: str = ""):
+    """List building-relevant files from OneDrive."""
+    if "microsoft" not in _tokens:
+        raise HTTPException(401, "OneDrive not connected")
+    import httpx
+    token = _tokens["microsoft"].get("access_token")
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        async with httpx.AsyncClient() as client:
+            if query:
+                resp = await client.get(
+                    f"https://graph.microsoft.com/v1.0/me/drive/root/search(q='{query}')?$top=50&$select=id,name,size,lastModifiedDateTime,file",
+                    headers=headers,
+                )
+            else:
+                resp = await client.get(
+                    "https://graph.microsoft.com/v1.0/me/drive/root/children?$top=50&$select=id,name,size,lastModifiedDateTime,file&$orderby=lastModifiedDateTime desc",
+                    headers=headers,
+                )
+        resp.raise_for_status()
+        items = resp.json().get("value", [])
+        files = [i for i in items if i.get("file") and i["file"].get("mimeType") in BUILDING_DOC_MIME_TYPES]
+
+        def relevance(f):
+            name_lower = f["name"].lower()
+            return sum(1 for kw in BUILDING_DOC_KEYWORDS if kw.lower() in name_lower)
+
+        files.sort(key=relevance, reverse=True)
+        return {
+            "files": [
+                {
+                    "id": f["id"], "name": f["name"],
+                    "size_kb": round(f.get("size", 0) / 1024, 1),
+                    "modified": f.get("lastModifiedDateTime", "")[:10],
+                    "relevance": relevance(f),
+                    "mime_type": f["file"]["mimeType"],
+                }
+                for f in files
+            ],
+            "total": len(files),
+        }
+    except Exception as e:
+        logger.error(f"OneDrive list error: {e}")
+        raise HTTPException(500, f"Could not list OneDrive files: {str(e)}")
+
+
+@app.post("/integrations/onedrive/analyze")
+async def analyze_onedrive_files(file_ids: List[str]):
+    """Download files from OneDrive and analyze them."""
+    if "microsoft" not in _tokens:
+        raise HTTPException(401, "OneDrive not connected")
+    import httpx
+    token = _tokens["microsoft"].get("access_token")
+    headers = {"Authorization": f"Bearer {token}"}
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    results = []
+    async with httpx.AsyncClient() as http_client:
+        for file_id in file_ids[:20]:
+            try:
+                meta_resp = await http_client.get(
+                    f"https://graph.microsoft.com/v1.0/me/drive/items/{file_id}?$select=name,file",
+                    headers=headers,
+                )
+                meta = meta_resp.json()
+                filename = meta["name"]
+                mime_type = meta.get("file", {}).get("mimeType", "application/pdf")
+
+                dl_resp = await http_client.get(
+                    f"https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/content",
+                    headers=headers, follow_redirects=True,
+                )
+                file_bytes = dl_resp.content
+                b64_data = base64.standard_b64encode(file_bytes).decode("utf-8")
+                msg_type = "document" if mime_type == "application/pdf" else "image"
+                doc_content = {"type": msg_type, "source": {"type": "base64", "media_type": mime_type, "data": b64_data}}
+
+                client = anthropic.Anthropic(api_key=api_key)
+                response = client.messages.create(
+                    model="claude-haiku-4-5-20251001", max_tokens=8192,
+                    messages=[{"role": "user", "content": [doc_content, {"type": "text", "text": ANALYSIS_PROMPT}]}],
+                )
+                intelligence = extract_json_from_response(_get_text(response.content[0]))
+                intelligence["_meta"] = {
+                    "filename": filename, "file_size_kb": round(len(file_bytes) / 1024, 1),
+                    "content_type": mime_type, "model": "claude-haiku-4-5-20251001",
+                    "source": "onedrive", "onedrive_file_id": file_id,
+                }
+                results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
+            except Exception as e:
+                logger.error(f"OneDrive file error {file_id}: {e}")
+                results.append({"file_id": file_id, "status": "error", "error": str(e)})
+
+    return {"results": results, "analyzed": sum(1 for r in results if r["status"] == "analyzed")}
+
+
+# ── AppFolio Property Manager ─────────────────────────────────
+
+class AppFolioConnectRequest(BaseModel):
+    database: str = Field(..., description="AppFolio database name (the subdomain, e.g. 'acme' for acme.appfolio.com)")
+    client_id: str = Field(..., description="AppFolio API Client ID")
+    client_secret: str = Field(..., description="AppFolio API Client Secret")
+
+_appfolio_config: dict[str, Any] = {}
+
+@app.post("/integrations/appfolio/connect")
+async def appfolio_connect(body: AppFolioConnectRequest):
+    """Store AppFolio credentials and test the connection."""
+    base_url = f"https://{body.database}.appfolio.com"
+    # Test connection by fetching chart of accounts (lightweight)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{base_url}/api/v1/reports/chart_of_accounts.json",
+                auth=(body.client_id, body.client_secret),
+            )
+            if resp.status_code == 401:
+                raise HTTPException(401, "Invalid AppFolio credentials. Check Client ID and Client Secret.")
+            if resp.status_code == 404:
+                raise HTTPException(404, f"AppFolio database '{body.database}' not found. Check the database name.")
+            resp.raise_for_status()
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        raise HTTPException(400, f"Cannot connect to {base_url}. Check the database name.")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio returned error {e.response.status_code}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Connection test failed: {str(e)}")
+
+    _appfolio_config.update({
+        "database": body.database,
+        "base_url": base_url,
+        "client_id": body.client_id,
+        "client_secret": body.client_secret,
+        "connected": True,
+    })
+    logger.info("AppFolio connected: %s.appfolio.com", body.database)
+    return {"connected": True, "database": body.database, "message": f"Connected to {body.database}.appfolio.com"}
+
+
+@app.get("/integrations/appfolio/status")
+def appfolio_status():
+    """Check AppFolio connection status."""
+    if _appfolio_config.get("connected"):
+        return {"connected": True, "database": _appfolio_config["database"]}
+    return {"connected": False}
+
+
+def _appfolio_auth():
+    if not _appfolio_config.get("connected"):
+        raise HTTPException(401, "AppFolio not connected. Use /integrations/appfolio/connect first.")
+    return (_appfolio_config["client_id"], _appfolio_config["client_secret"])
+
+
+def _appfolio_url(endpoint: str) -> str:
+    return f"{_appfolio_config['base_url']}/api/v1/reports/{endpoint}.json"
+
+
+@app.get("/integrations/appfolio/properties")
+async def appfolio_properties():
+    """Fetch all properties from AppFolio."""
+    auth = _appfolio_auth()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(_appfolio_url("property_directory"), auth=auth)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", data) if isinstance(data, dict) else data
+            return {"properties": results, "total": len(results) if isinstance(results, list) else 0}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch properties: {str(e)}")
+
+
+@app.get("/integrations/appfolio/work-orders")
+async def appfolio_work_orders(
+    status: Optional[str] = Query(default=None, description="Filter: open, completed, cancelled"),
+    property_id: Optional[str] = Query(default=None),
+):
+    """Fetch work orders (maintenance requests) from AppFolio."""
+    auth = _appfolio_auth()
+    endpoint = "work_order_tasks_completed" if status == "completed" else "work_order_tasks_in_progress"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(_appfolio_url(endpoint), auth=auth)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", data) if isinstance(data, dict) else data
+            if property_id and isinstance(results, list):
+                results = [wo for wo in results if str(wo.get("property_id", "")) == property_id]
+            return {"work_orders": results, "total": len(results) if isinstance(results, list) else 0, "status_filter": status}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch work orders: {str(e)}")
+
+
+@app.get("/integrations/appfolio/tenants")
+async def appfolio_tenants(property_id: Optional[str] = Query(default=None)):
+    """Fetch tenant/occupancy data from AppFolio."""
+    auth = _appfolio_auth()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(_appfolio_url("rent_roll"), auth=auth)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", data) if isinstance(data, dict) else data
+            if property_id and isinstance(results, list):
+                results = [t for t in results if str(t.get("property_id", "")) == property_id]
+            return {"tenants": results, "total": len(results) if isinstance(results, list) else 0}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch tenants: {str(e)}")
+
+
+@app.get("/integrations/appfolio/financials")
+async def appfolio_financials(
+    report: str = Query(default="income_statement", description="Report type: income_statement, balance_sheet, cash_flow, general_ledger"),
+    from_date: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
+):
+    """Fetch financial reports from AppFolio."""
+    auth = _appfolio_auth()
+    report_map = {
+        "income_statement": "income_statement",
+        "balance_sheet": "balance_sheet",
+        "cash_flow": "cash_flow",
+        "general_ledger": "general_ledger",
+        "aged_payables": "aged_payables_summary",
+        "aged_receivables": "aged_receivables_summary",
+    }
+    endpoint = report_map.get(report, report)
+    try:
+        params = {}
+        if from_date:
+            params["from_date"] = from_date
+        if to_date:
+            params["to_date"] = to_date
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(_appfolio_url(endpoint), auth=auth, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            return {"report": endpoint, "data": data}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch report: {str(e)}")
+
+
+@app.post("/integrations/appfolio/sync-to-building")
+async def appfolio_sync_to_building(building_id: Optional[str] = None):
+    """Pull AppFolio property data and sync into BuildingOS as analyzed documents."""
+    auth = _appfolio_auth()
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    supabase_client = get_supabase_client(rag_config)
+
+    # Fetch key AppFolio data
+    results = []
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Fetch properties
+            props_resp = await client.get(_appfolio_url("property_directory"), auth=auth)
+            props_data = props_resp.json() if props_resp.status_code == 200 else {}
+
+            # Fetch rent roll
+            rent_resp = await client.get(_appfolio_url("rent_roll"), auth=auth)
+            rent_data = rent_resp.json() if rent_resp.status_code == 200 else {}
+
+            # Fetch work orders
+            wo_resp = await client.get(_appfolio_url("work_order_tasks_in_progress"), auth=auth)
+            wo_data = wo_resp.json() if wo_resp.status_code == 200 else {}
+
+        # Combine into a text document for RAG indexing
+        combined_text = "# AppFolio Property Data Import\n\n"
+        combined_text += f"## Properties\n{json.dumps(props_data, indent=2)[:20000]}\n\n"
+        combined_text += f"## Rent Roll (Tenant Occupancy)\n{json.dumps(rent_data, indent=2)[:20000]}\n\n"
+        combined_text += f"## Active Work Orders (Maintenance)\n{json.dumps(wo_data, indent=2)[:20000]}\n\n"
+
+        # Index as a document for Q&A
+        text_bytes = combined_text.encode("utf-8")
+        result = index_document_bytes(
+            client=supabase_client,
+            rag_config=rag_config,
+            api_key=api_key,
+            file_bytes=text_bytes,
+            filename="AppFolio_Property_Data_Import.txt",
+            content_type="text/plain",
+            building_id=building_id,
+            source_meta={"source": "appfolio", "database": _appfolio_config.get("database")},
+        )
+        results.append({"name": "AppFolio Property Data", "status": "analyzed", **result})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("AppFolio sync failed")
+        results.append({"name": "AppFolio sync", "status": "error", "error": str(e)})
+
+    return {
+        "results": results,
+        "synced": sum(1 for r in results if r.get("status") == "analyzed"),
+        "message": "AppFolio data imported into BuildingOS for AI analysis and Q&A."
+    }
+
+
+# ─────────────────────────────────────────────────────────────
+# DOCUMENT ANALYSIS
+# ─────────────────────────────────────────────────────────────
+
+@app.get("/documents")
+def get_documents(building_id: Optional[str] = Query(default=None)):
+    require_rag_configuration()
+    client = get_supabase_client(load_rag_config())
+    rows = rag_list_documents(client, building_id=building_id)
+    return {"documents": [serialize_document_record(row) for row in rows]}
+
+
+@app.get("/documents/{document_id}/status")
+def get_document_status(document_id: str):
+    require_rag_configuration()
+    client = get_supabase_client(load_rag_config())
+    response = client.table("documents").select("*").eq("id", document_id).limit(1).execute()
+    row = (response.data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    doc = serialize_document_record(row)
+    # Include analysis_json for detail view
+    analysis = row.get("analysis_json")
+    if analysis:
+        if isinstance(analysis, str):
+            try:
+                analysis = json.loads(analysis)
+            except Exception:
+                pass
+        doc["analysis_json"] = analysis
+    return {"document": doc}
+
+
+@app.get("/documents/{document_id}/preview", dependencies=[Depends(verify_api_key)])
+def get_document_preview_url(document_id: str):
+    """Return a signed URL for viewing/downloading the original file."""
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+    response = client.table("documents").select("storage_path, filename, mime_type").eq("id", document_id).limit(1).execute()
+    row = (response.data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    storage_path = row.get("storage_path")
+    if not storage_path:
+        raise HTTPException(status_code=404, detail="Original file not available.")
+    try:
+        bucket = rag_config.supabase_bucket or "documents"
+        signed = client.storage.from_(bucket).create_signed_url(storage_path, 3600)  # 1 hour
+        url = signed.get("signedURL") or signed.get("signedUrl") or signed.get("data", {}).get("signedUrl")
+        if not url:
+            raise HTTPException(status_code=500, detail="Could not generate preview URL.")
+        return {"url": url, "filename": row.get("filename"), "mime_type": row.get("mime_type")}
+    except Exception as exc:
+        logger.error("Failed to create signed URL: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Preview not available: {str(exc)}")
+
+
+@app.delete("/documents/{document_id}", dependencies=[Depends(verify_api_key)])
+def delete_document(document_id: str):
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+    response = client.table("documents").select("*").eq("id", document_id).limit(1).execute()
+    row = (response.data or [None])[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    delete_rag_document(client, rag_config, document_id)
+    return {"deleted": True, "document_id": document_id}
+
+
+@app.post("/documents/upload", dependencies=[Depends(verify_api_key)])
+async def upload_document(
+    file: UploadFile = File(...),
+    building_id: Optional[str] = Form(default=None),
+):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY not configured. Add it to your .env file.",
+        )
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+
+    file_bytes = await file.read()
+    filename = file.filename or "document"
+    return index_document_bytes(
+        client=client,
+        rag_config=rag_config,
+        api_key=api_key,
+        file_bytes=file_bytes,
+        filename=filename,
+        content_type=file.content_type or guess_content_type_from_filename(filename),
+        building_id=building_id,
+    )
+
+
+@app.post("/documents/import-shared-link", dependencies=[Depends(verify_api_key)])
+async def import_shared_link(body: SharedLinkImportRequest):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY not configured. Add it to your .env file.",
+        )
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+
+    if is_google_drive_folder_url(body.url.strip()):
+        items = await list_google_drive_shared_folder_files(body.url.strip())
+        logger.info("Found %d files in shared folder, starting background import", len(items))
+
+        # Pre-create document records immediately so frontend can show them
+        pending_docs: list[dict[str, Any]] = []
+        for item in items:
+            doc_id = secrets.token_hex(12)
+            fname = item.get("name") or "shared-document.pdf"
+            try:
+                create_document_record(
+                    client,
+                    document_id=doc_id,
+                    building_id=body.building_id,
+                    filename=fname,
+                    storage_path="",
+                    mime_type="application/pdf",
+                    size_bytes=0,
+                )
+                pending_docs.append({"document_id": doc_id, "item": item, "name": fname})
+            except Exception as exc:
+                logger.warning("Failed to pre-create doc record for %s: %s", fname, exc)
+
+        async def _process_in_background():
+            """Download, analyze, and index all files from the shared folder sequentially
+            to avoid OpenAI embedding rate limits (429)."""
+            for idx, pending in enumerate(pending_docs):
+                if idx > 0:
+                    await asyncio.sleep(10)  # Delay between docs to avoid OpenAI rate limits
+                try:
+                    await _process_single_bg_item(pending, client, rag_config, api_key, body)
+                except Exception as exc:
+                    logger.exception("Background item %d/%d failed: %s", idx + 1, len(pending_docs), exc)
+                    try:
+                        update_document_record(client, pending["document_id"], {"status": "error", "error_message": f"Import failed: {str(exc)[:400]}"})
+                    except Exception:
+                        pass
+
+        async def _process_single_bg_item(pending, client, rag_config, api_key, body):
+            doc_id = pending["document_id"]
+            item = pending["item"]
+            fname = pending["name"]
+            try:
+                file_bytes, filename, content_type, source_meta = await download_shared_file(item["url"])
+                # Upload to storage
+                storage_path = await asyncio.to_thread(
+                    upload_file_to_storage, client, rag_config,
+                    document_id=doc_id, filename=fname,
+                    file_bytes=file_bytes, content_type=content_type,
+                )
+                # Update the record with real metadata
+                update_document_record(client, doc_id, {
+                    "storage_path": storage_path,
+                    "mime_type": content_type,
+                    "size_bytes": len(file_bytes),
+                })
+                # Run analysis + RAG indexing
+                result = await asyncio.to_thread(
+                    _index_existing_document,
+                    client=client, rag_config=rag_config, api_key=api_key,
+                    document_id=doc_id, file_bytes=file_bytes,
+                    filename=item.get("name") or filename,
+                    content_type=content_type,
+                    source_meta={
+                        **source_meta,
+                        "source": "google_drive_folder_link",
+                        "folder_url": body.url.strip(),
+                        "folder_item_url": item["url"],
+                    },
+                )
+                logger.info("Background import done: %s -> %s", fname, result.get("status", "?"))
+            except Exception as exc:
+                logger.exception("Background import failed for %s", fname)
+                try:
+                    update_document_record(client, doc_id, {"status": "error", "error_message": str(exc)[:500]})
+                except Exception:
+                    pass
+
+        # Fire background processing and return immediately
+        asyncio.create_task(_process_in_background())
+
+        return {
+            "batch": True,
+            "async": True,
+            "folder_url": body.url.strip(),
+            "results": [
+                {"name": p["name"], "status": "processing", "document": {"id": p["document_id"], "filename": p["name"], "status": "processing"}}
+                for p in pending_docs
+            ],
+            "total": len(pending_docs),
+            "imported": 0,
+            "message": f"Importing {len(pending_docs)} files in the background. Documents will appear as they finish processing.",
+        }
+
+    file_bytes, filename, content_type, source_meta = await download_shared_file(body.url.strip())
+    return index_document_bytes(
+        client=client,
+        rag_config=rag_config,
+        api_key=api_key,
+        file_bytes=file_bytes,
+        filename=filename,
+        content_type=content_type,
+        building_id=body.building_id,
+        source_meta=source_meta,
+    )
+
+
+@app.post("/documents/{document_id}/ask", dependencies=[Depends(verify_api_key)])
+def ask_document_question(document_id: str, body: DocumentQuestionRequest):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY not configured. Add it to your .env file.",
+        )
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+    response = client.table("documents").select("*").eq("id", document_id).limit(1).execute()
+    document = (response.data or [None])[0]
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if document.get("status") != "ready":
+        raise HTTPException(status_code=409, detail="Document is still indexing. Try again shortly.")
+
+    # Use text search (no embeddings needed)
+    matches = text_search_chunks(
+        client,
+        document_id=document_id,
+        query=body.question,
+        match_count=body.match_count,
+    )
+    answer = answer_question_from_matches(question=body.question, matches=matches, api_key=api_key)
+    sources = [
+        {
+            "chunk_index": match.get("chunk_index"),
+            "page_refs": match.get("page_refs") or [],
+            "content": match.get("content"),
+        }
+        for match in matches
+    ]
+    save_document_question(
+        client,
+        document_id=document_id,
+        question=body.question,
+        answer=answer.get("answer", ""),
+        sources_json=sources,
+    )
+    return {
+        "document": serialize_document_record(document),
+        "question": body.question,
+        "answer": answer,
+        "matches": sources,
+    }
+
+
+@app.post("/documents/{document_id}/ask-stream", dependencies=[Depends(verify_api_key)])
+def ask_document_question_stream(document_id: str, body: DocumentQuestionRequest):
+    """Streaming variant — returns Server-Sent Events with incremental answer tokens."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured.")
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    sb_client = get_supabase_client(rag_config)
+    response = sb_client.table("documents").select("*").eq("id", document_id).limit(1).execute()
+    document = (response.data or [None])[0]
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if document.get("status") != "ready":
+        raise HTTPException(status_code=409, detail="Document is still indexing.")
+
+    matches = text_search_chunks(
+        sb_client, document_id=document_id,
+        query=body.question, match_count=body.match_count,
+    )
+
+    return StreamingResponse(
+        stream_question_answer(question=body.question, matches=matches, api_key=api_key),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/buildings/{building_id}/ask-documents-stream")
+def ask_building_documents_stream(building_id: str, body: BuildingQuestionRequest):
+    """Streaming variant of ask-documents — returns SSE with incremental answer."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured.")
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    sb_client = get_supabase_client(rag_config)
+
+    document_ids = list(dict.fromkeys([doc_id for doc_id in body.document_ids if doc_id]))
+    if not document_ids:
+        building_docs = rag_list_documents(sb_client, building_id=building_id)
+        document_ids = [doc["id"] for doc in building_docs if doc.get("status") == "ready"]
+    if not document_ids:
+        raise HTTPException(status_code=400, detail="No indexed documents for this building.")
+
+    doc_rows = sb_client.table("documents").select("*").in_("id", document_ids).execute()
+    document_map = {row["id"]: row for row in (doc_rows.data or []) if row.get("status") == "ready"}
+    if not document_map:
+        raise HTTPException(status_code=400, detail="No ready documents found.")
+    document_map = filter_documents_for_question(body.question, document_map)
+
+    # Text search across all docs
+    matches: list[dict[str, Any]] = []
+    per_doc_limit = max(2, min(4, body.match_count))
+    for doc_id, doc_row in document_map.items():
+        doc_matches = text_search_chunks(
+            sb_client, document_id=doc_id,
+            query=body.question, match_count=per_doc_limit,
+        )
+        for match in doc_matches:
+            match["source"] = doc_row.get("filename")
+        matches.extend(doc_matches)
+    matches = matches[:body.match_count]
+
+    prompt_prefix = (
+        "You answer questions about uploaded building documents using only the supplied retrieved context.\n\n"
+        "Rules:\n- Use only the provided document excerpts.\n- If the answer is not supported, say so clearly.\n"
+        "- Be concise and factual.\n- Do not use markdown markers.\n"
+        "- Return ONLY valid JSON: {\"answer\": \"...\", \"citations\": [...], \"confidence\": \"high|medium|low\"}\n"
+    )
+
+    return StreamingResponse(
+        stream_question_answer(question=body.question, matches=matches, api_key=api_key, prompt_prefix=prompt_prefix),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/buildings/{building_id}/ask-deferred")
+def ask_building_deferred_question(building_id: str, body: BuildingQuestionRequest):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY not configured. Add it to your .env file.",
+        )
+
+    rag_config = load_rag_config()
+    rag_enabled = is_rag_ready(rag_config)
+    matches: list[dict[str, Any]] = []
+    sources: list[dict[str, Any]] = []
+    document_ids = list(dict.fromkeys([doc_id for doc_id in body.document_ids if doc_id]))
+
+    if rag_enabled:
+        client = get_supabase_client(rag_config)
+        if not document_ids:
+            building_docs = rag_list_documents(client, building_id=building_id)
+            document_ids = [doc["id"] for doc in building_docs if doc.get("status") == "ready"]
+
+        document_map: dict[str, dict[str, Any]] = {}
+        if document_ids:
+            doc_rows = client.table("documents").select("*").in_("id", document_ids).execute()
+            for row in doc_rows.data or []:
+                if row.get("status") == "ready":
+                    document_map[row["id"]] = row
+
+        if document_map:
+            from concurrent.futures import ThreadPoolExecutor
+            per_doc_limit = max(2, min(4, body.match_count))
+            for d_id, d_row in document_map.items():
+                d_matches = text_search_chunks(
+                    client, document_id=d_id,
+                    query=body.question, match_count=per_doc_limit,
+                )
+                for m in d_matches:
+                    m["source"] = d_row.get("filename")
+                matches.extend(d_matches)
+
+            matches = matches[: body.match_count]
+            sources = [
+                {
+                    "type": "document_chunk",
+                    "source": match.get("source"),
+                    "chunk_index": match.get("chunk_index"),
+                    "page_refs": match.get("page_refs") or [],
+                    "content": match.get("content"),
+                }
+                for match in matches
+            ]
+
+    answer = answer_building_question(
+        question=body.question,
+        deferred_items=body.deferred_items,
+        matches=matches,
+        api_key=api_key,
+    )
+    return {
+        "building_id": building_id,
+        "question": body.question,
+        "answer": answer,
+        "sources": sources,
+        "deferred_items_used": len(body.deferred_items),
+        "rag_used": bool(matches),
+    }
+
+
+@app.post("/buildings/{building_id}/ask-documents")
+def ask_building_documents_question(building_id: str, body: BuildingQuestionRequest):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY not configured. Add it to your .env file.",
+        )
+
+    require_rag_configuration()
+    rag_config = load_rag_config()
+    client = get_supabase_client(rag_config)
+
+    document_ids = list(dict.fromkeys([doc_id for doc_id in body.document_ids if doc_id]))
+    if not document_ids:
+        building_docs = rag_list_documents(client, building_id=building_id)
+        document_ids = [doc["id"] for doc in building_docs if doc.get("status") == "ready"]
+
+    if not document_ids:
+        raise HTTPException(status_code=400, detail="No indexed documents are available for this building yet.")
+
+    doc_rows = client.table("documents").select("*").in_("id", document_ids).execute()
+    document_map = {row["id"]: row for row in (doc_rows.data or []) if row.get("status") == "ready"}
+    if not document_map:
+        raise HTTPException(status_code=400, detail="No ready documents were found for this question.")
+    document_map = filter_documents_for_question(body.question, document_map)
+
+    matches: list[dict[str, Any]] = []
+    per_doc_limit = max(2, min(4, body.match_count))
+    for d_id, d_row in document_map.items():
+        d_matches = text_search_chunks(
+            client, document_id=d_id,
+            query=body.question, match_count=per_doc_limit,
+        )
+        for m in d_matches:
+            m["source"] = d_row.get("filename")
+        matches.extend(d_matches)
+
+    matches = matches[: body.match_count]
+    answer = answer_documents_question(question=body.question, matches=matches, api_key=api_key)
+    sources = resolve_cited_sources(answer, matches)
+    if not sources:
+        sources = [
+            {
+                "source": match.get("source"),
+                "chunk_index": match.get("chunk_index"),
+                "page_refs": match.get("page_refs") or [],
+                "content": match.get("content"),
+            }
+            for match in matches
+        ]
+    return {
+        "building_id": building_id,
+        "question": body.question,
+        "answer": answer,
+        "sources": sources,
+        "documents_used": len(document_map),
+    }
+
+
+@app.post("/analyze")
+async def analyze_document(file: UploadFile = File(...)):
+    """
+    Upload a building document (PDF, image, or Excel/CSV) and receive
+    AI-extracted intelligence across 10 categories.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY not configured. Add it to your .env file.",
+        )
+
+    file_bytes = await file.read()
+    filename = file.filename or "document"
+    content_type = file.content_type or ""
+
+    # Detect spreadsheet files by content type or extension
+    is_spreadsheet = (
+        content_type in SPREADSHEET_TYPES
+        or filename.lower().endswith((".xlsx", ".xls", ".csv"))
+    )
+
+    if is_spreadsheet:
+        intelligence = analyze_spreadsheet_bytes(
+            file_bytes=file_bytes,
+            filename=filename,
+            content_type=content_type,
+            api_key=api_key,
+        )
+    else:
+        intelligence = analyze_file_bytes(
+            file_bytes=file_bytes,
+            filename=filename,
+            content_type=content_type,
+            api_key=api_key,
+        )
+
+    logger.info(
+        f"Analysis complete: {filename} — "
+        f"{intelligence.get('assets', {}).get('total', '?')} assets, "
+        f"{intelligence.get('compliance', {}).get('gaps', '?')} compliance gaps"
+    )
+
+    return JSONResponse(content=intelligence)
