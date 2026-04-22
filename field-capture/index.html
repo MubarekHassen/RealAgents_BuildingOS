@@ -36,8 +36,6 @@
         .header-action { font-size: 13px; background: rgba(255,255,255,0.12); padding: 6px 14px; border-radius: 6px; cursor: pointer; border: none; color: white; transition: background 0.2s ease; }
         .header-action:active { background: rgba(255,255,255,0.22); }
 
-        /* Client banner (reserved for future use) */
-
         .screen { display: none; min-height: calc(100dvh - 48px); }
         .screen.active { display: block; }
         .screen-pad { padding: 16px; }
@@ -160,6 +158,91 @@
         .subtype-custom-input.visible { display: block; }
 
         .hidden-input { display: none; }
+
+        /* Auth screen styles */
+        .auth-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: calc(100dvh - 48px);
+        }
+        .auth-logo {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .auth-logo-icon {
+            width: 64px; height: 64px;
+            background: linear-gradient(135deg, #206A8A, #1b5a76);
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 14px;
+            box-shadow: 0 4px 12px rgba(32,106,138,0.3);
+        }
+        .auth-logo-icon span { font-size: 30px; color: white; font-weight: 700; }
+        .auth-logo h2 { font-size: 24px; margin-bottom: 6px; font-weight: 700; letter-spacing: -0.01em; }
+        .auth-logo p { color: #94a3b8; font-size: 13px; font-weight: 500; letter-spacing: 0.02em; }
+        .auth-toggle {
+            text-align: center;
+            margin-top: 16px;
+        }
+        .auth-toggle a {
+            color: #206A8A;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .auth-toggle a:hover { text-decoration: underline; }
+        .auth-toggle p { font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
+        .pin-input-row {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+        .pin-digit {
+            width: 48px; height: 56px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 24px;
+            font-weight: 700;
+            text-align: center;
+            background: white;
+            -webkit-appearance: none;
+        }
+        .pin-digit:focus {
+            outline: none;
+            border-color: #206A8A;
+            box-shadow: 0 0 0 3px rgba(32,106,138,0.15);
+        }
+        .auth-divider {
+            height: 1px;
+            background: #e2e8f0;
+            margin: 20px 0;
+        }
+        .auth-footer-text {
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 12px;
+        }
+        .pin-error {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 4px;
+            display: none;
+        }
+        .pin-error.visible { display: block; }
+        .header-logout {
+            font-size: 13px;
+            background: rgba(255,255,255,0.12);
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: none;
+            color: white;
+            transition: background 0.2s ease;
+        }
+        .header-logout:active { background: rgba(255,255,255,0.22); }
     </style>
 </head>
 <body>
@@ -169,34 +252,77 @@
     <div class="header-back" id="headerBack" onclick="goBack()" style="display:none;">&#8592;</div>
     <h1 id="headerTitle">BuildingOS Field Capture</h1>
     <button class="header-action" id="headerAction" style="display:none;"></button>
+    <button class="header-logout" id="headerLogout" onclick="handleLogout()" style="display:none;">Sign Out</button>
 </div>
 
-<!-- SCREEN: Login -->
+<!-- SCREEN: Login (Sign In mode) -->
 <div class="screen active" id="screenLogin">
-    <div class="screen-pad" style="display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 48px);">
-        <div style="text-align:center;margin-bottom:36px;">
-            <div style="width:64px;height:64px;background:linear-gradient(135deg,#206A8A,#1b5a76);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 4px 12px rgba(32,106,138,0.3);">
-                <span style="font-size:30px;color:white;font-weight:700;">B</span>
-            </div>
-            <h2 style="font-size:24px;margin-bottom:6px;font-weight:700;letter-spacing:-0.01em;">BuildingOS</h2>
-            <p style="color:#94a3b8;font-size:13px;font-weight:500;letter-spacing:0.02em;">Field Capture v1.3</p>
+    <div class="screen-pad auth-container">
+        <div class="auth-logo">
+            <div class="auth-logo-icon"><span>B</span></div>
+            <h2>BuildingOS</h2>
+            <p>Field Capture v1.3</p>
         </div>
-        <div class="card">
-            <div class="input-group">
-                <label>Full Name</label>
-                <input type="text" id="loginName" placeholder="Eric Johnson" autocomplete="name">
+
+        <!-- Sign In Form -->
+        <div id="authSignIn">
+            <div class="card">
+                <div style="font-weight:700;font-size:16px;margin-bottom:16px;text-align:center;">Sign In</div>
+                <div class="input-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" placeholder="eric@company.com" autocomplete="email">
+                </div>
+                <div class="input-group">
+                    <label>PIN</label>
+                    <input type="password" id="loginPin" placeholder="Enter your PIN" inputmode="numeric" maxlength="6"
+                           pattern="[0-9]*" autocomplete="current-password"
+                           style="text-align:center;font-size:22px;letter-spacing:8px;">
+                </div>
+                <button class="btn btn-primary" onclick="handleSignIn()">Sign In</button>
+                <div class="auth-footer-text">Forgot PIN? Contact your administrator.</div>
             </div>
-            <div class="input-group">
-                <label>Email</label>
-                <input type="email" id="loginEmail" placeholder="eric@company.com" autocomplete="email">
+            <div class="auth-toggle">
+                <p>First time here?</p>
+                <a onclick="showRegisterForm()">Create Account</a>
             </div>
-            <button class="btn btn-primary" onclick="handleLogin()">Continue</button>
         </div>
-        <div style="text-align:center;margin-top:16px;">
-            <p style="font-size:13px;color:#94a3b8;">Have an invite code?</p>
-            <div class="input-group" style="margin-top:8px;">
-                <input type="text" id="loginInviteCode" placeholder="Enter 6-character code" maxlength="6"
-                       style="text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase;">
+
+        <!-- Register Form -->
+        <div id="authRegister" style="display:none;">
+            <div class="card">
+                <div style="font-weight:700;font-size:16px;margin-bottom:16px;text-align:center;">Create Account</div>
+                <div class="input-group">
+                    <label>Full Name</label>
+                    <input type="text" id="regName" placeholder="Eric Johnson" autocomplete="name">
+                </div>
+                <div class="input-group">
+                    <label>Email</label>
+                    <input type="email" id="regEmail" placeholder="eric@company.com" autocomplete="email">
+                </div>
+                <div class="input-group">
+                    <label>Invite Code <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="regInviteCode" placeholder="6-character code" maxlength="6"
+                           style="text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase;">
+                    <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Required. Get this from your building manager.</div>
+                </div>
+                <div class="input-group">
+                    <label>Create PIN (4-6 digits) <span style="color:#ef4444;">*</span></label>
+                    <input type="password" id="regPin" placeholder="Create PIN" inputmode="numeric" maxlength="6"
+                           pattern="[0-9]*" autocomplete="new-password"
+                           style="text-align:center;font-size:22px;letter-spacing:8px;">
+                </div>
+                <div class="input-group">
+                    <label>Confirm PIN</label>
+                    <input type="password" id="regPinConfirm" placeholder="Confirm PIN" inputmode="numeric" maxlength="6"
+                           pattern="[0-9]*" autocomplete="new-password"
+                           style="text-align:center;font-size:22px;letter-spacing:8px;">
+                    <div class="pin-error" id="pinError">PINs do not match</div>
+                </div>
+                <button class="btn btn-primary" onclick="handleRegister()">Create Account</button>
+            </div>
+            <div class="auth-toggle">
+                <p>Already have an account?</p>
+                <a onclick="showSignInForm()">Sign In</a>
             </div>
         </div>
     </div>
@@ -502,6 +628,7 @@
     // ── State ──────────────────────────────
     const state = {
         user: null,
+        sessionToken: null,
         buildings: [],
         currentBuilding: null,
         currentBuildingName: '',
@@ -531,9 +658,19 @@
         document.getElementById(id).classList.add('active');
         const back = document.getElementById('headerBack');
         const title = document.getElementById('headerTitle');
-        if (id === 'screenLogin') { back.style.display = 'none'; title.textContent = 'BuildingOS Field Capture'; }
-        else if (id === 'screenBuildings') { back.style.display = 'none'; title.textContent = 'Your Buildings'; }
-        else { back.style.display = 'block'; }
+        const logout = document.getElementById('headerLogout');
+        if (id === 'screenLogin') {
+            back.style.display = 'none';
+            title.textContent = 'BuildingOS Field Capture';
+            logout.style.display = 'none';
+        } else if (id === 'screenBuildings') {
+            back.style.display = 'none';
+            title.textContent = 'Your Buildings';
+            logout.style.display = 'block';
+        } else {
+            back.style.display = 'block';
+            logout.style.display = 'block';
+        }
         if (opts.title) title.textContent = opts.title;
         if (!opts.noStack && screenStack[screenStack.length - 1] !== id) screenStack.push(id);
         window.scrollTo(0, 0);
@@ -543,25 +680,120 @@
         if (screenStack.length > 1) { screenStack.pop(); showScreen(screenStack[screenStack.length - 1], { noStack: true }); }
     }
 
-    // ── Auth ───────────────────────────────
-    async function handleLogin() {
-        const name = document.getElementById('loginName').value.trim();
+    // ── Auth Form Toggles ─────────────────
+    function showRegisterForm() {
+        document.getElementById('authSignIn').style.display = 'none';
+        document.getElementById('authRegister').style.display = 'block';
+    }
+
+    function showSignInForm() {
+        document.getElementById('authSignIn').style.display = 'block';
+        document.getElementById('authRegister').style.display = 'none';
+    }
+
+    // ── Auth: Sign In ─────────────────────
+    async function handleSignIn() {
         const email = document.getElementById('loginEmail').value.trim();
-        const code = document.getElementById('loginInviteCode').value.trim().toUpperCase();
-        if (!name || !email) { toast('Please enter your name and email'); return; }
+        const pin = document.getElementById('loginPin').value.trim();
+        if (!email || !pin) { toast('Please enter your email and PIN'); return; }
+        if (pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) { toast('PIN must be 4-6 digits'); return; }
+
         showLoading('Signing in...');
         try {
-            const r = await api('/api/auth/register', { name, email });
+            const r = await apiNoAuth('/api/auth/login', { email, pin });
             state.user = r.user;
-            localStorage.setItem('fc_user', JSON.stringify(r.user));
-            if (code) { try { await api(`/api/join/${code}`, { user_id: state.user.id }); toast('Joined building!'); } catch (e) { toast('Invalid invite code, but account created'); } }
-            await loadBuildings();
-            // Load sub-types config
-            try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
+            state.sessionToken = r.token;
+            localStorage.setItem('fc_session_token', r.token);
+            localStorage.setItem('fc_user_id', r.user.id);
+
+            await postLoginLoad();
             hideLoading();
-            if (state.buildings.length === 1) selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
-            else showScreen('screenBuildings');
-        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
+        } catch (e) {
+            hideLoading();
+            toast(e.message || 'Sign in failed');
+        }
+    }
+
+    // ── Auth: Register ────────────────────
+    async function handleRegister() {
+        const name = document.getElementById('regName').value.trim();
+        const email = document.getElementById('regEmail').value.trim();
+        const inviteCode = document.getElementById('regInviteCode').value.trim().toUpperCase();
+        const pin = document.getElementById('regPin').value.trim();
+        const pinConfirm = document.getElementById('regPinConfirm').value.trim();
+
+        if (!name || !email) { toast('Please enter your name and email'); return; }
+        if (!inviteCode) { toast('Invite code is required to create an account'); return; }
+        if (!pin || pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) { toast('PIN must be 4-6 digits'); return; }
+        if (pin !== pinConfirm) {
+            document.getElementById('pinError').classList.add('visible');
+            toast('PINs do not match');
+            return;
+        }
+        document.getElementById('pinError').classList.remove('visible');
+
+        showLoading('Creating account...');
+        try {
+            const r = await apiNoAuth('/api/auth/register', { name, email, pin, invite_code: inviteCode });
+            state.user = r.user;
+            state.sessionToken = r.token;
+            localStorage.setItem('fc_session_token', r.token);
+            localStorage.setItem('fc_user_id', r.user.id);
+
+            toast('Account created! Joined ' + (r.joined_building?.building_name || 'building'));
+            await postLoginLoad();
+            hideLoading();
+        } catch (e) {
+            hideLoading();
+            toast(e.message || 'Registration failed');
+        }
+    }
+
+    // ── Auth: Post-login setup ────────────
+    async function postLoginLoad() {
+        // Load sub-types config
+        try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
+        await loadBuildings();
+        if (state.buildings.length === 1) {
+            selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
+        } else {
+            showScreen('screenBuildings');
+        }
+    }
+
+    // ── Auth: Logout ──────────────────────
+    async function handleLogout() {
+        try { await api('/api/auth/logout', {}); } catch (e) {}
+        state.user = null;
+        state.sessionToken = null;
+        state.buildings = [];
+        localStorage.removeItem('fc_session_token');
+        localStorage.removeItem('fc_user_id');
+        screenStack = ['screenLogin'];
+        showScreen('screenLogin');
+        // Clear form fields
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginPin').value = '';
+        showSignInForm();
+    }
+
+    // ── Auth: Session verification ────────
+    async function verifyExistingSession() {
+        const token = localStorage.getItem('fc_session_token');
+        if (!token) return false;
+
+        state.sessionToken = token;
+        try {
+            const r = await api('/api/auth/verify');
+            state.user = r.user;
+            return true;
+        } catch (e) {
+            // Session invalid or expired
+            state.sessionToken = null;
+            localStorage.removeItem('fc_session_token');
+            localStorage.removeItem('fc_user_id');
+            return false;
+        }
     }
 
     // ── Buildings ──────────────────────────
@@ -868,7 +1100,7 @@
         // Send to identification endpoint
         const fd = new FormData();
         fd.append('photo', file);
-        fetch(`${API}/api/identify-equipment`, { method: 'POST', body: fd })
+        fetchWithAuth(`${API}/api/identify-equipment`, { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
             document.getElementById('captureStep2').style.display = 'none';
@@ -991,7 +1223,7 @@
         if (state.currentVisit) formData.append('unit_visit_id', state.currentVisit.id);
 
         try {
-            const r = await fetch(`${API}/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/capture`, { method: 'POST', body: formData });
+            const r = await fetchWithAuth(`${API}/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/capture`, { method: 'POST', body: formData });
             if (!r.ok) throw new Error('Capture failed');
             const data = await r.json();
             state.lastCaptureId = data.capture?.id;
@@ -1069,7 +1301,7 @@
                     const p = state.capturePhotos[i];
                     const fd = new FormData();
                     fd.append('photo', p.file); fd.append('photo_type', p.type);
-                    await fetch(`${API}/api/captures/${state.lastCaptureId}/photos`, { method: 'POST', body: fd });
+                    await fetchWithAuth(`${API}/api/captures/${state.lastCaptureId}/photos`, { method: 'POST', body: fd });
                 }
             } else {
                 // Manual capture (no photo or no-tag with identification)
@@ -1089,7 +1321,7 @@
                     for (const p of state.capturePhotos) {
                         const fd = new FormData();
                         fd.append('photo', p.file); fd.append('photo_type', p.type);
-                        await fetch(`${API}/api/captures/${newId}/photos`, { method: 'POST', body: fd });
+                        await fetchWithAuth(`${API}/api/captures/${newId}/photos`, { method: 'POST', body: fd });
                     }
                 }
             }
@@ -1115,7 +1347,7 @@
             const fd = new FormData();
             fd.append('photo', file); fd.append('photo_type', 'detail');
             try {
-                await fetch(`${API}/api/captures/${captureId}/photos`, { method: 'POST', body: fd });
+                await fetchWithAuth(`${API}/api/captures/${captureId}/photos`, { method: 'POST', body: fd });
                 hideLoading(); toast('Photo added!');
             } catch (e) { hideLoading(); toast('Upload failed'); }
         };
@@ -1180,7 +1412,7 @@
         const fd = new FormData();
         fd.append('photo', file); fd.append('photo_type', 'detail');
         try {
-            await fetch(`${API}/api/captures/${state.editingCapture.id}/photos`, { method: 'POST', body: fd });
+            await fetchWithAuth(`${API}/api/captures/${state.editingCapture.id}/photos`, { method: 'POST', body: fd });
             hideLoading(); toast('Photo added!');
             // Refresh the edit screen
             editCapture(state.editingCapture.id);
@@ -1213,12 +1445,63 @@
     }
 
     // ── Export ──────────────────────────────
-    function exportCSV() { window.open(`${API}/api/buildings/${state.currentBuilding}/export/csv`, '_blank'); }
+    function exportCSV() {
+        // For CSV export, we need to pass the token as a query param since it's a direct download
+        // But our backend uses header auth, so we open a new window and hope the session cookie works
+        // Actually, we'll fetch it and trigger download manually
+        fetchWithAuth(`${API}/api/buildings/${state.currentBuilding}/export/csv`)
+        .then(r => r.blob())
+        .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `field_capture_${state.currentBuilding}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        })
+        .catch(e => toast('Export failed: ' + e.message));
+    }
 
-    // ── API helper ─────────────────────────
+    // ── API helpers ───────────────────────
+
+    /** Low-level fetch that adds Authorization header */
+    function fetchWithAuth(url, opts = {}) {
+        if (!opts.headers) opts.headers = {};
+        if (state.sessionToken) {
+            opts.headers['Authorization'] = 'Bearer ' + state.sessionToken;
+        }
+        return fetch(url, opts);
+    }
+
+    /** API helper for JSON endpoints (with auth) */
     async function api(path, body = null) {
         const opts = { headers: { 'Content-Type': 'application/json' } };
+        if (state.sessionToken) {
+            opts.headers['Authorization'] = 'Bearer ' + state.sessionToken;
+        }
         if (body) { opts.method = 'POST'; opts.body = JSON.stringify(body); }
+        const r = await fetch(API + path, opts);
+        if (r.status === 401) {
+            // Session expired or invalid
+            state.user = null;
+            state.sessionToken = null;
+            localStorage.removeItem('fc_session_token');
+            localStorage.removeItem('fc_user_id');
+            screenStack = ['screenLogin'];
+            showScreen('screenLogin');
+            throw new Error('Session expired. Please sign in again.');
+        }
+        if (!r.ok) { const err = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(err.detail || 'Request failed'); }
+        return r.json();
+    }
+
+    /** API helper for unauthenticated endpoints (login/register) */
+    async function apiNoAuth(path, body) {
+        const opts = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        };
         const r = await fetch(API + path, opts);
         if (!r.ok) { const err = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(err.detail || 'Request failed'); }
         return r.json();
@@ -1230,18 +1513,21 @@
     function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
 
     // ── Init ───────────────────────────────
-    (function init() {
-        const saved = localStorage.getItem('fc_user');
-        if (saved) {
+    (async function init() {
+        // Always verify session on load — no auto-login from stored user data
+        const valid = await verifyExistingSession();
+        if (valid) {
+            // Session is still valid — load buildings
             try {
-                state.user = JSON.parse(saved);
-                document.getElementById('loginName').value = state.user.name || '';
-                document.getElementById('loginEmail').value = state.user.email || '';
-                // Load sub-types
-                api('/api/equipment-sub-types').then(r => { state.equipSubTypes = r.sub_types || {}; }).catch(() => {});
-                loadBuildings().then(() => { if (state.buildings.length > 0) showScreen('screenBuildings'); }).catch(() => {});
-            } catch (e) { localStorage.removeItem('fc_user'); }
+                const st = await api('/api/equipment-sub-types');
+                state.equipSubTypes = st.sub_types || {};
+            } catch (e) {}
+            await loadBuildings();
+            if (state.buildings.length > 0) {
+                showScreen('screenBuildings');
+            }
         }
+        // If not valid, user stays on login screen
     })();
 </script>
 </body>
