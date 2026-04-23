@@ -80,7 +80,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 
 /* DASHBOARD */
 .dash-scroll{flex:1;overflow-y:auto;padding:24px 30px}
-.dash-profile-card{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#3730a3 100%);border-radius:18px;padding:28px 32px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden;box-shadow:0 4px 20px rgba(30,27,75,0.15)}
+.dash-profile-card{background:linear-gradient(-45deg,#1e1b4b 0%,#312e81 25%,#3730a3 50%,#1e3a5f 75%,#1e1b4b 100%);background-size:300% 300%;animation:gradientShift 12s ease infinite;border-radius:18px;padding:28px 32px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden;box-shadow:0 8px 32px rgba(30,27,75,0.20)}
 .dash-profile-card::before{content:'';position:absolute;right:-60px;top:-60px;width:220px;height:220px;background:rgba(255,255,255,0.04);border-radius:50%}
 .dash-profile-card::after{content:'';position:absolute;left:-40px;bottom:-80px;width:180px;height:180px;background:rgba(99,102,241,0.08);border-radius:50%}
 .dpc-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.4);margin-bottom:6px}
@@ -1015,6 +1015,85 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 .sv-photo-card { border-radius:10px; overflow:hidden; border:1px solid #e2e8f0; }
 .sv-photo-card img { width:100%; height:180px; object-fit:cover; }
 .sv-photo-card .sv-photo-label { padding:8px 10px; font-size:12px; color:#475569; }
+
+/* ═══ ANIMATED GRADIENT BACKGROUND ═══ */
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  25%  { background-position: 100% 50%; }
+  50%  { background-position: 100% 100%; }
+  75%  { background-position: 0% 100%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes floatOrb {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.12; }
+  33%      { transform: translate(30px, -20px) scale(1.1); opacity: 0.18; }
+  66%      { transform: translate(-20px, 15px) scale(0.95); opacity: 0.10; }
+}
+.main { background: linear-gradient(-45deg, #f0f2f8, #e8eaf6, #ede9fe, #dbeafe, #e0e7ff, #f5f3ff);
+  background-size: 400% 400%; animation: gradientShift 20s ease infinite; }
+.main::before { content:''; position:fixed; top:-10%; right:-5%; width:500px; height:500px;
+  border-radius:50%; background:radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%);
+  pointer-events:none; z-index:0; animation: floatOrb 12s ease-in-out infinite; }
+.main::after { content:''; position:fixed; bottom:-10%; left:5%; width:400px; height:400px;
+  border-radius:50%; background:radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%);
+  pointer-events:none; z-index:0; animation: floatOrb 15s ease-in-out infinite reverse; }
+.page { position:relative; z-index:1; }
+
+/* ═══ MODERN LOGIN SCREEN WITH COLOR SHIFT ═══ */
+.login-screen { background: linear-gradient(-45deg, #0f172a, #1e1b4b, #312e81, #1e3a5f, #0f172a);
+  background-size: 400% 400%; animation: gradientShift 16s ease infinite; }
+
+/* ═══ MODERNIZED SIDEBAR ═══ */
+.sidebar { background: linear-gradient(180deg, #080e1f 0%, #0f1629 40%, #161d3a 100%);
+  box-shadow: 2px 0 32px rgba(0,0,0,0.25); }
+.sidebar-logo { padding:20px 18px 8px; border-bottom:none; flex-direction:column; align-items:flex-start; gap:0; }
+.logo-icon { width:38px; height:38px; background:linear-gradient(135deg,#818cf8 0%,#6366f1 50%,#4f46e5 100%);
+  border-radius:12px; font-size:15px; box-shadow:0 4px 16px rgba(99,102,241,0.35),inset 0 1px 0 rgba(255,255,255,0.25); }
+.logo-row { display:flex; align-items:center; gap:11px; margin-bottom:4px; }
+.logo-text { font-size:16px; font-weight:800; letter-spacing:-0.03em; }
+.logo-sub { font-size:10px; color:rgba(255,255,255,0.25); letter-spacing:0.04em; margin-top:0; }
+.sb-property-name { font-size:11px; color:rgba(255,255,255,0.50); font-weight:600; padding:6px 0 0; margin-top:4px;
+  border-top:1px solid rgba(255,255,255,0.06); width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ═══ MODERNIZED NAV ═══ */
+.nav-item { border-radius:10px; transition:all 0.2s cubic-bezier(.4,0,.2,1); }
+.nav-item:hover { background:rgba(255,255,255,0.06); }
+.nav-item.active { background:linear-gradient(135deg,rgba(99,102,241,0.20),rgba(99,102,241,0.12));
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.20), 0 2px 8px rgba(99,102,241,0.08); }
+
+/* ═══ MODERNIZED CARDS (glassmorphism) ═══ */
+.output-card { background:rgba(255,255,255,0.85); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,0.6); box-shadow:0 1px 4px rgba(0,0,0,0.04); border-radius:16px; }
+.output-card:hover { box-shadow:0 12px 32px rgba(99,102,241,0.10); border-color:rgba(99,102,241,0.20); }
+.next-steps-card { background:rgba(255,255,255,0.85); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,0.6); border-radius:16px; }
+.dm-table-wrap { background:rgba(255,255,255,0.90); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,0.6); }
+.dm-sum-card { background:rgba(255,255,255,0.85); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,0.6); }
+.page-header { background:rgba(255,255,255,0.80); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(0,0,0,0.06); }
+.dash-scroll { position:relative; z-index:1; }
+
+/* ═══ SITE VIEW TABS ═══ */
+.sv-tabs { display:flex; gap:2px; padding:0 20px; background:rgba(255,255,255,0.80); backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(0,0,0,0.06); overflow-x:auto; flex-shrink:0; }
+.sv-tab { padding:11px 16px; font-size:12px; font-weight:600; cursor:pointer; color:#6b7280;
+  border-bottom:2.5px solid transparent; white-space:nowrap; transition:all 0.15s; }
+.sv-tab:hover { color:#374151; }
+.sv-tab.active { color:#6366f1; border-bottom-color:#6366f1; }
+.sv-tab-count { font-size:10px; background:#eef2ff; color:#6366f1; padding:1px 6px; border-radius:99px;
+  margin-left:4px; font-weight:700; }
+.sv-summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px;
+  padding:20px; }
+.sv-summary-card { background:rgba(255,255,255,0.90); backdrop-filter:blur(12px); border-radius:14px;
+  padding:18px 20px; border:1px solid rgba(255,255,255,0.6); box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+.sv-summary-val { font-size:28px; font-weight:800; color:#111827; letter-spacing:-0.03em; }
+.sv-summary-label { font-size:11px; color:#6b7280; font-weight:600; margin-top:2px; }
+.sv-filter-bar { display:flex; gap:8px; padding:12px 20px; align-items:center; flex-wrap:wrap; }
+.sv-search { padding:7px 12px 7px 32px; border:1.5px solid rgba(0,0,0,0.08); border-radius:10px;
+  font-size:12px; outline:none; background:rgba(255,255,255,0.9); font-family:inherit; min-width:200px; }
+.sv-search:focus { border-color:#6366f1; }
 </style>
 </head>
 <body>
@@ -1230,16 +1309,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 <!-- SIDEBAR -->
 <div class="sidebar" id="mainSidebar">
   <div class="sidebar-logo">
-    <div class="logo-icon">B</div>
-    <div style="flex:1;min-width:0;">
-      <div style="display:flex;align-items:center;gap:6px;">
+    <div class="logo-row">
+      <div class="logo-icon">B</div>
+      <div style="flex:1;min-width:0;">
         <div class="logo-text">BuildingOS</div>
+        <div class="logo-sub">AI Building Intelligence</div>
       </div>
-      <div class="logo-sub">AI Building Intelligence</div>
     </div>
+    <div class="sb-property-name" id="sbPropertyLabel">No property selected</div>
   </div>
   <!-- Building switcher -->
-  <div class="sb-building" id="sbBuildingWrap" onclick="toggleBuildingMenu()">
+  <div class="sb-building" id="sbBuildingWrap" onclick="toggleBuildingMenu()" style="margin-top:0;">
     <div class="sb-building-top">
       <div>
         <div class="sb-building-label">Active Property</div>
@@ -1884,13 +1964,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
       <button class="btn btn-primary" onclick="exportSiteViewCSV()">Export CSV</button>
     </div>
   </div>
-  <div id="siteViewBody" style="padding:20px;overflow-x:auto;">
+  <div class="sv-tabs" id="svTabs">
+    <div class="sv-tab active" onclick="switchSvTab('summary',this)">Summary</div>
+    <div class="sv-tab" onclick="switchSvTab('safety',this)">Safety &amp; Habitability</div>
+    <div class="sv-tab" onclick="switchSvTab('mechanicals',this)">Mechanicals</div>
+    <div class="sv-tab" onclick="switchSvTab('finishes',this)">Finishes</div>
+    <div class="sv-tab" onclick="switchSvTab('tenant',this)">Tenant Assessment</div>
+    <div class="sv-tab" onclick="switchSvTab('workorders',this)">Work Orders</div>
+    <div class="sv-tab" onclick="switchSvTab('photos',this)">Photos</div>
+    <div class="sv-tab" onclick="switchSvTab('all',this)">All Columns</div>
+  </div>
+  <div id="siteViewBody" style="flex:1;overflow:auto;">
     <div id="siteViewEmpty" style="text-align:center;padding:60px 20px;color:#94a3b8;">
       <div style="font-size:48px;margin-bottom:12px;">&#128203;</div>
       <div style="font-size:16px;font-weight:600;color:#64748b;">No inspections yet</div>
       <div style="font-size:14px;margin-top:6px;">Use the Field Capture app to inspect units</div>
     </div>
-    <div id="siteViewTable" style="display:none;"></div>
+    <div id="siteViewSummary" style="display:none;"></div>
+    <div id="siteViewTable" style="display:none;overflow-x:auto;padding:0 20px 20px;"></div>
   </div>
 </div>
 
@@ -3972,6 +4063,9 @@ function updateSidebar() {
   if (bld?.gross_sf || mergedProfile.gross_sf) metaParts.push(fmtSF(bld?.gross_sf || mergedProfile.gross_sf));
   if (bld?.building_use || mergedProfile.building_use) metaParts.push(bld?.building_use || mergedProfile.building_use);
   document.getElementById('sbBuildingMeta').textContent = metaParts.join(' · ') || (bld ? 'Upload first document' : 'Click to set up');
+  // Update property label below logo
+  const propLabel = document.getElementById('sbPropertyLabel');
+  if (propLabel) propLabel.textContent = bld?.name || 'No property selected';
   document.getElementById('navDMBadge').textContent = allDeferredItems.length;
   document.getElementById('navDocBadge').textContent = analyzedDocs.length;
 
@@ -11906,9 +12000,177 @@ function svVal(ins, key, alt) {
   return '';
 }
 
+let _svActiveTab = 'summary';
+
+const SV_COL_DEFS = {
+  base: [
+    { key:'unit', label:'Unit #', sticky:true },
+    { key:'inspector', label:'Inspector' },
+    { key:'date', label:'Date' }
+  ],
+  safety: [
+    { key:'smoke_co', label:'Smoke/CO', cond:true },
+    { key:'safety_check', label:'Safety Check', cond:true },
+    { key:'safety_notes', label:'Safety Notes' }
+  ],
+  mechanicals: [
+    { key:'hvac_info', label:'HVAC Info' },
+    { key:'hvac_condition', label:'HVAC Condition', cond:true },
+    { key:'wh_info', label:'WH Info' },
+    { key:'wh_condition', label:'WH Condition', cond:true },
+    { key:'elec_panel', label:'Elec Panel', cond:true }
+  ],
+  finishes: [
+    { key:'windows', label:'Windows', cond:true },
+    { key:'plumbing', label:'Plumbing', cond:true },
+    { key:'appliances', label:'Appliances', cond:true },
+    { key:'kb_flooring', label:'KB Flooring', cond:true },
+    { key:'kb_condition', label:'KB Condition', cond:true },
+    { key:'doors_drywall', label:'Doors/Drywall', cond:true },
+    { key:'cleanliness', label:'Cleanliness', cond:true }
+  ],
+  tenant: [
+    { key:'tenant_issues', label:'Tenant Issues' },
+    { key:'cooperation', label:'Cooperation', cond:true },
+    { key:'renewal_rec', label:'Renewal Rec' }
+  ],
+  workorders: [
+    { key:'immediate_wos', label:'Immediate WOs' },
+    { key:'notes', label:'Notes' }
+  ],
+  photos: [
+    { key:'photos', label:'Photos' }
+  ]
+};
+
+function switchSvTab(tab, el) {
+  _svActiveTab = tab;
+  document.querySelectorAll('.sv-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  renderSvContent();
+}
+
+function getRowValues(ins, idx) {
+  const unit = svVal(ins, 'unit', 'unit_number') || svVal(ins, 'unitNumber') || `#${idx + 1}`;
+  const inspector = svVal(ins, 'inspector', 'inspector_name') || svVal(ins, 'inspectorName') || '';
+  const rawDate = svVal(ins, 'date', 'inspected_at') || svVal(ins, 'created_at') || svVal(ins, 'timestamp') || '';
+  const dateStr = rawDate ? new Date(rawDate).toLocaleDateString() : '';
+  const photoCount = (ins.photos && ins.photos.length) || svVal(ins, 'photo_count') || 0;
+  return {
+    unit, inspector, date: dateStr,
+    smoke_co: svVal(ins, 'smoke_co', 'smokeCo'),
+    safety_check: svVal(ins, 'safety_check', 'safetyCheck'),
+    safety_notes: svVal(ins, 'safety_notes', 'safetyNotes'),
+    hvac_info: svVal(ins, 'hvac_info', 'hvacInfo'),
+    hvac_condition: svVal(ins, 'hvac_condition', 'hvacCondition'),
+    wh_info: svVal(ins, 'wh_info', 'whInfo'),
+    wh_condition: svVal(ins, 'wh_condition', 'whCondition'),
+    elec_panel: svVal(ins, 'elec_panel', 'elecPanel'),
+    windows: svVal(ins, 'windows'),
+    plumbing: svVal(ins, 'plumbing'),
+    appliances: svVal(ins, 'appliances'),
+    kb_flooring: svVal(ins, 'kb_flooring', 'kbFlooring'),
+    kb_condition: svVal(ins, 'kb_condition', 'kbCondition'),
+    doors_drywall: svVal(ins, 'doors_drywall', 'doorsDrywall'),
+    cleanliness: svVal(ins, 'cleanliness'),
+    tenant_issues: svVal(ins, 'tenant_issues', 'tenantIssues'),
+    cooperation: svVal(ins, 'cooperation'),
+    renewal_rec: svVal(ins, 'renewal_rec', 'renewalRec'),
+    immediate_wos: svVal(ins, 'immediate_wos', 'immediateWos'),
+    notes: svVal(ins, 'notes'),
+    photos: photoCount
+  };
+}
+
+function renderSvSummary() {
+  if (!siteViewData || siteViewData.length === 0) return;
+  const total = siteViewData.length;
+  // Count conditions
+  let goodC=0, fairC=0, poorC=0, passS=0, failS=0, woCount=0, photoTotal=0;
+  siteViewData.forEach((ins,i) => {
+    const rv = getRowValues(ins, i);
+    const condFields = ['hvac_condition','wh_condition','elec_panel','windows','plumbing','appliances','kb_flooring','kb_condition','doors_drywall','cleanliness'];
+    condFields.forEach(f => { const v=String(rv[f]||'').toLowerCase(); if(v.includes('good'))goodC++; else if(v.includes('fair'))fairC++; else if(v.includes('poor'))poorC++; });
+    const safetyV = String(rv.safety_check||'').toLowerCase();
+    if(safetyV.includes('pass'))passS++; else if(safetyV.includes('fail'))failS++;
+    if(rv.immediate_wos && String(rv.immediate_wos).trim()) woCount++;
+    photoTotal += parseInt(rv.photos) || 0;
+  });
+
+  let html = '<div class="sv-summary-grid">';
+  html += `<div class="sv-summary-card"><div class="sv-summary-val">${total}</div><div class="sv-summary-label">Units Inspected</div></div>`;
+  html += `<div class="sv-summary-card"><div class="sv-summary-val" style="color:#16a34a">${goodC}</div><div class="sv-summary-label">Good Conditions</div></div>`;
+  html += `<div class="sv-summary-card"><div class="sv-summary-val" style="color:#d97706">${fairC}</div><div class="sv-summary-label">Fair Conditions</div></div>`;
+  html += `<div class="sv-summary-card"><div class="sv-summary-val" style="color:#dc2626">${poorC}</div><div class="sv-summary-label">Poor Conditions</div></div>`;
+  html += `<div class="sv-summary-card"><div class="sv-summary-val" style="color:#16a34a">${passS}</div><div class="sv-summary-label">Safety Passed</div></div>`;
+  html += `<div class="sv-summary-card"><div class="sv-summary-val" style="color:#dc2626">${failS}</div><div class="sv-summary-label">Safety Failed</div></div>`;
+  html += `<div class="sv-summary-card"><div class="sv-summary-val" style="color:#dc2626">${woCount}</div><div class="sv-summary-label">Units with Work Orders</div></div>`;
+  html += `<div class="sv-summary-card"><div class="sv-summary-val">${photoTotal}</div><div class="sv-summary-label">Total Photos</div></div>`;
+  html += '</div>';
+  document.getElementById('siteViewSummary').innerHTML = html;
+}
+
+function renderSvTable(colGroups) {
+  const cols = [...SV_COL_DEFS.base];
+  colGroups.forEach(g => { if (SV_COL_DEFS[g]) cols.push(...SV_COL_DEFS[g]); });
+
+  let html = '<table class="sv-table"><thead><tr>';
+  cols.forEach(c => { html += `<th${c.sticky ? ' class="sv-sticky"' : ''}>${c.label}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  siteViewData.forEach((ins, idx) => {
+    const rv = getRowValues(ins, idx);
+    html += '<tr>';
+    cols.forEach(c => {
+      const val = rv[c.key] ?? '';
+      if (c.key === 'photos') {
+        const cnt = parseInt(val) || 0;
+        const badge = cnt > 0
+          ? `<span class="sv-photo-badge" onclick="event.stopPropagation();openSvPhotoModal(${idx})">\u{1F4F7} ${cnt}</span>`
+          : '<span style="color:#cbd5e1;">0</span>';
+        html += `<td>${badge}</td>`;
+      } else {
+        const condCls = c.cond ? svCondClass(val) : '';
+        const isWo = c.key === 'immediate_wos' && val && String(val).trim();
+        const woStyle = isWo ? ' style="color:#dc2626;font-weight:600;"' : '';
+        html += `<td${c.sticky ? ' class="sv-sticky"' : ''}${condCls ? ` class="${condCls}"` : ''}${woStyle}>${val}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('siteViewTable').innerHTML = html;
+}
+
+function renderSvContent() {
+  if (!siteViewData || siteViewData.length === 0) return;
+  const summaryEl = document.getElementById('siteViewSummary');
+  const tableEl = document.getElementById('siteViewTable');
+
+  if (_svActiveTab === 'summary') {
+    summaryEl.style.display = '';
+    tableEl.style.display = 'none';
+    renderSvSummary();
+  } else {
+    summaryEl.style.display = 'none';
+    tableEl.style.display = '';
+    const tabMap = {
+      safety: ['safety'],
+      mechanicals: ['mechanicals'],
+      finishes: ['finishes'],
+      tenant: ['tenant'],
+      workorders: ['workorders'],
+      photos: ['photos'],
+      all: ['safety','mechanicals','finishes','tenant','workorders','photos']
+    };
+    renderSvTable(tabMap[_svActiveTab] || ['safety','mechanicals','finishes','tenant','workorders','photos']);
+  }
+}
+
 async function renderSiteView() {
   if (!activeBuildingId || !FIELD_CAPTURE_API) {
     document.getElementById('siteViewEmpty').style.display = '';
+    document.getElementById('siteViewSummary').style.display = 'none';
     document.getElementById('siteViewTable').style.display = 'none';
     return;
   }
@@ -11920,137 +12182,18 @@ async function renderSiteView() {
 
     if (siteViewData.length === 0) {
       document.getElementById('siteViewEmpty').style.display = '';
+      document.getElementById('siteViewSummary').style.display = 'none';
       document.getElementById('siteViewTable').style.display = 'none';
       return;
     }
 
     document.getElementById('siteViewEmpty').style.display = 'none';
-    document.getElementById('siteViewTable').style.display = '';
     document.getElementById('svPageSub').textContent = `${siteViewData.length} unit${siteViewData.length !== 1 ? 's' : ''} inspected`;
-
-    const cols = [
-      { key:'unit', label:'Unit #', sticky:true },
-      { key:'inspector', label:'Inspector' },
-      { key:'date', label:'Date' },
-      // Safety & Habitability
-      { key:'smoke_co', label:'Smoke/CO', section:'Safety & Habitability', cond:true },
-      { key:'safety_check', label:'Safety Check', cond:true },
-      { key:'safety_notes', label:'Safety Notes' },
-      // Mechanicals
-      { key:'hvac_info', label:'HVAC Info', section:'Mechanicals' },
-      { key:'hvac_condition', label:'HVAC Condition', cond:true },
-      { key:'wh_info', label:'WH Info' },
-      { key:'wh_condition', label:'WH Condition', cond:true },
-      { key:'elec_panel', label:'Elec Panel', cond:true },
-      // Finishes
-      { key:'windows', label:'Windows', section:'Finishes', cond:true },
-      { key:'plumbing', label:'Plumbing', cond:true },
-      { key:'appliances', label:'Appliances', cond:true },
-      { key:'kb_flooring', label:'KB Flooring', cond:true },
-      { key:'kb_condition', label:'KB Condition', cond:true },
-      { key:'doors_drywall', label:'Doors/Drywall', cond:true },
-      { key:'cleanliness', label:'Cleanliness', cond:true },
-      // Tenant Assessment
-      { key:'tenant_issues', label:'Tenant Issues', section:'Tenant Assessment' },
-      { key:'cooperation', label:'Cooperation', cond:true },
-      { key:'renewal_rec', label:'Renewal Rec' },
-      // Outputs
-      { key:'immediate_wos', label:'Immediate WOs', section:'Outputs' },
-      { key:'notes', label:'Notes' },
-      { key:'photos', label:'Photos' }
-    ];
-
-    // Build section header row
-    const sections = [];
-    let curSection = null;
-    let count = 0;
-    cols.forEach(c => {
-      if (c.section) {
-        if (curSection) sections.push({ label: curSection, span: count });
-        curSection = c.section;
-        count = 1;
-      } else if (curSection) {
-        count++;
-      } else {
-        sections.push({ label: '', span: 1 });
-      }
-    });
-    if (curSection) sections.push({ label: curSection, span: count });
-
-    let html = '<table class="sv-table"><thead>';
-    // Section header row
-    html += '<tr>';
-    sections.forEach(s => {
-      if (s.label) {
-        html += `<th class="sv-section-header" colspan="${s.span}">${s.label}</th>`;
-      } else {
-        html += `<th class="sv-section-header"></th>`;
-      }
-    });
-    html += '</tr>';
-    // Column header row
-    html += '<tr>';
-    cols.forEach(c => {
-      html += `<th${c.sticky ? ' class="sv-sticky"' : ''}>${c.label}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-
-    siteViewData.forEach((ins, idx) => {
-      const unit = svVal(ins, 'unit', 'unit_number') || svVal(ins, 'unitNumber') || `#${idx + 1}`;
-      const inspector = svVal(ins, 'inspector', 'inspector_name') || svVal(ins, 'inspectorName') || '';
-      const rawDate = svVal(ins, 'date', 'inspected_at') || svVal(ins, 'created_at') || svVal(ins, 'timestamp') || '';
-      const dateStr = rawDate ? new Date(rawDate).toLocaleDateString() : '';
-      const photoCount = (ins.photos && ins.photos.length) || svVal(ins, 'photo_count') || 0;
-
-      const rowValues = {
-        unit, inspector, date: dateStr,
-        smoke_co: svVal(ins, 'smoke_co', 'smokeCo'),
-        safety_check: svVal(ins, 'safety_check', 'safetyCheck'),
-        safety_notes: svVal(ins, 'safety_notes', 'safetyNotes'),
-        hvac_info: svVal(ins, 'hvac_info', 'hvacInfo'),
-        hvac_condition: svVal(ins, 'hvac_condition', 'hvacCondition'),
-        wh_info: svVal(ins, 'wh_info', 'whInfo'),
-        wh_condition: svVal(ins, 'wh_condition', 'whCondition'),
-        elec_panel: svVal(ins, 'elec_panel', 'elecPanel'),
-        windows: svVal(ins, 'windows'),
-        plumbing: svVal(ins, 'plumbing'),
-        appliances: svVal(ins, 'appliances'),
-        kb_flooring: svVal(ins, 'kb_flooring', 'kbFlooring'),
-        kb_condition: svVal(ins, 'kb_condition', 'kbCondition'),
-        doors_drywall: svVal(ins, 'doors_drywall', 'doorsDrywall'),
-        cleanliness: svVal(ins, 'cleanliness'),
-        tenant_issues: svVal(ins, 'tenant_issues', 'tenantIssues'),
-        cooperation: svVal(ins, 'cooperation'),
-        renewal_rec: svVal(ins, 'renewal_rec', 'renewalRec'),
-        immediate_wos: svVal(ins, 'immediate_wos', 'immediateWos'),
-        notes: svVal(ins, 'notes'),
-        photos: photoCount
-      };
-
-      html += '<tr>';
-      cols.forEach(c => {
-        const val = rowValues[c.key] ?? '';
-        if (c.key === 'photos') {
-          const cnt = parseInt(val) || 0;
-          const badge = cnt > 0
-            ? `<span class="sv-photo-badge" onclick="event.stopPropagation();openSvPhotoModal(${idx})">\u{1F4F7} ${cnt}</span>`
-            : '<span style="color:#cbd5e1;">0</span>';
-          html += `<td>${badge}</td>`;
-        } else {
-          const condCls = c.cond ? svCondClass(val) : '';
-          const isWo = c.key === 'immediate_wos' && val && String(val).trim();
-          const woStyle = isWo ? ' style="color:#dc2626;font-weight:600;"' : '';
-          html += `<td${c.sticky ? ' class="sv-sticky"' : ''}${condCls ? ` class="${condCls}"` : ''}${woStyle}>${val}</td>`;
-        }
-      });
-      html += '</tr>';
-    });
-
-    html += '</tbody></table>';
-    document.getElementById('siteViewTable').innerHTML = html;
+    renderSvContent();
   } catch(e) {
     console.error('Site view error:', e);
     document.getElementById('siteViewEmpty').style.display = '';
+    document.getElementById('siteViewSummary').style.display = 'none';
     document.getElementById('siteViewTable').style.display = 'none';
   }
 }
