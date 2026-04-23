@@ -669,7 +669,6 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
             "name": et.get("name", ""),
             "icon": et.get("icon", "\U0001f527"),
             "description": et.get("description", ""),
-            "sub_types": json.dumps(et.get("sub_types", [])),  # v1.3
             "sort_order": i,
         } for i, et in enumerate(equipment_types)]
         await sb_post("fc_equipment_types", type_rows)
