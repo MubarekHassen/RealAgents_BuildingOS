@@ -640,6 +640,11 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
     created_by = body.get("created_by", "")
 
     if units:
+        # Clear existing units for this building to avoid duplicates on re-sync
+        try:
+            await sb_delete("fc_units", f"?building_id=eq.{building_id}")
+        except Exception:
+            pass
         unit_rows = [{
             "building_id": building_id,
             "unit_name": u.get("name", u.get("unit_name", "")),
@@ -654,6 +659,11 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
         await sb_post("fc_units", unit_rows)
 
     if equipment_types:
+        # Clear existing equipment types for this building to avoid duplicates
+        try:
+            await sb_delete("fc_equipment_types", f"?building_id=eq.{building_id}")
+        except Exception:
+            pass
         type_rows = [{
             "building_id": building_id,
             "name": et.get("name", ""),
