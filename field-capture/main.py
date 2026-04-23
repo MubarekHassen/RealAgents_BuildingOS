@@ -665,9 +665,25 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
         await sb_post("fc_equipment_types", type_rows)
 
     # Use invite code from the main platform if provided, otherwise generate one
-    code = body.get("invite_code", "").strip().upper() or _generate_invite_code()
+    code = body.get("invite_code", "").strip().upper()
 
-    # Deactivate any existing invite codes for this building first
+    # Check if this code already exists and is active — if so, keep it (idempotent sync)
+    if code:
+        existing_code = await sb_get("fc_invite_codes", f"?code=eq.{code}&is_active=eq.true")
+        if existing_code:
+            # Code already exists, no need to recreate — just sync units/equipment
+            return {
+                "building_id": building_id,
+                "units_created": len(units),
+                "equipment_types_created": len(equipment_types),
+                "invite_code": code,
+                "invite_url": f"/join/{code}",
+            }
+
+    if not code:
+        code = _generate_invite_code()
+
+    # Deactivate any existing invite codes for this building
     existing = await sb_get("fc_invite_codes", f"?building_id=eq.{building_id}&is_active=eq.true")
     for old in existing:
         await sb_patch("fc_invite_codes", f"?id=eq.{old['id']}", {"is_active": False})
