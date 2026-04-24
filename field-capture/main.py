@@ -791,7 +791,33 @@ async def cleanup_building_units(building_id: str, request: Request):
             logger.error(f"Batch delete error: {e}")
 
     remaining = len(all_units) - deleted
-    return {"deleted": deleted, "remaining": remaining, "building_id": building_id}
+
+    # Also deduplicate equipment types for this building
+    all_et = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&select=id,name")
+    et_seen = {}
+    et_to_delete = []
+    for et in all_et:
+        name = et.get("name", "")
+        if name in et_seen:
+            et_to_delete.append(et["id"])
+        else:
+            et_seen[name] = et["id"]
+    et_deleted = 0
+    for i in range(0, len(et_to_delete), 30):
+        batch = et_to_delete[i:i+30]
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/fc_equipment_types?id=in.({','.join(str(uid) for uid in batch)})",
+                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                )
+                if r.status_code < 300:
+                    et_deleted += len(batch)
+        except Exception:
+            pass
+
+    return {"deleted": deleted, "remaining": remaining, "building_id": building_id,
+            "equipment_types_deduped": et_deleted, "equipment_types_remaining": len(et_seen)}
 
 
 @app.delete("/api/buildings/{building_id}/invite-codes")
