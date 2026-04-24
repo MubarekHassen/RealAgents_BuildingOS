@@ -2468,8 +2468,8 @@ const CONFIG = {
   BACKEND_URL: `${window.location.protocol}//${window.location.host}`
 };
 const PIPELINE_STEPS = ['Reading document structure','Identifying document type','Extracting building data','Mapping intelligence categories','Generating insights'];
-// API key for admin endpoints (set via localStorage for admin users)
-const API_KEY = localStorage.getItem('bos_admin_api_key') || '';
+// API key for admin endpoints — kept in memory only (never persisted to localStorage)
+let _sessionApiKey = '';
 
 // ─── ROLES & DOC TYPES ──────────────────────────────────────
 const ROLES = [
@@ -3186,9 +3186,9 @@ function renderUploadChat() {
         </div>
       `}
       ${uploadChatAnswer ? `
-        <div class="highlight-section" style="margin-top:14px">
-          <div class="highlight-label">Answer</div>
-          <div class="highlight-summary" style="line-height:1.7">${renderAssistantAnswer(uploadChatAnswer.answer || 'No answer returned.')}</div>
+        <div class="highlight-section" style="margin-top:14px;${uploadChatAnswer._error ? 'background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px' : ''}">
+          <div class="highlight-label" ${uploadChatAnswer._error ? 'style="color:#dc2626"' : ''}>${uploadChatAnswer._error ? 'Error' : 'Answer'}</div>
+          <div class="highlight-summary" style="line-height:1.7;${uploadChatAnswer._error ? 'color:#991b1b' : ''}">${renderAssistantAnswer(uploadChatAnswer.answer || 'No answer returned.')}</div>
         </div>` : ''}
       ${uploadChatSources.length ? `
         <div class="highlight-section" style="margin-top:12px">
@@ -3243,7 +3243,7 @@ async function askUploadDocuments() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let streamedText = '';
-    uploadChatAnswer = { answer: '', confidence: 'low' };
+    uploadChatAnswer = { answer: '', _streaming: true };
     renderUploadChat();
     let buffer = '';
     while (true) {
@@ -3259,7 +3259,7 @@ async function askUploadDocuments() {
           if (evt.type === 'token') {
             streamedText += evt.text;
             // Show raw streaming text (before JSON parse)
-            uploadChatAnswer = { answer: streamedText, confidence: 'low', _streaming: true };
+            uploadChatAnswer = { answer: streamedText, _streaming: true };
             renderUploadChat();
           } else if (evt.type === 'done' && evt.parsed) {
             uploadChatAnswer = evt.parsed;
@@ -3280,10 +3280,10 @@ async function askUploadDocuments() {
         uploadChatAnswer = payload.answer || null;
         uploadChatSources = payload.sources || [];
       } else {
-        uploadChatAnswer = { answer: e.message || 'Document chat failed.', confidence: 'low' };
+        uploadChatAnswer = { answer: 'AI analysis failed \u2014 ' + (e.message || 'Document chat failed.') + ' Please try again.', _error: true };
       }
     } catch(e2) {
-      uploadChatAnswer = { answer: e.message || 'Document chat failed.', confidence: 'low' };
+      uploadChatAnswer = { answer: 'AI analysis failed \u2014 ' + (e2.message || 'Document chat failed.') + ' Please try again.', _error: true };
       uploadChatSources = [];
     }
   } finally {
@@ -4111,8 +4111,29 @@ function renderQueue() {
           ${f.status === 'queued' ? '⏳' : f.status === 'processing' ? '⟳' : f.status === 'done' ? '✓' : '✗'}
         </span>
         <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</span>
-        <span style="font-size:11px;color:#9ca3af">${f.status === 'done' ? f.elapsed : f.status === 'error' ? 'Error' : f.status === 'processing' ? 'Analyzing…' : 'Waiting'}</span>
+        <span style="font-size:11px;color:${f.status === 'error' ? '#dc2626' : '#9ca3af'}">${f.status === 'done' ? f.elapsed : f.status === 'error' ? (f.errorMsg || 'Upload failed') : f.status === 'processing' ? 'Analyzing\u2026' : 'Waiting'}</span>
+        ${f.status === 'error' && f.file ? `<button onclick="retryQueueItem(${fileQueue.indexOf(f)})" style="font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid #dc2626;background:#fef2f2;color:#dc2626;cursor:pointer;white-space:nowrap">Retry</button>` : ''}
       </div>`).join('')}`;
+}
+
+async function retryQueueItem(idx) {
+  const item = fileQueue[idx];
+  if (!item || !item.file) return;
+  item.status = 'processing';
+  item.errorMsg = null;
+  renderQueue();
+  // Remove old error doc entry for this file
+  const oldIdx = analyzedDocs.findIndex(d => d.name === item.name && d.status === 'error');
+  if (oldIdx !== -1) analyzedDocs.splice(oldIdx, 1);
+  const result = await processSingleFile(item);
+  if (result && fileQueue.length <= 1) {
+    showDocumentHighlight(result);
+    maybeShowProfileCompletion(result);
+    setTimeout(() => showDocSummaryPopup(result), 800);
+    setTimeout(() => maybeShowEquipmentModal(result), 1200);
+  }
+  renderQueue();
+  renderDocLibrary();
 }
 
 function handleDrop(e) {
@@ -4444,7 +4465,7 @@ async function processSingleFile(queueItem) {
     trackAnalyticsEvent('document_upload', { filename: docEntry.filename, building_id: activeBuildingId });
   } catch(e) {
     docEntry.status = 'error'; docEntry.errorMsg = e.message;
-    queueItem.status = 'error';
+    queueItem.status = 'error'; queueItem.errorMsg = e.message;
     renderQueue(); renderDocLibrary();
     return null;
   }
@@ -4546,7 +4567,7 @@ async function processSharedLink(queueItem) {
   } catch(e) {
     docEntry.status = 'error';
     docEntry.errorMsg = e.message;
-    queueItem.status = 'error';
+    queueItem.status = 'error'; queueItem.errorMsg = e.message;
     renderQueue();
     renderDocLibrary();
     return null;
@@ -4908,9 +4929,9 @@ function renderDeferredChat() {
       </div>
     `}
     ${deferredChatAnswer ? `
-      <div class="highlight-section" style="margin-top:16px">
-        <div class="highlight-label">Answer</div>
-        <div class="highlight-summary">${deferredChatAnswer.answer || 'No answer returned.'}</div>
+      <div class="highlight-section" style="margin-top:16px;${deferredChatAnswer._error ? 'background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px' : ''}">
+        <div class="highlight-label" ${deferredChatAnswer._error ? 'style="color:#dc2626"' : ''}>${deferredChatAnswer._error ? 'Error' : 'Answer'}</div>
+        <div class="highlight-summary" ${deferredChatAnswer._error ? 'style="color:#991b1b"' : ''}>${deferredChatAnswer.answer || 'No answer returned.'}</div>
       </div>` : ''}
     ${deferredChatSources.length ? `
       <div class="highlight-section" style="margin-top:12px">
@@ -4970,7 +4991,7 @@ async function askDeferredRegister() {
     deferredChatAnswer = payload.answer || null;
     deferredChatSources = payload.sources || [];
   } catch(e) {
-    deferredChatAnswer = { answer: e.message || 'Deferred maintenance chat failed.', confidence: 'low' };
+    deferredChatAnswer = { answer: 'AI analysis failed \u2014 ' + (e.message || 'Deferred maintenance chat failed.') + ' Please try again.', _error: true };
     deferredChatSources = [];
   } finally {
     deferredChatBusy = false;
@@ -5672,7 +5693,7 @@ function renderDocLibrary() {
       const bc = d.status==='analyzed'?'badge-analyzed':d.status==='analyzing'?'badge-analyzing':'badge-error';
       const bt = d.status==='analyzed'?'Done':d.status==='analyzing'?'…':'Error';
       const qaMeta = d.documentId ? (d.qaStatus === 'ready' ? 'Indexed' : 'Indexing…') : '';
-      const errorMeta = d.status === 'error' && d.errorMsg ? `<div style="font-size:10px;color:#dc2626;margin-top:2px">${escapeHtml(d.errorMsg)}</div>` : '';
+      const errorMeta = d.status === 'error' && d.errorMsg ? `<div style="font-size:10px;color:#dc2626;margin-top:2px">${escapeHtml(d.errorMsg)}</div>` : (d.status === 'error' ? `<div style="font-size:10px;color:#dc2626;margin-top:2px">Upload failed</div>` : '');
       html += `<div class="doc-card${i===currentDocIndex?' selected':''}" onclick="selectDoc(${i})" style="border-left:3px solid ${color}">
         <div style="width:6px"></div>
         <div class="doc-card-info">
@@ -5816,9 +5837,9 @@ function renderDocumentQA(doc) {
       </div>
     </div>
     ${answer ? `
-      <div class="highlight-section">
-        <div class="highlight-label">Answer</div>
-        <div class="highlight-summary">${answer.answer || 'No answer returned.'}</div>
+      <div class="highlight-section" ${answer._error ? 'style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px"' : ''}>
+        <div class="highlight-label" ${answer._error ? 'style="color:#dc2626"' : ''}>${answer._error ? 'Error' : 'Answer'}</div>
+        <div class="highlight-summary" ${answer._error ? 'style="color:#991b1b"' : ''}>${answer.answer || 'No answer returned.'}</div>
       </div>` : ''}
     ${matches.length ? `
       <div class="highlight-section">
@@ -5860,7 +5881,7 @@ async function askSelectedDocument() {
     doc.qaMatches = payload.matches || [];
     saveDocsForBuilding(activeBuildingId, analyzedDocs);
   } catch(e) {
-    doc.qaAnswer = { answer: e.message || 'Question answering failed.', confidence: 'low' };
+    doc.qaAnswer = { answer: 'AI analysis failed \u2014 ' + (e.message || 'Question answering failed.') + ' Please try again.', _error: true };
     doc.qaMatches = [];
   } finally {
     doc.qaBusy = false;
@@ -7668,7 +7689,7 @@ async function fcPushSetupToServer(invite, config) {
 
     const resp = await fetch(`${FIELD_CAPTURE_API}/api/buildings/${invite.building_id}/setup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Setup-Key': 'bos-setup-2026' },
       body: JSON.stringify({
         building_name: invite.building_name,
         building_address: invite.building_address,
@@ -11296,7 +11317,7 @@ async function sendTeamInvitation() {
   // Try to create user in Supabase Auth via admin API
   if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
   try {
-    const apiKey = API_KEY || localStorage.getItem('bos_admin_api_key') || '';
+    const apiKey = _sessionApiKey || '';
     const resp = await fetch(CONFIG.BACKEND_URL + '/api/admin/create-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -11625,7 +11646,7 @@ async function renderUserMgmtTab() {
   container.innerHTML = '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:13px">Loading users from Supabase...</div>';
 
   try {
-    const apiKey = API_KEY || localStorage.getItem('bos_api_key') || '';
+    const apiKey = _sessionApiKey || '';
     const resp = await fetch(CONFIG.BACKEND_URL + '/api/admin/users', {
       headers: { 'Authorization': 'Bearer ' + apiKey }
     });
@@ -11741,7 +11762,7 @@ async function adminCreateUser() {
 
   if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
   try {
-    const apiKey = API_KEY || localStorage.getItem('bos_api_key') || '';
+    const apiKey = _sessionApiKey || '';
     const resp = await fetch(CONFIG.BACKEND_URL + '/api/admin/create-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -11765,7 +11786,7 @@ async function adminDeactivateUser(userId, email) {
   if (!confirm('Are you sure you want to deactivate the account for ' + email + '? They will no longer be able to sign in.')) return;
 
   try {
-    const apiKey = API_KEY || localStorage.getItem('bos_api_key') || '';
+    const apiKey = _sessionApiKey || '';
     const resp = await fetch(CONFIG.BACKEND_URL + '/api/admin/deactivate-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
@@ -11792,7 +11813,7 @@ async function renderAnalyticsTab() {
   statsRow.innerHTML = '<div style="text-align:center;color:#9ca3af;font-size:13px;grid-column:1/-1;padding:12px">Loading analytics...</div>';
 
   try {
-    const apiKey = API_KEY || localStorage.getItem('bos_api_key') || '';
+    const apiKey = _sessionApiKey || '';
     const resp = await fetch(CONFIG.BACKEND_URL + '/api/analytics/dashboard', {
       headers: { 'Authorization': 'Bearer ' + apiKey }
     });
