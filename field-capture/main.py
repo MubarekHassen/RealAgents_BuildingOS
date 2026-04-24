@@ -38,6 +38,8 @@ import json
 import logging
 import os
 import random
+import re
+import secrets
 import string
 import uuid
 from datetime import datetime, timedelta
@@ -70,6 +72,17 @@ HEADERS = {
 }
 
 SESSION_EXPIRY_DAYS = 7
+
+
+def _safe_id(val: str) -> str:
+    """Sanitize a value for use in Supabase PostgREST filters. Only allow alphanumeric, hyphens, underscores, dots, @."""
+    val = str(val).strip()
+    if not re.match(r'^[\w\-\.@]+$', val):
+        raise HTTPException(400, "Invalid input characters")
+    if len(val) > 255:
+        raise HTTPException(400, "Input too long")
+    return val
+
 
 app = FastAPI(title="BuildingOS Field Capture", version="1.4.0")
 
@@ -257,7 +270,7 @@ async def verify_session(request: Request) -> dict:
     if not token:
         raise HTTPException(401, "Empty session token")
 
-    sessions = await sb_get("fc_sessions", f"?token=eq.{token}")
+    sessions = await sb_get("fc_sessions", f"?token=eq.{_safe_id(token)}")
     if not sessions:
         raise HTTPException(401, "Invalid session token")
 
@@ -271,7 +284,17 @@ async def verify_session(request: Request) -> dict:
         except ValueError:
             pass
 
+    # Load building memberships for tenant scoping
+    memberships = await sb_get("fc_building_members", f"?user_id=eq.{_safe_id(session['user_id'])}&select=building_id")
+    session["building_ids"] = [m["building_id"] for m in memberships]
+
     return session
+
+
+def _check_building_access(session: dict, building_id: str):
+    """Verify the user has access to the specified building."""
+    if building_id not in session.get("building_ids", []):
+        raise HTTPException(403, "No access to this building")
 
 
 # ── Analytics logging ───────────────────────────────────────────────────────
@@ -380,7 +403,7 @@ async def startup_event():
 
 
 @app.post("/api/admin/migrate")
-async def run_migration():
+async def run_migration(session: dict = Depends(verify_session)):
     """Admin endpoint: outputs migration SQL to run in Supabase SQL Editor."""
     return {
         "message": "Run this SQL in your Supabase SQL Editor (supabase.com/dashboard → SQL Editor)",
@@ -428,7 +451,7 @@ CREATE INDEX IF NOT EXISTS idx_fc_analytics_user ON fc_analytics(user_id);
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.post("/api/admin/migrate-v1.4")
-async def run_migration_v14():
+async def run_migration_v14(session: dict = Depends(verify_session)):
     """Admin endpoint: outputs v1.4 migration SQL for fc_inspections, fc_inspection_photos, and fc_capture_photos."""
     return {
         "message": "Run this SQL in your Supabase SQL Editor (supabase.com/dashboard → SQL Editor)",
@@ -541,7 +564,7 @@ async def login_field_user(request: Request):
         raise HTTPException(400, "Invite code required")
 
     # Validate invite code
-    invites = await sb_get("fc_invite_codes", f"?code=eq.{invite_code}&is_active=eq.true")
+    invites = await sb_get("fc_invite_codes", f"?code=eq.{_safe_id(invite_code)}&is_active=eq.true")
     if not invites:
         raise HTTPException(404, "Invalid or expired invite code")
     invite = invites[0]
@@ -549,7 +572,7 @@ async def login_field_user(request: Request):
         raise HTTPException(410, "Invite code has reached maximum uses")
 
     # Find or create user
-    users = await sb_get("fc_users", f"?email=eq.{email}")
+    users = await sb_get("fc_users", f"?email=eq.{_safe_id(email)}")
     is_new = False
     if users:
         user = users[0]
@@ -636,6 +659,11 @@ async def logout(session: dict = Depends(verify_session)):
 
 @app.post("/api/buildings/{building_id}/setup")
 async def setup_building_for_field_capture(building_id: str, request: Request):
+    # Verify caller — either a valid session or the setup API key
+    setup_key = request.headers.get("X-Setup-Key", "")
+    if setup_key != os.getenv("SETUP_API_KEY", "bos-setup-2026"):
+        raise HTTPException(403, "Unauthorized setup request")
+
     body = await request.json()
     building_name = body.get("building_name", "")
     building_address = body.get("building_address", "")
@@ -646,7 +674,7 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
     if units:
         # Clear existing units for this building to avoid duplicates on re-sync
         try:
-            await sb_delete("fc_units", f"?building_id=eq.{building_id}")
+            await sb_delete("fc_units", f"?building_id=eq.{_safe_id(building_id)}")
         except Exception:
             pass
         unit_rows = [{
@@ -665,7 +693,7 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
     if equipment_types:
         # Clear existing equipment types for this building to avoid duplicates
         try:
-            await sb_delete("fc_equipment_types", f"?building_id=eq.{building_id}")
+            await sb_delete("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}")
         except Exception:
             pass
         type_rows = [{
@@ -682,7 +710,7 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
 
     # Check if this code already exists and is active — if so, keep it (idempotent sync)
     if code:
-        existing_code = await sb_get("fc_invite_codes", f"?code=eq.{code}&is_active=eq.true")
+        existing_code = await sb_get("fc_invite_codes", f"?code=eq.{_safe_id(code)}&is_active=eq.true")
         if existing_code:
             # Code already exists, no need to recreate — just sync units/equipment
             return {
@@ -697,7 +725,7 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
         code = _generate_invite_code()
 
     # Deactivate any existing invite codes for this building
-    existing = await sb_get("fc_invite_codes", f"?building_id=eq.{building_id}&is_active=eq.true")
+    existing = await sb_get("fc_invite_codes", f"?building_id=eq.{_safe_id(building_id)}&is_active=eq.true")
     for old in existing:
         await sb_patch("fc_invite_codes", f"?id=eq.{old['id']}", {"is_active": False})
 
@@ -721,7 +749,7 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
 
 
 @app.post("/api/invite-codes")
-async def create_invite_code(request: Request):
+async def create_invite_code(request: Request, session: dict = Depends(verify_session)):
     body = await request.json()
     code = _generate_invite_code()
     invite = await sb_post("fc_invite_codes", {
@@ -737,7 +765,7 @@ async def create_invite_code(request: Request):
 
 
 @app.post("/api/buildings/{building_id}/cleanup-units")
-async def cleanup_building_units(building_id: str, request: Request):
+async def cleanup_building_units(building_id: str, request: Request, session: dict = Depends(verify_session)):
     """Delete units by ID list, or if keep_names provided, delete everything except those names."""
     body = {}
     try:
@@ -746,7 +774,7 @@ async def cleanup_building_units(building_id: str, request: Request):
         pass
 
     keep_names = body.get("keep_names", [])
-    all_units = await sb_get("fc_units", f"?building_id=eq.{building_id}&select=id,unit_name")
+    all_units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_name")
     if not all_units:
         return {"deleted": 0, "remaining": 0}
 
@@ -793,7 +821,7 @@ async def cleanup_building_units(building_id: str, request: Request):
     remaining = len(all_units) - deleted
 
     # Also deduplicate equipment types for this building
-    all_et = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&select=id,name")
+    all_et = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&select=id,name")
     et_seen = {}
     et_to_delete = []
     for et in all_et:
@@ -821,9 +849,9 @@ async def cleanup_building_units(building_id: str, request: Request):
 
 
 @app.delete("/api/buildings/{building_id}/invite-codes")
-async def delete_building_invite_codes(building_id: str):
+async def delete_building_invite_codes(building_id: str, session: dict = Depends(verify_session)):
     """Deactivate all invite codes for a building."""
-    existing = await sb_get("fc_invite_codes", f"?building_id=eq.{building_id}&is_active=eq.true")
+    existing = await sb_get("fc_invite_codes", f"?building_id=eq.{_safe_id(building_id)}&is_active=eq.true")
     deactivated = 0
     for inv in existing:
         await sb_patch("fc_invite_codes", f"?id=eq.{inv['id']}", {"is_active": False})
@@ -833,7 +861,7 @@ async def delete_building_invite_codes(building_id: str):
 
 @app.get("/api/invite-codes/{code}")
 async def validate_invite_code(code: str):
-    rows = await sb_get("fc_invite_codes", f"?code=eq.{code}&is_active=eq.true")
+    rows = await sb_get("fc_invite_codes", f"?code=eq.{_safe_id(code)}&is_active=eq.true")
     if not rows:
         raise HTTPException(404, "Invalid or expired invite code")
     invite = rows[0]
@@ -849,13 +877,14 @@ async def validate_invite_code(code: str):
 
 def _generate_invite_code() -> str:
     chars = string.ascii_uppercase + string.digits
-    return ''.join(random.choices(chars, k=6))
+    return ''.join(secrets.choice(chars) for _ in range(6))
 
 
 # ── Building config endpoints ───────────────────────────────────────────────
 
 @app.post("/api/buildings/{building_id}/units")
 async def add_units(building_id: str, request: Request, session: dict = Depends(verify_session)):
+    _check_building_access(session, building_id)
     body = await request.json()
     units = body if isinstance(body, list) else body.get("units", [])
     rows = [{
@@ -874,9 +903,10 @@ async def add_units(building_id: str, request: Request, session: dict = Depends(
 
 @app.get("/api/buildings/{building_id}/units")
 async def list_units(building_id: str, session: dict = Depends(verify_session)):
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}&order=sort_order,unit_name")
-    equip_types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&order=sort_order")
-    captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&select=id,unit_id,equipment_type_id")
+    _check_building_access(session, building_id)
+    units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}&order=sort_order,unit_name")
+    equip_types = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&order=sort_order")
+    captures = await sb_get("fc_captures", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_id,equipment_type_id")
 
     type_count = len(equip_types)
     capture_map = {}
@@ -901,6 +931,7 @@ async def list_units(building_id: str, session: dict = Depends(verify_session)):
 
 @app.post("/api/buildings/{building_id}/equipment-types")
 async def add_equipment_types(building_id: str, request: Request, session: dict = Depends(verify_session)):
+    _check_building_access(session, building_id)
     body = await request.json()
     types = body if isinstance(body, list) else body.get("equipment_types", [])
     rows = [{
@@ -917,7 +948,8 @@ async def add_equipment_types(building_id: str, request: Request, session: dict 
 
 @app.get("/api/buildings/{building_id}/equipment-types")
 async def list_equipment_types(building_id: str, session: dict = Depends(verify_session)):
-    types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&order=sort_order")
+    _check_building_access(session, building_id)
+    types = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&order=sort_order")
     return {"equipment_types": types}
 
 
@@ -978,18 +1010,19 @@ async def identify_equipment(
 @app.post("/api/buildings/{building_id}/equipment-types/custom")
 async def add_custom_equipment_type(building_id: str, request: Request, session: dict = Depends(verify_session)):
     """Field user adds a custom equipment type not in the pre-set list."""
+    _check_building_access(session, building_id)
     body = await request.json()
     name = body.get("name", "").strip()
     if not name:
         raise HTTPException(400, "Equipment type name required")
 
     # Check for duplicates
-    existing = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&name=eq.{name}")
+    existing = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&name=eq.{_safe_id(name)}")
     if existing:
         return {"equipment_type": existing[0], "already_exists": True}
 
     # Get current max sort_order
-    all_types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&order=sort_order.desc&limit=1")
+    all_types = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&order=sort_order.desc&limit=1")
     next_order = (all_types[0]["sort_order"] + 1) if all_types else 0
 
     result = await sb_post("fc_equipment_types", {
@@ -1015,7 +1048,7 @@ async def join_building(code: str, request: Request, session: dict = Depends(ver
     if not user_id:
         raise HTTPException(400, "user_id required")
 
-    invites = await sb_get("fc_invite_codes", f"?code=eq.{code}&is_active=eq.true")
+    invites = await sb_get("fc_invite_codes", f"?code=eq.{_safe_id(code)}&is_active=eq.true")
     if not invites:
         raise HTTPException(404, "Invalid or expired invite code")
     invite = invites[0]
@@ -1025,7 +1058,7 @@ async def join_building(code: str, request: Request, session: dict = Depends(ver
 
     existing = await sb_get(
         "fc_building_members",
-        f"?user_id=eq.{user_id}&building_id=eq.{invite['building_id']}"
+        f"?user_id=eq.{_safe_id(user_id)}&building_id=eq.{invite['building_id']}"
     )
     if existing:
         return {"already_member": True, "building_id": invite["building_id"], "building_name": invite["building_name"]}
@@ -1052,7 +1085,7 @@ async def list_user_buildings(user_id: str, session: dict = Depends(verify_sessi
     if session.get("user_id") != user_id:
         raise HTTPException(403, "Access denied")
 
-    memberships = await sb_get("fc_building_members", f"?user_id=eq.{user_id}")
+    memberships = await sb_get("fc_building_members", f"?user_id=eq.{_safe_id(user_id)}")
     buildings = []
     for m in memberships:
         bid = m["building_id"]
@@ -1083,6 +1116,7 @@ async def list_user_buildings(user_id: str, session: dict = Depends(verify_sessi
 
 @app.post("/api/buildings/{building_id}/walks")
 async def start_walk(building_id: str, request: Request, session: dict = Depends(verify_session)):
+    _check_building_access(session, building_id)
     body = await request.json()
     walk = await sb_post("fc_walk_sessions", {
         "building_id": building_id,
@@ -1110,7 +1144,7 @@ async def update_walk(walk_id: str, request: Request, session: dict = Depends(ve
     if "captures_made" in body:
         update["captures_made"] = body["captures_made"]
 
-    result = await sb_patch("fc_walk_sessions", f"?id=eq.{walk_id}", update)
+    result = await sb_patch("fc_walk_sessions", f"?id=eq.{_safe_id(walk_id)}", update)
 
     if body.get("status") == "completed":
         await log_analytics("walk_end", user_id=session.get("user_id"), metadata={"walk_id": walk_id}, request=request)
@@ -1122,6 +1156,7 @@ async def update_walk(walk_id: str, request: Request, session: dict = Depends(ve
 
 @app.post("/api/buildings/{building_id}/units/{unit_id}/visit")
 async def visit_unit(building_id: str, unit_id: str, request: Request, session: dict = Depends(verify_session)):
+    _check_building_access(session, building_id)
     body = await request.json()
     visit = await sb_post("fc_unit_visits", {
         "walk_session_id": body.get("walk_session_id"),
@@ -1142,7 +1177,7 @@ async def update_visit(visit_id: str, request: Request, session: dict = Depends(
             update["completed_at"] = datetime.utcnow().isoformat()
     if "access_note" in body:
         update["access_note"] = body["access_note"]
-    result = await sb_patch("fc_unit_visits", f"?id=eq.{visit_id}", update)
+    result = await sb_patch("fc_unit_visits", f"?id=eq.{_safe_id(visit_id)}", update)
     return {"visit": result[0] if result else None}
 
 
@@ -1269,15 +1304,16 @@ async def capture_equipment(
     3. Store capture record with AI-extracted data
     4. v1.3: Store photo in fc_capture_photos for multi-photo support
     """
+    _check_building_access(session, building_id)
     photo_bytes = await photo.read()
     if not photo_bytes:
         raise HTTPException(400, "Empty photo")
 
-    eq_types = await sb_get("fc_equipment_types", f"?id=eq.{equipment_type_id}")
+    eq_types = await sb_get("fc_equipment_types", f"?id=eq.{_safe_id(equipment_type_id)}")
     eq_type_name = eq_types[0]["name"] if eq_types else "unknown"
     eq_type_slug = eq_type_name.lower().replace(" ", "_").replace("/", "_")
 
-    units = await sb_get("fc_units", f"?id=eq.{unit_id}")
+    units = await sb_get("fc_units", f"?id=eq.{_safe_id(unit_id)}")
     unit_name = units[0]["unit_name"] if units else "unknown"
     unit_slug = unit_name.lower().replace(" ", "_").replace("/", "_")
 
@@ -1396,7 +1432,7 @@ async def add_capture_photo(
         raise HTTPException(400, "Empty photo")
 
     # Get capture to build storage path
-    captures = await sb_get("fc_captures", f"?id=eq.{capture_id}")
+    captures = await sb_get("fc_captures", f"?id=eq.{_safe_id(capture_id)}")
     if not captures:
         raise HTTPException(404, "Capture not found")
     cap = captures[0]
@@ -1408,7 +1444,7 @@ async def add_capture_photo(
     photo_url = await sb_upload("equipment-photos", storage_path, photo_bytes)
 
     # Get next sort_order (wrapped in try/except — table may not exist)
-    existing_photos = await sb_get_safe("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order.desc&limit=1")
+    existing_photos = await sb_get_safe("fc_capture_photos", f"?capture_id=eq.{_safe_id(capture_id)}&order=sort_order.desc&limit=1")
     next_order = (existing_photos[0]["sort_order"] + 1) if existing_photos else 1
 
     result = await sb_post_safe("fc_capture_photos", {
@@ -1433,7 +1469,7 @@ async def add_capture_photo(
 @app.get("/api/captures/{capture_id}/photos")
 async def list_capture_photos(capture_id: str, session: dict = Depends(verify_session)):
     """Get all photos for a capture (wrapped in try/except — table may not exist)."""
-    photos = await sb_get_safe("fc_capture_photos", f"?capture_id=eq.{capture_id}&order=sort_order")
+    photos = await sb_get_safe("fc_capture_photos", f"?capture_id=eq.{_safe_id(capture_id)}&order=sort_order")
     return {"photos": photos}
 
 
@@ -1453,13 +1489,14 @@ async def update_capture(capture_id: str, request: Request, session: dict = Depe
         update["verified_by"] = body.get("verified_by")
     update["updated_at"] = datetime.utcnow().isoformat()
 
-    result = await sb_patch("fc_captures", f"?id=eq.{capture_id}", update)
+    result = await sb_patch("fc_captures", f"?id=eq.{_safe_id(capture_id)}", update)
     return {"capture": result[0] if result else None}
 
 
 @app.post("/api/buildings/{building_id}/units/{unit_id}/manual-capture")
 async def manual_capture(building_id: str, unit_id: str, request: Request, session: dict = Depends(verify_session)):
     """Manual capture when tag is unreadable."""
+    _check_building_access(session, building_id)
     body = await request.json()
     capture_record = {
         "building_id": building_id,
@@ -1505,6 +1542,7 @@ async def create_inspection(
     session: dict = Depends(verify_session),
 ):
     """Save a full unit inspection record (27-field Inspection Log)."""
+    _check_building_access(session, building_id)
     body = await request.json()
 
     inspection_record = {
@@ -1587,9 +1625,10 @@ async def get_latest_inspection(
     session: dict = Depends(verify_session),
 ):
     """Retrieve the latest inspection for a unit."""
+    _check_building_access(session, building_id)
     inspections = await sb_get(
         "fc_inspections",
-        f"?building_id=eq.{building_id}&unit_id=eq.{unit_id}&order=inspection_date.desc&limit=1"
+        f"?building_id=eq.{_safe_id(building_id)}&unit_id=eq.{_safe_id(unit_id)}&order=inspection_date.desc&limit=1"
     )
     if not inspections:
         raise HTTPException(404, "No inspection found for this unit")
@@ -1602,13 +1641,14 @@ async def list_building_inspections(
     session: dict = Depends(verify_session),
 ):
     """List all inspections for a building."""
+    _check_building_access(session, building_id)
     inspections = await sb_get(
         "fc_inspections",
-        f"?building_id=eq.{building_id}&order=inspection_date.desc"
+        f"?building_id=eq.{_safe_id(building_id)}&order=inspection_date.desc"
     )
 
     # Enrich with unit names
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
+    units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}")
     unit_map = {u["id"]: u for u in units}
 
     enriched = []
@@ -1640,7 +1680,7 @@ async def add_inspection_photo(
         raise HTTPException(400, "Empty photo")
 
     # Get inspection to build storage path
-    inspections = await sb_get("fc_inspections", f"?id=eq.{inspection_id}")
+    inspections = await sb_get("fc_inspections", f"?id=eq.{_safe_id(inspection_id)}")
     if not inspections:
         raise HTTPException(404, "Inspection not found")
     insp = inspections[0]
@@ -1655,7 +1695,7 @@ async def add_inspection_photo(
     # Get next sort_order
     existing_photos = await sb_get_safe(
         "fc_inspection_photos",
-        f"?inspection_id=eq.{inspection_id}&order=sort_order.desc&limit=1"
+        f"?inspection_id=eq.{_safe_id(inspection_id)}&order=sort_order.desc&limit=1"
     )
     next_order = (existing_photos[0]["sort_order"] + 1) if existing_photos else 0
 
@@ -1675,9 +1715,9 @@ async def add_inspection_photo(
     try:
         all_photos = await sb_get_safe(
             "fc_inspection_photos",
-            f"?inspection_id=eq.{inspection_id}&select=id"
+            f"?inspection_id=eq.{_safe_id(inspection_id)}&select=id"
         )
-        await sb_patch("fc_inspections", f"?id=eq.{inspection_id}", {
+        await sb_patch("fc_inspections", f"?id=eq.{_safe_id(inspection_id)}", {
             "photo_count": len(all_photos),
             "updated_at": datetime.utcnow().isoformat(),
         })
@@ -1710,11 +1750,12 @@ async def list_maintenance_items(
     Scans all inspections for a building and returns items where
     immediate_wos is non-empty, plus safety issues from safety_notes.
     """
+    _check_building_access(session, building_id)
     inspections = await sb_get(
         "fc_inspections",
-        f"?building_id=eq.{building_id}&order=inspection_date.desc"
+        f"?building_id=eq.{_safe_id(building_id)}&order=inspection_date.desc"
     )
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
+    units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}")
     unit_map = {u["id"]: u for u in units}
 
     items = []
@@ -1864,9 +1905,10 @@ def _check_condition_field(items, insp, unit_name, inspector, insp_date, buildin
 
 @app.get("/api/buildings/{building_id}/progress")
 async def building_progress(building_id: str, session: dict = Depends(verify_session)):
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}&select=id,unit_name")
-    types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}&select=id,name,icon")
-    captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&select=id,unit_id,equipment_type_id,captured_by_name,created_at,make,brand,model_name,ai_confidence,manually_verified")
+    _check_building_access(session, building_id)
+    units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_name")
+    types = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&select=id,name,icon")
+    captures = await sb_get("fc_captures", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_id,equipment_type_id,captured_by_name,created_at,make,brand,model_name,ai_confidence,manually_verified")
 
     total_units = len(units)
     total_types = len(types)
@@ -1913,9 +1955,10 @@ async def building_progress(building_id: str, session: dict = Depends(verify_ses
 
 @app.get("/api/buildings/{building_id}/captures")
 async def list_captures(building_id: str, unit_id: str = None, session: dict = Depends(verify_session)):
-    filters = f"?building_id=eq.{building_id}&order=created_at.desc"
+    _check_building_access(session, building_id)
+    filters = f"?building_id=eq.{_safe_id(building_id)}&order=created_at.desc"
     if unit_id:
-        filters += f"&unit_id=eq.{unit_id}"
+        filters += f"&unit_id=eq.{_safe_id(unit_id)}"
     captures = await sb_get("fc_captures", filters)
     return {"captures": captures}
 
@@ -1925,9 +1968,10 @@ async def list_captures(building_id: str, unit_id: str = None, session: dict = D
 @app.get("/api/buildings/{building_id}/export/csv")
 async def export_csv(building_id: str, session: dict = Depends(verify_session)):
     """Export all captures as CSV — v1.3: includes brand, sub_type, timestamp."""
-    captures = await sb_get("fc_captures", f"?building_id=eq.{building_id}&order=created_at")
-    units = await sb_get("fc_units", f"?building_id=eq.{building_id}")
-    types = await sb_get("fc_equipment_types", f"?building_id=eq.{building_id}")
+    _check_building_access(session, building_id)
+    captures = await sb_get("fc_captures", f"?building_id=eq.{_safe_id(building_id)}&order=created_at")
+    units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}")
+    types = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}")
 
     unit_map = {u["id"]: u for u in units}
     type_map = {t["id"]: t for t in types}
