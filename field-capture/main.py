@@ -163,14 +163,18 @@ async def sb_patch(table: str, filters: str, data: dict) -> list:
 
 
 async def sb_delete(table: str, filters: str) -> list:
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.delete(
             f"{SUPABASE_URL}/rest/v1/{table}{filters}",
-            headers=HEADERS,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+            },
         )
         if r.status_code >= 400:
             logger.error(f"sb_delete {table}: {r.status_code} {r.text}")
             return []
+        logger.info(f"sb_delete {table}: deleted OK ({r.status_code})")
         return r.json() if r.text else []
 
 
@@ -730,6 +734,23 @@ async def create_invite_code(request: Request):
         "expires_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
     })
     return {"code": code, "invite": invite[0] if invite else None}
+
+
+@app.post("/api/buildings/{building_id}/cleanup-units")
+async def cleanup_building_units(building_id: str):
+    """Delete ALL units for a building and re-count. Used to fix duplicates."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/fc_units?building_id=eq.{building_id}",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                },
+            )
+            return {"deleted": True, "status": r.status_code, "building_id": building_id}
+    except Exception as e:
+        return {"deleted": False, "error": str(e)}
 
 
 @app.delete("/api/buildings/{building_id}/invite-codes")
