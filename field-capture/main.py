@@ -737,26 +737,46 @@ async def create_invite_code(request: Request):
 
 
 @app.post("/api/buildings/{building_id}/cleanup-units")
-async def cleanup_building_units(building_id: str):
-    """Deduplicate units — keep one per unit_name, delete the rest."""
-    all_units = await sb_get("fc_units", f"?building_id=eq.{building_id}&order=created_at.asc&select=id,unit_name")
-    if not all_units:
-        return {"deduplicated": 0, "remaining": 0}
+async def cleanup_building_units(building_id: str, request: Request):
+    """Delete units by ID list, or if keep_names provided, delete everything except those names."""
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
 
-    seen = {}
-    to_delete = []
-    for u in all_units:
-        name = u.get("unit_name", "")
-        if name in seen:
-            to_delete.append(u["id"])
-        else:
-            seen[name] = u["id"]
+    keep_names = body.get("keep_names", [])
+    all_units = await sb_get("fc_units", f"?building_id=eq.{building_id}&select=id,unit_name")
+    if not all_units:
+        return {"deleted": 0, "remaining": 0}
+
+    if keep_names:
+        keep_set = set(keep_names)
+        # Keep one unit per name in keep_set, delete everything else
+        seen = set()
+        to_keep_ids = []
+        to_delete = []
+        for u in all_units:
+            name = u.get("unit_name", "")
+            if name in keep_set and name not in seen:
+                seen.add(name)
+                to_keep_ids.append(u["id"])
+            else:
+                to_delete.append(u["id"])
+    else:
+        # Just deduplicate
+        seen = {}
+        to_delete = []
+        for u in all_units:
+            name = u.get("unit_name", "")
+            if name in seen:
+                to_delete.append(u["id"])
+            else:
+                seen[name] = u["id"]
 
     deleted = 0
-    # Delete in batches of 50
-    for i in range(0, len(to_delete), 50):
-        batch = to_delete[i:i+50]
-        id_list = ",".join(f'"{uid}"' for uid in batch)
+    for i in range(0, len(to_delete), 30):
+        batch = to_delete[i:i+30]
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.delete(
@@ -766,11 +786,12 @@ async def cleanup_building_units(building_id: str):
                 if r.status_code < 300:
                     deleted += len(batch)
                 else:
-                    logger.error(f"Batch delete failed: {r.status_code} {r.text[:200]}")
+                    logger.error(f"Batch delete {r.status_code}: {r.text[:200]}")
         except Exception as e:
             logger.error(f"Batch delete error: {e}")
 
-    return {"deduplicated": deleted, "remaining": len(seen), "building_id": building_id}
+    remaining = len(all_units) - deleted
+    return {"deleted": deleted, "remaining": remaining, "building_id": building_id}
 
 
 @app.delete("/api/buildings/{building_id}/invite-codes")
