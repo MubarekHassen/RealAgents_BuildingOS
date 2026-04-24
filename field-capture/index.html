@@ -570,24 +570,8 @@
             </div>
         </div>
 
-        <!-- Step 6: Tenant Assessment -->
+        <!-- Step 6: Work Orders & Summary -->
         <div class="wizard-section" id="wizStep5">
-            <div class="card">
-                <span class="chip-label">Cleanliness</span>
-                <div class="rating-group" id="ratingCleanliness"></div>
-                <div class="input-group">
-                    <label>Tenant Issues</label>
-                    <textarea id="insp_tenant_issues" rows="2" placeholder="Any issues reported by tenant..."></textarea>
-                </div>
-                <span class="chip-label">Cooperation</span>
-                <div class="chip-group" id="chipCooperation" data-field="cooperation"></div>
-                <span class="chip-label">Renewal Recommendation</span>
-                <div class="chip-group" id="chipRenewal" data-field="renewal_recommendation"></div>
-            </div>
-        </div>
-
-        <!-- Step 7: Work Orders & Summary -->
-        <div class="wizard-section" id="wizStep6">
             <div class="card">
                 <div class="input-group">
                     <label>Immediate Work Orders Needed</label>
@@ -900,7 +884,6 @@
         { label: 'Safety', icon: '\uD83D\uDEE1\uFE0F' },
         { label: 'Mechanicals', icon: '\uD83D\uDD27' },
         { label: 'Finishes', icon: '\uD83C\uDFA8' },
-        { label: 'Tenant', icon: '\uD83D\uDC64' },
         { label: 'Work Orders', icon: '\uD83D\uDCCB' },
     ];
 
@@ -1182,7 +1165,7 @@
 
         // Reset text fields
         ['insp_safety_notes','insp_hvac_info','insp_wh_info','insp_elec_panel',
-         'insp_plumbing_leaks','insp_doors_drywall','insp_tenant_issues',
+         'insp_plumbing_leaks','insp_doors_drywall',
          'insp_immediate_wos','insp_wo_notes'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
@@ -1197,10 +1180,7 @@
         buildChipGroup('chipAppliances', ['Good', 'Fair', 'Poor'], 'condition');
         buildChipGroup('chipKbFloor', ['Good', 'Fair', 'Poor'], 'condition');
         buildChipGroup('chipKbCond', ['Good', 'Fair', 'Poor'], 'condition');
-        buildChipGroup('chipCooperation', ['Friendly', 'Neutral', 'Uncooperative'], 'condition');
-        buildChipGroup('chipRenewal', ['Renew', 'Offer Reno Unit', 'Non-Renew', 'Month-to-Month'], 'condition');
         buildChipGroup('chipEquipCondition', ['excellent', 'good', 'fair', 'poor', 'non_functional'], 'condition');
-        buildCleanlinessRating();
 
         renderWizard();
         renderRoomCards();
@@ -1428,23 +1408,81 @@
     // ── Equipment Inspection List ──────────
     function renderEquipInspList() {
         const unitCaptures = state.captures.filter(c => c.unit_id === state.currentUnit.id);
-        document.getElementById('equipInspList').innerHTML = state.equipTypes.map(et => {
-            const capture = unitCaptures.find(c => c.equipment_type_id === et.id);
-            const isDone = !!capture;
-            let statusText = 'Not captured';
+
+        // Deduplicate equipment types by name — keep first ID per name
+        const seen = {};
+        const uniqueTypes = [];
+        for (const et of state.equipTypes) {
+            if (!seen[et.name]) {
+                seen[et.name] = true;
+                uniqueTypes.push(et);
+            }
+        }
+
+        document.getElementById('equipInspList').innerHTML = uniqueTypes.map(et => {
+            // Find ALL captures for this equipment type name (across duplicate type IDs)
+            const typeIds = state.equipTypes.filter(t => t.name === et.name).map(t => t.id);
+            const captures = unitCaptures.filter(c => typeIds.includes(c.equipment_type_id));
+            const isDone = captures.length > 0;
+            const capture = captures[0];
+            let statusText = 'Tap to capture photo + tag info';
             if (isDone) {
                 const parts = [capture.brand, capture.model_name].filter(Boolean);
                 statusText = parts.length ? parts.join(' ') : 'Captured';
+                if (captures.length > 1) statusText += ` (+${captures.length - 1} more)`;
             }
+            const photoCount = captures.reduce((sum, c) => sum + (c.photos?.length || 1), 0);
             return `<div class="equip-insp-card ${isDone ? 'done' : ''}" onclick="${isDone ? `editCapture('${capture.id}')` : `startCapture('${et.id}')`}">
                 <div class="equip-insp-icon">${et.icon || '\uD83D\uDD27'}</div>
                 <div class="equip-insp-info">
                     <div class="equip-insp-name">${et.name}</div>
                     <div class="equip-insp-status ${isDone ? 'captured' : ''}">${isDone ? '&#10003; ' : ''}${statusText}</div>
+                    ${isDone && photoCount > 0 ? `<div style="font-size:11px;color:#206A8A;margin-top:2px;">\uD83D\uDCF7 ${photoCount} photo${photoCount > 1 ? 's' : ''}</div>` : ''}
                 </div>
-                <div class="equip-insp-btn ${isDone ? 'done-badge' : 'capture'}">${isDone ? '&#10003; Done' : 'Capture'}</div>
+                <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+                    <div class="equip-insp-btn ${isDone ? 'done-badge' : 'capture'}">${isDone ? '&#10003; Done' : 'Capture'}</div>
+                    ${isDone ? `<div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();startCapture('${et.id}')">+ Add photo</div>` : ''}
+                </div>
             </div>`;
         }).join('');
+
+        // Auto-populate Mechanicals fields (Step 4) from captures
+        autoPopulateMechanicals(unitCaptures);
+    }
+
+    function autoPopulateMechanicals(unitCaptures) {
+        // Find HVAC capture and pre-fill mechanicals step
+        const hvacIds = state.equipTypes.filter(t => t.name === 'HVAC System').map(t => t.id);
+        const hvacCapture = unitCaptures.find(c => hvacIds.includes(c.equipment_type_id));
+        if (hvacCapture) {
+            const hvacField = document.getElementById('insp_hvac_info');
+            if (hvacField && !hvacField.value) {
+                const parts = [hvacCapture.brand, hvacCapture.model_name, hvacCapture.year_manufactured].filter(Boolean);
+                hvacField.value = parts.join(' ') || '';
+            }
+        }
+
+        // Water Heater
+        const whIds = state.equipTypes.filter(t => t.name === 'Water Heater').map(t => t.id);
+        const whCapture = unitCaptures.find(c => whIds.includes(c.equipment_type_id));
+        if (whCapture) {
+            const whField = document.getElementById('insp_wh_info');
+            if (whField && !whField.value) {
+                const parts = [whCapture.brand, whCapture.model_name, whCapture.year_manufactured].filter(Boolean);
+                whField.value = parts.join(' ') || '';
+            }
+        }
+
+        // Electrical Panel
+        const epIds = state.equipTypes.filter(t => t.name === 'Electrical Panel').map(t => t.id);
+        const epCapture = unitCaptures.find(c => epIds.includes(c.equipment_type_id));
+        if (epCapture) {
+            const epField = document.getElementById('insp_elec_panel');
+            if (epField && !epField.value) {
+                const parts = [epCapture.brand, epCapture.model_name].filter(Boolean);
+                epField.value = parts.join(' ') || '';
+            }
+        }
     }
 
     // ── Flagged Summary (Work Orders step) ──
@@ -1504,10 +1542,6 @@
         const safetyCheck = getChipValue('chipSafetyCheck');
         if (smokeCo === 'Fail') highlights.push('Smoke/CO detectors FAILED');
         if (safetyCheck === 'Fail') highlights.push('Safety check FAILED');
-
-        // Cleanliness
-        const clean = state.chipValues.cleanliness;
-        if (clean && parseInt(clean) <= 2) highlights.push('Low cleanliness rating: ' + clean + '/5');
 
         if (highlights.length > 0) {
             area.style.display = 'block';
@@ -1571,10 +1605,6 @@
             kb_flooring: getChipValue('chipKbFloor'),
             kb_condition: getChipValue('chipKbCond'),
             doors_drywall: document.getElementById('insp_doors_drywall').value,
-            cleanliness: state.chipValues.cleanliness || '',
-            tenant_issues: document.getElementById('insp_tenant_issues').value,
-            cooperation: getChipValue('chipCooperation'),
-            renewal_recommendation: getChipValue('chipRenewal'),
             immediate_wos: combinedWOs,
             wo_notes: document.getElementById('insp_wo_notes').value,
         };
