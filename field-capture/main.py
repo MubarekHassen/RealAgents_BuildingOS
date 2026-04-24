@@ -738,19 +738,39 @@ async def create_invite_code(request: Request):
 
 @app.post("/api/buildings/{building_id}/cleanup-units")
 async def cleanup_building_units(building_id: str):
-    """Delete ALL units for a building and re-count. Used to fix duplicates."""
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.delete(
-                f"{SUPABASE_URL}/rest/v1/fc_units?building_id=eq.{building_id}",
-                headers={
-                    "apikey": SUPABASE_KEY,
-                    "Authorization": f"Bearer {SUPABASE_KEY}",
-                },
-            )
-            return {"deleted": True, "status": r.status_code, "building_id": building_id}
-    except Exception as e:
-        return {"deleted": False, "error": str(e)}
+    """Deduplicate units — keep one per unit_name, delete the rest."""
+    all_units = await sb_get("fc_units", f"?building_id=eq.{building_id}&order=created_at.asc&select=id,unit_name")
+    if not all_units:
+        return {"deduplicated": 0, "remaining": 0}
+
+    seen = {}
+    to_delete = []
+    for u in all_units:
+        name = u.get("unit_name", "")
+        if name in seen:
+            to_delete.append(u["id"])
+        else:
+            seen[name] = u["id"]
+
+    deleted = 0
+    # Delete in batches of 50
+    for i in range(0, len(to_delete), 50):
+        batch = to_delete[i:i+50]
+        id_list = ",".join(f'"{uid}"' for uid in batch)
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/fc_units?id=in.({','.join(str(uid) for uid in batch)})",
+                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                )
+                if r.status_code < 300:
+                    deleted += len(batch)
+                else:
+                    logger.error(f"Batch delete failed: {r.status_code} {r.text[:200]}")
+        except Exception as e:
+            logger.error(f"Batch delete error: {e}")
+
+    return {"deduplicated": deleted, "remaining": len(seen), "building_id": building_id}
 
 
 @app.delete("/api/buildings/{building_id}/invite-codes")
