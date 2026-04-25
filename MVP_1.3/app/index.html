@@ -1,0 +1,2476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1e293b">
+    <title>BuildingOS Field Capture</title>
+    <link rel="manifest" href="data:application/json,{}">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+            min-height: 100dvh;
+            overflow-x: hidden;
+        }
+
+        .app-header {
+            background: linear-gradient(135deg, #1e293b 0%, #263545 100%);
+            color: white;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+        }
+        .app-header h1 { font-size: 16px; font-weight: 600; flex: 1; letter-spacing: 0.01em; }
+        .header-back { font-size: 20px; cursor: pointer; padding: 4px 8px; transition: opacity 0.2s ease; }
+        .header-back:active { opacity: 0.7; }
+        .header-action { font-size: 13px; background: rgba(255,255,255,0.12); padding: 6px 14px; border-radius: 6px; cursor: pointer; border: none; color: white; transition: background 0.2s ease; }
+        .header-action:active { background: rgba(255,255,255,0.22); }
+
+        .screen { display: none; min-height: calc(100dvh - 48px); }
+        .screen.active { display: block; }
+        .screen-pad { padding: 16px; }
+
+        .card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); transition: box-shadow 0.2s ease; }
+        .card-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+        .card-sub { font-size: 13px; color: #64748b; }
+
+        .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; text-align: center; margin-bottom: 10px; transition: all 0.2s ease; }
+        .btn-primary { background: #206A8A; color: white; }
+        .btn-primary:hover { background: #1b5a76; }
+        .btn-primary:active { background: #164c65; }
+        .btn-success { background: #059669; color: white; }
+        .btn-success:hover { background: #048a5e; }
+        .btn-success:active { background: #047857; }
+        .btn-outline { background: white; color: #206A8A; border: 2px solid #206A8A; }
+        .btn-outline:hover { background: #f0f7fa; }
+        .btn-outline:active { background: #e1eef3; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-secondary { background: #e2e8f0; color: #475569; }
+        .btn-secondary:hover { background: #d5dce5; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-sm { padding: 8px 14px; font-size: 13px; width: auto; display: inline-block; margin-bottom: 0; }
+
+        .input-group { margin-bottom: 16px; }
+        .input-group label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: #475569; }
+        .input-group input, .input-group select, .input-group textarea {
+            width: 100%; padding: 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 15px; background: white; -webkit-appearance: none;
+        }
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
+            outline: none; border-color: #206A8A; box-shadow: 0 0 0 3px rgba(32,106,138,0.15);
+        }
+
+        .unit-card { background: white; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); transition: all 0.2s ease; }
+        .unit-card:active { background: #f8fafc; }
+        .unit-status { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-partial { background: #dbeafe; color: #1e40af; }
+        .status-complete { background: #d1fae5; color: #065f46; }
+        .unit-info { flex: 1; }
+        .unit-name { font-weight: 600; font-size: 15px; }
+        .unit-meta { font-size: 12px; color: #94a3b8; }
+        .unit-arrow { color: #cbd5e1; font-size: 18px; }
+
+        .camera-area { background: #1e293b; border-radius: 12px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; margin-bottom: 16px; overflow: hidden; position: relative; }
+        .camera-area img { max-width: 100%; max-height: 300px; border-radius: 8px; }
+        .camera-placeholder { text-align: center; padding: 40px 20px; }
+        .camera-placeholder .icon { font-size: 48px; margin-bottom: 12px; }
+        .camera-placeholder p { font-size: 14px; color: #94a3b8; }
+
+        .ai-result { background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+        .ai-result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-weight: 600; font-size: 14px; color: #065f46; }
+        .ai-field { margin-bottom: 8px; }
+        .ai-field label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .ai-field .value { font-size: 14px; font-weight: 500; }
+
+        .ai-identify { background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+        .ai-identify-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #1e40af; }
+        .ai-identify p { font-size: 13px; color: #475569; margin-bottom: 8px; }
+        .ai-identify-type { font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+        .ai-identify-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+        .confidence-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+        .conf-high { background: #d1fae5; color: #065f46; }
+        .conf-medium { background: #fef3c7; color: #92400e; }
+        .conf-low { background: #fee2e2; color: #991b1b; }
+
+        .progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+        .progress-fill { height: 100%; background: #206A8A; border-radius: 3px; transition: width 0.3s; }
+
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; color: white; gap: 16px; }
+        .loading-overlay .spinner { width: 40px; height: 40px; border-width: 3px; }
+        .loading-overlay p { font-size: 15px; }
+
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 300; box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; transition: opacity 0.3s; max-width: 90vw; text-align: center; }
+        .toast.show { opacity: 1; }
+
+        .section-title { font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 10px; }
+
+        .capture-stamp { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+        .photo-thumbs { display: flex; gap: 8px; margin: 12px 0; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+        .photo-thumb { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; border: 2px solid #e2e8f0; flex-shrink: 0; cursor: pointer; }
+        .photo-thumb.active { border-color: #206A8A; }
+        .add-photo-btn { width: 64px; height: 64px; border-radius: 8px; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #94a3b8; cursor: pointer; flex-shrink: 0; background: #f8fafc; }
+        .add-photo-btn:active { background: #e2e8f0; }
+
+        .specs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+        .spec-item { background: #f8fafc; border-radius: 8px; padding: 8px 10px; }
+        .spec-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .spec-value { font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px; }
+
+        .subtype-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .subtype-chip { padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1.5px solid #e2e8f0; background: white; color: #475569; transition: all 0.15s; }
+        .subtype-chip.selected { background: #206A8A; color: white; border-color: #206A8A; }
+        .subtype-chip:active { transform: scale(0.97); }
+        .subtype-custom-input { display: none; margin-top: 8px; }
+        .subtype-custom-input.visible { display: block; }
+
+        .hidden-input { display: none; }
+
+        /* Auth screen styles */
+        .auth-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: calc(100dvh - 48px);
+        }
+        .auth-logo { text-align: center; margin-bottom: 32px; }
+        .auth-logo-icon {
+            width: 64px; height: 64px;
+            background: linear-gradient(135deg, #206A8A, #1b5a76);
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 14px;
+            box-shadow: 0 4px 12px rgba(32,106,138,0.3);
+        }
+        .auth-logo-icon span { font-size: 30px; color: white; font-weight: 700; }
+        .auth-logo h2 { font-size: 24px; margin-bottom: 6px; font-weight: 700; letter-spacing: -0.01em; }
+        .auth-logo p { color: #94a3b8; font-size: 13px; font-weight: 500; letter-spacing: 0.02em; }
+        .auth-footer-text { text-align: center; font-size: 12px; color: #94a3b8; margin-top: 12px; }
+        .header-logout {
+            font-size: 13px;
+            background: rgba(255,255,255,0.12);
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: none;
+            color: white;
+            transition: background 0.2s ease;
+        }
+        .header-logout:active { background: rgba(255,255,255,0.22); }
+
+        /* ── Wizard Progress ────────────────── */
+        .wizard-progress {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            gap: 4px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .wizard-step-dot {
+            width: 32px; height: 32px; min-width: 32px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid #e2e8f0;
+            background: white;
+            color: #94a3b8;
+        }
+        .wizard-step-dot.active { border-color: #206A8A; background: #206A8A; color: white; }
+        .wizard-step-dot.done { border-color: #059669; background: #d1fae5; color: #059669; }
+        .wizard-step-connector { flex: 1; height: 2px; background: #e2e8f0; min-width: 8px; }
+        .wizard-step-connector.done { background: #059669; }
+        .wizard-step-label {
+            font-size: 11px; font-weight: 600; color: #206A8A;
+            text-align: center; margin-bottom: 8px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .wizard-nav {
+            display: flex; gap: 10px; margin-top: 20px; padding-bottom: 20px;
+        }
+        .wizard-nav .btn { flex: 1; margin-bottom: 0; }
+
+        /* ── Wizard Section ────────────────── */
+        .wizard-section { display: none; }
+        .wizard-section.active { display: block; }
+
+        /* ── Room Cards ────────────────────── */
+        .room-card {
+            background: white;
+            border-radius: 10px;
+            border: 1.5px solid #e2e8f0;
+            margin-bottom: 8px;
+            overflow: hidden;
+            transition: border-color 0.2s ease;
+        }
+        .room-card.done { border-color: #059669; }
+        .room-card.flagged { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.15); }
+        .room-card-header {
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .room-card-header:active { background: #f8fafc; }
+        .room-card-icon { font-size: 20px; flex-shrink: 0; }
+        .room-card-name { font-weight: 600; font-size: 14px; flex: 1; }
+        .room-card-badges { display: flex; gap: 4px; align-items: center; }
+        .room-mini-badge {
+            width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px;
+        }
+        .room-mini-badge.photo-done { background: #d1fae5; color: #059669; }
+        .room-mini-badge.flagged-badge { background: #fff7ed; color: #d97706; }
+        .room-card-chevron { font-size: 14px; color: #94a3b8; transition: transform 0.25s ease; }
+        .room-card-chevron.open { transform: rotate(180deg); }
+        .room-card-body {
+            max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+            padding: 0 14px;
+        }
+        .room-card-body.open {
+            max-height: 600px; padding: 0 14px 14px;
+        }
+        .room-ai-tip {
+            background: #eff6ff; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+            font-size: 12px; color: #1e40af; display: flex; align-items: flex-start; gap: 6px;
+        }
+        .room-ai-tip-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+        .room-photo-area { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; }
+        .room-photo-thumb-img {
+            width: 72px; height: 72px; border-radius: 8px; object-fit: cover;
+            border: 2px solid #e2e8f0; flex-shrink: 0;
+        }
+        .room-photo-capture-btn {
+            width: 72px; height: 72px; border-radius: 8px; border: 2px dashed #cbd5e1;
+            background: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-size: 22px; color: #94a3b8; cursor: pointer; flex-shrink: 0;
+        }
+        .room-photo-capture-btn:active { background: #e2e8f0; }
+        .room-photo-capture-btn span { font-size: 9px; margin-top: 2px; font-weight: 600; }
+        .photo-gallery { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+        .photo-gallery-item { position: relative; width: 72px; height: 72px; border-radius: 8px; overflow: hidden; border: 2px solid #e2e8f0; flex-shrink: 0; }
+        .photo-gallery-item img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+        .photo-gallery-item .photo-delete-btn { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; background: rgba(239,68,68,0.85); color: white; border: none; border-radius: 50%; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+        .photo-add-btn { width: 72px; height: 72px; border-radius: 8px; border: 2px dashed #cbd5e1; background: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 22px; color: #94a3b8; cursor: pointer; flex-shrink: 0; }
+        .photo-add-btn:active { background: #e2e8f0; }
+        .photo-add-btn span { font-size: 9px; margin-top: 2px; font-weight: 600; color: #64748b; }
+        .photo-fullscreen-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.92); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .photo-fullscreen-overlay img { max-width: 95vw; max-height: 75vh; object-fit: contain; border-radius: 8px; }
+        .photo-fullscreen-actions { display: flex; gap: 12px; margin-top: 16px; }
+        .photo-fullscreen-actions button { padding: 10px 20px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+        .photo-fullscreen-close { background: rgba(255,255,255,0.15); color: white; }
+        .photo-fullscreen-replace { background: #206A8A; color: white; }
+        .photo-fullscreen-delete { background: #ef4444; color: white; }
+        .room-notes-area { flex: 1; }
+        .room-notes-area textarea {
+            width: 100%; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 8px;
+            font-size: 13px; resize: vertical; min-height: 48px; font-family: inherit;
+        }
+        .room-notes-area textarea:focus { outline: none; border-color: #206A8A; box-shadow: 0 0 0 3px rgba(32,106,138,0.15); }
+        .room-flag-toggle {
+            display: flex; align-items: center; gap: 8px; padding: 8px 0; cursor: pointer;
+            user-select: none; -webkit-user-select: none;
+        }
+        .room-flag-toggle input[type="checkbox"] { display: none; }
+        .room-flag-toggle-track {
+            width: 36px; height: 20px; border-radius: 10px; background: #e2e8f0;
+            position: relative; transition: background 0.2s; flex-shrink: 0;
+        }
+        .room-flag-toggle-track::after {
+            content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px;
+            border-radius: 50%; background: white; transition: transform 0.2s;
+        }
+        .room-flag-toggle input:checked + .room-flag-toggle-track { background: #f59e0b; }
+        .room-flag-toggle input:checked + .room-flag-toggle-track::after { transform: translateX(16px); }
+        .room-flag-toggle-label { font-size: 13px; font-weight: 500; color: #64748b; }
+        .room-flag-issue-input {
+            margin-top: 6px; padding: 8px 10px; background: #fff7ed; border: 1.5px solid #fed7aa;
+            border-radius: 8px; width: 100%; font-size: 13px; font-family: inherit;
+        }
+        .room-flag-issue-input:focus { outline: none; border-color: #f59e0b; }
+
+        /* ── Chip Selectors (Good/Fair/Poor etc) ── */
+        .chip-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+        .chip {
+            padding: 10px 18px; border-radius: 20px; font-size: 14px; font-weight: 600;
+            cursor: pointer; border: 1.5px solid #e2e8f0; background: white; color: #475569;
+            transition: all 0.15s; min-width: 60px; text-align: center;
+        }
+        .chip:active { transform: scale(0.97); }
+        .chip.selected { background: #206A8A; color: white; border-color: #206A8A; }
+        .chip.selected-pass { background: #059669; color: white; border-color: #059669; }
+        .chip.selected-fail { background: #ef4444; color: white; border-color: #ef4444; }
+        .chip-label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px; color: #475569; }
+
+        /* ── Unknown button ── */
+        .unk-btn { display:inline-block; font-size:11px; padding:2px 8px; margin-left:8px; border:1px solid #94a3b8; border-radius:12px; background:#f1f5f9; color:#475569; cursor:pointer; vertical-align:middle; }
+        .unk-btn:active { background:#e2e8f0; }
+
+        /* ── Unit progress bar ── */
+        .unit-progress { height:4px; background:#e2e8f0; border-radius:2px; margin-top:4px; overflow:hidden; }
+        .unit-progress-fill { height:100%; background:#059669; border-radius:2px; transition:width 0.3s; }
+        .unit-pct { font-size:11px; color:#059669; font-weight:600; }
+        .unit-skip-badge { font-size:10px; color:#d97706; background:#fef3c7; padding:1px 6px; border-radius:8px; margin-left:4px; }
+
+        /* ── Auto-save indicator ── */
+        .autosave-indicator { position:fixed; top:60px; right:12px; font-size:11px; color:#059669; background:rgba(255,255,255,0.95); padding:4px 10px; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,0.15); z-index:100; display:none; }
+
+        /* ── Cleanliness rating ── */
+        .rating-group { display: flex; gap: 6px; margin-bottom: 16px; }
+        .rating-btn {
+            flex: 1; padding: 12px 4px; border-radius: 10px; font-size: 13px; font-weight: 700;
+            cursor: pointer; border: 1.5px solid #e2e8f0; background: white; color: #475569;
+            text-align: center; transition: all 0.15s;
+        }
+        .rating-btn:active { transform: scale(0.97); }
+        .rating-btn.selected { background: #206A8A; color: white; border-color: #206A8A; }
+        .rating-btn small { display: block; font-size: 9px; font-weight: 500; margin-top: 2px; opacity: 0.8; }
+
+        /* ── Equipment cards within inspection ── */
+        .equip-insp-card {
+            background: white; border-radius: 10px; border: 1.5px solid #e2e8f0;
+            margin-bottom: 8px; padding: 14px; display: flex; align-items: center; gap: 12px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .equip-insp-card:active { background: #f8fafc; }
+        .equip-insp-card.done { border-color: #059669; }
+        .equip-insp-icon { font-size: 26px; flex-shrink: 0; }
+        .equip-insp-info { flex: 1; }
+        .equip-insp-name { font-weight: 600; font-size: 14px; }
+        .equip-insp-status { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+        .equip-insp-status.captured { color: #059669; }
+        .equip-insp-btn {
+            padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+            cursor: pointer; border: none; transition: all 0.2s;
+        }
+        .equip-insp-btn.capture { background: #206A8A; color: white; }
+        .equip-insp-btn.done-badge { background: #d1fae5; color: #065f46; }
+
+        /* ── Inspection Summary ── */
+        .summary-card {
+            background: white; border-radius: 10px; padding: 14px; margin-bottom: 8px;
+            border-left: 4px solid #206A8A;
+        }
+        .summary-card.flagged { border-left-color: #f59e0b; }
+        .summary-card.good { border-left-color: #059669; }
+        .summary-card-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+        .summary-card-detail { font-size: 13px; color: #64748b; }
+
+        /* ── Recently inspected ── */
+        .recent-unit {
+            display: flex; align-items: center; gap: 10px; padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .recent-unit:last-child { border-bottom: none; }
+        .recent-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .recent-dot.complete { background: #059669; }
+        .recent-dot.draft { background: #f59e0b; }
+        .recent-name { font-weight: 600; font-size: 14px; flex: 1; }
+        .recent-time { font-size: 11px; color: #94a3b8; }
+
+        .inspection-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .inspection-badge-done { background: #d1fae5; color: #065f46; }
+        .inspection-badge-pending { background: #fef3c7; color: #92400e; }
+
+        /* Equipment capture screen styles from v1.4 */
+        .equip-item { background: white; border-radius: 12px; padding: 16px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+        .equip-item:active { background: #f8fafc; }
+        .equip-icon { font-size: 28px; width: 44px; text-align: center; padding-top: 2px; }
+        .equip-info { flex: 1; }
+        .equip-name { font-weight: 600; font-size: 15px; }
+        .equip-status { font-size: 12px; margin-top: 2px; }
+        .equip-status.done { color: #059669; }
+        .equip-status.pending { color: #f59e0b; }
+        .equip-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+        .equip-capture-btn { background: #206A8A; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .equip-done-badge { background: #d1fae5; color: #065f46; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+        .equip-edit-btn { background: #edf5f8; color: #206A8A; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .equip-photo-btn { background: #f0fdf4; color: #059669; border: none; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="app-header" id="appHeader">
+    <div class="header-back" id="headerBack" onclick="goBack()" style="display:none;">&#8592;</div>
+    <h1 id="headerTitle">BuildingOS Field Capture</h1>
+    <button class="header-action" id="headerAction" style="display:none;"></button>
+    <button class="header-logout" id="headerLogout" onclick="handleLogout()" style="display:none;">Sign Out</button>
+</div>
+
+<!-- SCREEN: Login -->
+<div class="screen active" id="screenLogin">
+    <div class="screen-pad auth-container">
+        <div class="auth-logo">
+            <div class="auth-logo-icon"><span>B</span></div>
+            <h2>BuildingOS</h2>
+            <p>Field Capture v1.5</p>
+        </div>
+        <div class="card">
+            <div style="font-weight:700;font-size:16px;margin-bottom:16px;text-align:center;">Sign In</div>
+            <div class="input-group">
+                <label>Full Name</label>
+                <input type="text" id="loginName" placeholder="Eric Johnson" autocomplete="name">
+            </div>
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="loginEmail" placeholder="eric@company.com" autocomplete="email">
+            </div>
+            <div class="input-group">
+                <label>Invite Code <span style="color:#ef4444;">*</span></label>
+                <input type="text" id="loginInviteCode" placeholder="Enter 6-character code" maxlength="6"
+                       style="text-align:center;font-size:20px;letter-spacing:4px;text-transform:uppercase;">
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Required. Get this from your building manager.</div>
+            </div>
+            <button class="btn btn-primary" onclick="handleSignIn()">Continue</button>
+        </div>
+        <div class="auth-footer-text" style="margin-top:16px;">Access requires a valid invite code from your administrator.</div>
+    </div>
+</div>
+
+<!-- SCREEN: Building List -->
+<div class="screen" id="screenBuildings">
+    <div class="screen-pad">
+        <h2 style="margin-bottom:16px;">Your Buildings</h2>
+        <div id="buildingList"></div>
+        <div class="section-title" style="margin-top:24px;">Join Another Building</div>
+        <div class="card">
+            <div class="input-group" style="margin-bottom:8px;">
+                <input type="text" id="joinCode" placeholder="Enter invite code" maxlength="6"
+                       style="text-align:center;font-size:18px;letter-spacing:3px;text-transform:uppercase;">
+            </div>
+            <button class="btn btn-outline" onclick="joinBuilding()">Join Building</button>
+        </div>
+    </div>
+</div>
+
+<!-- SCREEN: Dashboard -->
+<div class="screen" id="screenDashboard">
+    <div class="screen-pad">
+        <div id="dashboardBuildingName" style="font-size:18px;font-weight:700;margin-bottom:4px;"></div>
+        <div id="dashboardBuildingAddr" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
+
+        <!-- Inspection progress card -->
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span class="card-title">Inspection Progress</span>
+                <span id="dashInspPct" style="font-weight:700;color:#206A8A;">0%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="dashInspBar" style="width:0%"></div></div>
+            <div style="display:flex;gap:16px;margin-top:12px;font-size:13px;color:#64748b;">
+                <span><strong id="dashInspDone">0</strong> inspected</span>
+                <span><strong id="dashInspTotal">0</strong> total units</span>
+            </div>
+        </div>
+
+        <!-- Big Start Inspection button -->
+        <div style="margin-top:16px;">
+            <button class="btn btn-success" onclick="startInspection()" style="font-size:18px;padding:18px;border-radius:14px;">
+                &#128203; Start Inspection
+            </button>
+        </div>
+
+        <!-- Recently inspected -->
+        <div class="section-title" style="margin-top:24px;">Recently Inspected</div>
+        <div class="card" id="dashRecentList">
+            <div style="text-align:center;color:#94a3b8;font-size:13px;padding:8px 0;">No inspections yet</div>
+        </div>
+
+        <div style="margin-top:12px;">
+            <button class="btn btn-outline" onclick="exportCSV()">Export CSV</button>
+        </div>
+    </div>
+</div>
+
+<!-- SCREEN: Unit List (for inspection) -->
+<div class="screen" id="screenUnits">
+    <div class="screen-pad">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div>
+                <div style="font-weight:700;font-size:16px;">Select Unit to Inspect</div>
+                <div style="font-size:12px;color:#64748b;" id="unitListSubtitle"></div>
+            </div>
+            <button style="width:auto;padding:6px 14px;font-size:12px;border-radius:6px;border:1.5px solid #ef4444;color:#ef4444;background:white;cursor:pointer;" onclick="endInspectionSession()">End Session</button>
+        </div>
+        <input type="text" id="unitSearch" placeholder="Search units..." oninput="renderUnits()"
+               style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;margin-bottom:12px;">
+        <div id="unitList"></div>
+    </div>
+</div>
+
+<!-- SCREEN: Unified Inspection (wizard) -->
+<div class="screen" id="screenInspection">
+    <div class="screen-pad">
+        <!-- Wizard Progress -->
+        <div class="wizard-progress" id="wizardProgress"></div>
+        <div class="wizard-step-label" id="wizardStepLabel"></div>
+
+        <!-- Step 1: Room Walkthrough -->
+        <div class="wizard-section" id="wizStep0">
+            <div id="roomCardsList"></div>
+        </div>
+
+        <!-- Step 2: Equipment -->
+        <div class="wizard-section" id="wizStep1">
+            <div style="font-size:13px;color:#64748b;margin-bottom:12px;">Capture equipment tags with AI identification</div>
+            <div id="equipInspList"></div>
+        </div>
+
+        <!-- Step 3: Safety & Habitability -->
+        <div class="wizard-section" id="wizStep2">
+            <div class="card">
+                <span class="chip-label">Smoke/CO Detectors</span>
+                <div class="chip-group" id="chipSmokeCo" data-field="smoke_co_detectors"></div>
+                <span class="chip-label">Safety Check</span>
+                <div class="chip-group" id="chipSafetyCheck" data-field="safety_check"></div>
+                <div class="input-group" style="margin-top:4px;">
+                    <label>Safety Notes</label>
+                    <textarea id="insp_safety_notes" rows="2" placeholder="Any safety concerns..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Mechanicals -->
+        <div class="wizard-section" id="wizStep3">
+            <div class="card">
+                <div class="input-group">
+                    <label>HVAC Make/Model/Age</label>
+                    <input type="text" id="insp_hvac_info" placeholder="e.g. Goodman GMS80603BN, 2018">
+                </div>
+                <span class="chip-label">HVAC Condition</span>
+                <div class="chip-group" id="chipHvacCond" data-field="hvac_condition"></div>
+                <div class="input-group">
+                    <label>Water Heater Make/Model/Age</label>
+                    <input type="text" id="insp_wh_info" placeholder="e.g. Rheem 40gal, 2015">
+                </div>
+                <span class="chip-label">Water Heater Condition</span>
+                <div class="chip-group" id="chipWhCond" data-field="wh_condition"></div>
+                <div class="input-group">
+                    <label>Elec Panel Make/Amps</label>
+                    <input type="text" id="insp_elec_panel" placeholder="e.g. Square D 100A">
+                </div>
+                <span class="chip-label">Windows</span>
+                <div class="chip-group" id="chipWindows" data-field="windows"></div>
+                <div class="input-group">
+                    <label>Plumbing Leaks</label>
+                    <input type="text" id="insp_plumbing_leaks" placeholder="e.g. Kitchen faucet drips">
+                </div>
+                <span class="chip-label">Appliances</span>
+                <div class="chip-group" id="chipAppliances" data-field="appliances_condition"></div>
+            </div>
+        </div>
+
+        <!-- Step 5: Finishes -->
+        <div class="wizard-section" id="wizStep4">
+            <div class="card">
+                <span class="chip-label">Kitchen/Bath Flooring</span>
+                <div class="chip-group" id="chipKbFloor" data-field="kb_flooring"></div>
+                <span class="chip-label">Kitchen/Bath Condition</span>
+                <div class="chip-group" id="chipKbCond" data-field="kb_condition"></div>
+                <div class="input-group" style="margin-top:4px;">
+                    <label>Doors/Drywall Notes</label>
+                    <textarea id="insp_doors_drywall" rows="2" placeholder="Notes on what needs replacing..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 6: Work Orders & Summary -->
+        <div class="wizard-section" id="wizStep5">
+            <div class="card">
+                <div class="input-group">
+                    <label>Immediate Work Orders Needed</label>
+                    <textarea id="insp_immediate_wos" rows="3" placeholder="Critical maintenance items..."></textarea>
+                </div>
+                <div class="input-group">
+                    <label>Additional Notes</label>
+                    <textarea id="insp_wo_notes" rows="2" placeholder="Additional notes..."></textarea>
+                </div>
+            </div>
+
+            <!-- AI Summary -->
+            <div id="aiSummaryArea" style="display:none;">
+                <div class="section-title">AI Inspection Summary</div>
+                <div class="card" id="aiSummaryContent" style="border-left:4px solid #206A8A;"></div>
+            </div>
+
+            <!-- Flagged items from room walkthrough -->
+            <div id="flaggedSummaryArea" style="display:none;">
+                <div class="section-title">Flagged Items</div>
+                <div id="flaggedSummaryList"></div>
+            </div>
+        </div>
+
+        <!-- Wizard Navigation -->
+        <div class="wizard-nav">
+            <button class="btn btn-secondary" id="wizBtnBack" onclick="wizardBack()">&#8592; Back</button>
+            <button class="btn btn-primary" id="wizBtnNext" onclick="wizardNext()">Next &#8594;</button>
+        </div>
+    </div>
+</div>
+
+<!-- SCREEN: Equipment Capture (reused from v1.4) -->
+<div class="screen" id="screenCapture">
+    <div class="screen-pad">
+        <div id="captureEquipName" style="font-size:16px;font-weight:700;margin-bottom:2px;"></div>
+        <div id="captureUnitName" style="font-size:13px;color:#64748b;margin-bottom:8px;"></div>
+
+        <div id="subTypeSection" style="display:none;margin-bottom:16px;">
+            <label style="display:block;font-weight:600;font-size:13px;margin-bottom:8px;color:#475569;">Equipment Sub-Type</label>
+            <div class="subtype-chips" id="subTypeChips"></div>
+            <div class="subtype-custom-input" id="subTypeCustomWrap">
+                <input type="text" id="subTypeCustomInput" placeholder="Type equipment sub-type..."
+                       style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;">
+            </div>
+        </div>
+
+        <!-- Step 1: Take Photo -->
+        <div id="captureStep1">
+            <div class="camera-area" id="cameraArea">
+                <div class="camera-placeholder" id="cameraPlaceholder">
+                    <div class="icon">&#128247;</div>
+                    <p>Tap to photograph equipment tag</p>
+                </div>
+                <img id="photoPreview" style="display:none;">
+            </div>
+            <input type="file" accept="image/*" capture="environment" id="photoInput" class="hidden-input" onchange="onPhotoSelected(event)">
+            <button class="btn btn-primary" onclick="document.getElementById('photoInput').click()">&#128247; Take Photo of Tag</button>
+            <input type="file" accept="image/*" capture="environment" id="noTagPhotoInput" class="hidden-input" onchange="onNoTagPhotoSelected(event)">
+            <button class="btn btn-secondary" onclick="document.getElementById('noTagPhotoInput').click()">&#128270; No Tag &#8212; Photo of Equipment</button>
+            <button class="btn btn-secondary" onclick="tagNotReadable()" style="background:transparent;color:#94a3b8;font-weight:400;">Skip &#8212; Enter Data Manually</button>
+        </div>
+
+        <!-- Step 2: AI Processing -->
+        <div id="captureStep2" style="display:none;">
+            <div style="text-align:center;padding:40px 0;">
+                <div class="spinner" style="width:40px;height:40px;border-color:rgba(32,106,138,0.2);border-top-color:#206A8A;margin:0 auto 16px;"></div>
+                <p style="font-size:15px;font-weight:600;" id="aiProcessingText">Analyzing equipment tag...</p>
+                <p style="font-size:13px;color:#64748b;margin-top:4px;" id="aiProcessingSub">AI is reading brand, model, serial number</p>
+            </div>
+        </div>
+
+        <!-- Step 2b: AI Identification (no tag) -->
+        <div id="captureStep2b" style="display:none;">
+            <div class="ai-identify" id="aiIdentifyBox">
+                <div class="ai-identify-header">
+                    <span>&#128270; AI Equipment Identification</span>
+                    <span class="confidence-badge" id="aiIdentifyConf"></span>
+                </div>
+                <div class="ai-identify-type" id="aiIdentifyType"></div>
+                <p id="aiIdentifyDesc"></p>
+                <div class="ai-identify-actions">
+                    <button class="btn btn-success btn-sm" onclick="confirmIdentification()">&#10003; Correct</button>
+                    <button class="btn btn-secondary btn-sm" onclick="rejectIdentification()">&#10007; No</button>
+                </div>
+            </div>
+            <div class="camera-area" style="min-height:150px;">
+                <img id="noTagPhotoPreview" style="max-width:100%;max-height:200px;border-radius:8px;">
+            </div>
+        </div>
+
+        <!-- Step 3: Review & Confirm -->
+        <div id="captureStep3" style="display:none;">
+            <div class="ai-result" id="aiResultBox">
+                <div class="ai-result-header">
+                    <span>&#10003; AI Extracted Data</span>
+                    <span class="confidence-badge" id="aiConfBadge"></span>
+                </div>
+            </div>
+
+            <div id="photoThumbsArea" style="display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div class="section-title" style="margin-top:0;">Photos</div>
+                </div>
+                <div class="photo-thumbs" id="photoThumbs"></div>
+            </div>
+
+            <div id="specsArea" style="display:none;">
+                <div class="section-title">Technical Specs (from tag)</div>
+                <div class="specs-grid" id="specsGrid"></div>
+            </div>
+
+            <div class="card">
+                <div class="input-group">
+                    <label>Brand / Manufacturer <button class="unk-btn" onclick="setUnknown('fieldBrand')">Unknown</button></label>
+                    <input type="text" id="fieldBrand" placeholder="e.g. Goodman, Carrier, Rheem">
+                </div>
+                <div class="input-group">
+                    <label>Model Name <button class="unk-btn" onclick="setUnknown('fieldModelName')">Unknown</button></label>
+                    <input type="text" id="fieldModelName">
+                </div>
+                <div class="input-group">
+                    <label>Model Number <button class="unk-btn" onclick="setUnknown('fieldModelNumber')">Unknown</button></label>
+                    <input type="text" id="fieldModelNumber">
+                </div>
+                <div class="input-group">
+                    <label>Serial Number <button class="unk-btn" onclick="setUnknown('fieldSerial')">Unknown</button></label>
+                    <input type="text" id="fieldSerial">
+                </div>
+                <div class="input-group">
+                    <label>Year <button class="unk-btn" onclick="setUnknown('fieldYear')">Unknown</button></label>
+                    <input type="text" id="fieldYear" inputmode="numeric">
+                </div>
+                <span class="chip-label">Condition</span>
+                <div class="chip-group" id="chipEquipCondition" data-field="equip_condition"></div>
+                <div class="input-group" style="margin-top:4px;">
+                    <label>Notes</label>
+                    <textarea id="fieldNotes" rows="2" placeholder="Any additional notes..."></textarea>
+                </div>
+            </div>
+
+            <input type="file" accept="image/*" capture="environment" id="addPhotoInput" class="hidden-input" onchange="onAdditionalPhotoSelected(event)">
+            <button class="btn btn-outline" onclick="document.getElementById('addPhotoInput').click()" style="margin-bottom:10px;">
+                &#128247; Add Another Photo
+            </button>
+            <button class="btn btn-success" onclick="saveCapture()">&#10003; Save & Continue</button>
+            <button class="btn btn-secondary" onclick="retakePhoto()">Retake Photo</button>
+        </div>
+    </div>
+</div>
+
+<!-- SCREEN: Edit Capture -->
+<div class="screen" id="screenEditCapture">
+    <div class="screen-pad">
+        <div id="editCaptureTitle" style="font-size:16px;font-weight:700;margin-bottom:2px;"></div>
+        <div id="editCaptureMeta" style="font-size:13px;color:#64748b;margin-bottom:12px;"></div>
+        <div class="photo-thumbs" id="editPhotoThumbs" style="margin-bottom:4px;"></div>
+        <input type="file" accept="image/*" capture="environment" id="editAddPhotoInput" class="hidden-input" onchange="onEditAddPhoto(event)">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('editAddPhotoInput').click()" style="margin-bottom:16px;font-size:12px;">
+            &#128247; Add Photo
+        </button>
+        <div id="editSpecsArea" style="display:none;">
+            <div class="section-title" style="margin-top:0;">Technical Specs</div>
+            <div class="specs-grid" id="editSpecsGrid"></div>
+        </div>
+        <div class="card">
+            <div class="input-group">
+                <label>Sub-Type</label>
+                <input type="text" id="editSubType" placeholder="e.g. Condenser, Tankless, Main Panel">
+            </div>
+            <div class="input-group">
+                <label>Brand / Manufacturer <button class="unk-btn" onclick="setUnknown('editBrand')">Unknown</button></label>
+                <input type="text" id="editBrand">
+            </div>
+            <div class="input-group">
+                <label>Model Name</label>
+                <input type="text" id="editModelName">
+            </div>
+            <div class="input-group">
+                <label>Model Number</label>
+                <input type="text" id="editModelNumber">
+            </div>
+            <div class="input-group">
+                <label>Serial Number</label>
+                <input type="text" id="editSerial">
+            </div>
+            <div class="input-group">
+                <label>Year</label>
+                <input type="text" id="editYear" inputmode="numeric">
+            </div>
+            <div class="input-group">
+                <label>Condition</label>
+                <select id="editCondition">
+                    <option value="">Select...</option>
+                    <option value="excellent">Excellent</option>
+                    <option value="good">Good</option>
+                    <option value="fair">Fair</option>
+                    <option value="poor">Poor</option>
+                    <option value="non_functional">Non-functional</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Notes</label>
+                <textarea id="editNotes" rows="2"></textarea>
+            </div>
+        </div>
+        <button class="btn btn-success" onclick="saveEditCapture()">&#10003; Save Changes</button>
+        <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
+    </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay" style="display:none;">
+    <div class="spinner"></div>
+    <p id="loadingText">Loading...</p>
+</div>
+<div class="autosave-indicator" id="autosaveIndicator">&#10003; Auto-saved</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Hidden file inputs -->
+<input type="file" accept="image/*" capture="environment" id="roomPhotoInput" class="hidden-input" onchange="onRoomPhotoSelected(event)">
+<input type="file" accept="image/*" id="roomPhotoGalleryInput" class="hidden-input" onchange="onRoomGalleryPhotoSelected(event)" multiple>
+<input type="file" accept="image/*" id="equipPhotoGalleryInput" class="hidden-input" onchange="onEquipGalleryPhotoSelected(event)" multiple>
+<input type="file" accept="image/*" id="replacePhotoInput" class="hidden-input" onchange="onReplacePhotoSelected(event)">
+<div id="photoFullscreenOverlay" class="photo-fullscreen-overlay" style="display:none;"></div>
+
+<script>
+    const API = window.location.origin;
+
+    // ── State ──────────────────────────────
+    const state = {
+        user: null,
+        sessionToken: null,
+        buildings: [],
+        currentBuilding: null,
+        currentBuildingName: '',
+        currentBuildingAddr: '',
+        units: [],
+        equipTypes: [],
+        captures: [],
+        walkSession: null,
+        currentUnit: null,
+        currentEquipType: null,
+        capturePhoto: null,
+        capturePhotos: [],
+        lastCaptureId: null,
+        lastCaptureData: null,
+        editingCapture: null,
+        progress: null,
+        selectedSubType: '',
+        noTagIdentification: null,
+        equipSubTypes: {},
+        // Inspection state
+        inspectionStops: [],
+        inspectionPhotos: {},
+        inspectionFlags: {},
+        inspectionNotes: {},
+        inspectedUnits: {},
+        recentInspections: [],
+        pendingRoomPhotoIndex: null,
+        roomPhotos: {},  // { roomIndex: [{ file: File, url: string, id: string? }] } — multiple photos per room
+        fullscreenContext: null,  // { type: 'room'|'equip', index/captureId, photoIndex }
+        pendingEquipGalleryTypeId: null,
+        // Wizard state
+        wizardStep: 0,
+        // Chip selections for inspection
+        chipValues: {},
+        currentVisit: null,
+        // Skip tracking per unit — { unitId: { equipTypeId: true } }
+        skippedEquipment: {},
+    };
+
+    // 13-stop room guide
+    const DEFAULT_ROOM_STOPS = [
+        { name: 'Front Door / Entry', icon: '\uD83D\uDEAA' },
+        { name: 'Living Room', icon: '\uD83D\uDECB\uFE0F' },
+        { name: 'Kitchen', icon: '\uD83C\uDF73' },
+        { name: 'Dining Area', icon: '\uD83C\uDF7D\uFE0F' },
+        { name: 'Hallway', icon: '\uD83D\uDEB6' },
+        { name: 'Bedroom 1', icon: '\uD83D\uDECF\uFE0F' },
+        { name: 'Bedroom 2', icon: '\uD83D\uDECF\uFE0F' },
+        { name: 'Bedroom 3', icon: '\uD83D\uDECF\uFE0F' },
+        { name: 'Bathroom 1', icon: '\uD83D\uDEBF' },
+        { name: 'Bathroom 2', icon: '\uD83D\uDEBF' },
+        { name: 'Utility / Laundry', icon: '\uD83E\uDDFA' },
+        { name: 'HVAC / Mechanical', icon: '\u2699\uFE0F' },
+        { name: 'Patio / Exterior', icon: '\uD83C\uDF3F' },
+    ];
+
+    // AI tips per room
+    const ROOM_AI_TIPS = {
+        'Front Door / Entry': 'Check lock, doorbell, threshold, house numbers',
+        'Living Room': 'Check outlets, ceiling fan, flooring condition',
+        'Kitchen': 'Test faucet, check under sink, inspect appliances, exhaust fan',
+        'Dining Area': 'Check light fixture, flooring, baseboards',
+        'Hallway': 'Check smoke/CO detectors, light switches, flooring',
+        'Bedroom 1': 'Check closet doors, windows, outlets, ceiling',
+        'Bedroom 2': 'Check closet doors, windows, outlets, ceiling',
+        'Bedroom 3': 'Check closet doors, windows, outlets, ceiling',
+        'Bathroom 1': 'Check toilet, tub/shower, exhaust fan, under vanity',
+        'Bathroom 2': 'Check toilet, tub/shower, exhaust fan, under vanity',
+        'Utility / Laundry': 'Check washer hookups, dryer vent, water heater area',
+        'HVAC / Mechanical': 'Check filter, model/serial plate, refrigerant lines',
+        'Patio / Exterior': 'Check exterior walls, drainage, fence/gate, HVAC condenser',
+    };
+
+    const WIZARD_STEPS = [
+        { label: 'Rooms', icon: '\uD83D\uDEAA' },
+        { label: 'Equipment', icon: '\u2699\uFE0F' },
+        { label: 'Safety', icon: '\uD83D\uDEE1\uFE0F' },
+        { label: 'Mechanicals', icon: '\uD83D\uDD27' },
+        { label: 'Finishes', icon: '\uD83C\uDFA8' },
+        { label: 'Work Orders', icon: '\uD83D\uDCCB' },
+    ];
+
+    // ── Navigation ─────────────────────────
+    let screenStack = ['screenLogin'];
+
+    function showScreen(id, opts = {}) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        const back = document.getElementById('headerBack');
+        const title = document.getElementById('headerTitle');
+        const logout = document.getElementById('headerLogout');
+        if (id === 'screenLogin') {
+            back.style.display = 'none';
+            title.textContent = 'BuildingOS Field Capture';
+            logout.style.display = 'none';
+        } else if (id === 'screenBuildings') {
+            back.style.display = 'none';
+            title.textContent = 'Your Buildings';
+            logout.style.display = 'block';
+        } else {
+            back.style.display = 'block';
+            logout.style.display = 'block';
+        }
+        if (opts.title) title.textContent = opts.title;
+        if (!opts.noStack && screenStack[screenStack.length - 1] !== id) screenStack.push(id);
+        window.scrollTo(0, 0);
+    }
+
+    function goBack() {
+        if (screenStack.length > 1) { screenStack.pop(); showScreen(screenStack[screenStack.length - 1], { noStack: true }); }
+    }
+
+    // ── Auth: Sign In ──────────────────────
+    async function handleSignIn() {
+        const name = document.getElementById('loginName').value.trim();
+        const email = document.getElementById('loginEmail').value.trim();
+        const inviteCode = document.getElementById('loginInviteCode').value.trim().toUpperCase();
+
+        if (!email) { toast('Please enter your email'); return; }
+        if (!inviteCode) { toast('Invite code is required'); return; }
+
+        showLoading('Signing in...');
+        try {
+            const r = await apiNoAuth('/api/auth/login', { name, email, invite_code: inviteCode });
+            state.user = r.user;
+            state.sessionToken = r.token;
+            localStorage.setItem('fc_session_token', r.token);
+            localStorage.setItem('fc_user_id', r.user.id);
+
+            if (r.is_new) toast('Account created! Joined ' + (r.building?.building_name || 'building'));
+            if (r.building && r.building.building_id) {
+                try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
+                hideLoading();
+                selectBuilding(r.building.building_id, r.building.building_name, r.building.building_address);
+            } else {
+                await postLoginLoad();
+                hideLoading();
+            }
+        } catch (e) {
+            hideLoading();
+            toast(e.message || 'Sign in failed');
+        }
+    }
+
+    async function postLoginLoad() {
+        try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
+        await loadBuildings();
+        if (state.buildings.length === 1) {
+            selectBuilding(state.buildings[0].building_id, state.buildings[0].building_name, state.buildings[0].building_address);
+        } else {
+            showScreen('screenBuildings');
+        }
+    }
+
+    async function handleLogout() {
+        try { await api('/api/auth/logout', {}); } catch (e) {}
+        state.user = null;
+        state.sessionToken = null;
+        state.buildings = [];
+        localStorage.removeItem('fc_session_token');
+        localStorage.removeItem('fc_user_id');
+        screenStack = ['screenLogin'];
+        showScreen('screenLogin');
+        document.getElementById('loginName').value = '';
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginInviteCode').value = '';
+    }
+
+    async function verifyExistingSession() {
+        const token = localStorage.getItem('fc_session_token');
+        if (!token) return false;
+        state.sessionToken = token;
+        try {
+            const r = await api('/api/auth/verify');
+            state.user = r.user;
+            return true;
+        } catch (e) {
+            state.sessionToken = null;
+            localStorage.removeItem('fc_session_token');
+            localStorage.removeItem('fc_user_id');
+            return false;
+        }
+    }
+
+    // ── Buildings ──────────────────────────
+    async function loadBuildings() {
+        if (!state.user) return;
+        const r = await api(`/api/users/${state.user.id}/buildings`);
+        state.buildings = r.buildings || [];
+        renderBuildings();
+    }
+
+    function renderBuildings() {
+        const el = document.getElementById('buildingList');
+        if (!state.buildings.length) { el.innerHTML = '<div class="card"><p style="text-align:center;color:#94a3b8;">No buildings yet. Enter an invite code below.</p></div>'; return; }
+        el.innerHTML = state.buildings.map(b => {
+            const pct = b.captures_total > 0 ? Math.round(b.captures_done / b.captures_total * 100) : 0;
+            return `<div class="card" onclick="selectBuilding('${b.building_id}', '${(b.building_name||'').replace(/'/g,"\\'")}', '${(b.building_address||'').replace(/'/g,"\\'")}')">
+                <div class="card-title">${b.building_name || 'Building'}</div>
+                <div class="card-sub">${b.building_address || ''}</div>
+                <div style="margin-top:8px;display:flex;gap:12px;font-size:12px;color:#64748b;">
+                    <span>${b.unit_count} units</span><span>${pct}%</span>
+                </div>
+                <div class="progress-bar" style="margin-top:6px;"><div class="progress-fill" style="width:${pct}%"></div></div>
+            </div>`;
+        }).join('');
+    }
+
+    async function selectBuilding(buildingId, name, address) {
+        state.currentBuilding = buildingId;
+        state.currentBuildingName = name || '';
+        state.currentBuildingAddr = address || '';
+        showLoading('Loading building...');
+        try {
+            const [unitsR, typesR, progressR] = await Promise.all([
+                api(`/api/buildings/${buildingId}/units`),
+                api(`/api/buildings/${buildingId}/equipment-types`),
+                api(`/api/buildings/${buildingId}/progress`),
+            ]);
+            state.units = unitsR.units || [];
+            state.equipTypes = typesR.equipment_types || [];
+            state.progress = progressR;
+            if (!Object.keys(state.equipSubTypes).length) {
+                try { const st = await api('/api/equipment-sub-types'); state.equipSubTypes = st.sub_types || {}; } catch (e) {}
+            }
+            // Load recent inspections
+            try {
+                const inspR = await api(`/api/buildings/${buildingId}/inspections`);
+                state.recentInspections = inspR.inspections || [];
+                // Mark inspected units
+                state.recentInspections.forEach(insp => {
+                    if (insp.status === 'complete') state.inspectedUnits[insp.unit_id] = true;
+                });
+            } catch (e) { state.recentInspections = []; }
+            renderDashboard();
+            hideLoading();
+            showScreen('screenDashboard', { title: name || 'Building' });
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
+    }
+
+    async function joinBuilding() {
+        const code = document.getElementById('joinCode').value.trim().toUpperCase();
+        if (!code) { toast('Enter an invite code'); return; }
+        showLoading('Joining...');
+        try {
+            const r = await api(`/api/join/${code}`, { user_id: state.user.id });
+            toast('Joined ' + (r.building_name || 'building') + '!');
+            await loadBuildings(); hideLoading();
+            if (r.building_id) selectBuilding(r.building_id, r.building_name, r.building_address);
+        } catch (e) { hideLoading(); toast(e.message); }
+    }
+
+    // ── Dashboard ──────────────────────────
+    function renderDashboard() {
+        document.getElementById('dashboardBuildingName').textContent = state.currentBuildingName;
+        document.getElementById('dashboardBuildingAddr').textContent = state.currentBuildingAddr;
+
+        const totalUnits = state.units.length;
+        const inspectedCount = Object.keys(state.inspectedUnits).length;
+        const pct = totalUnits > 0 ? Math.round(inspectedCount / totalUnits * 100) : 0;
+
+        document.getElementById('dashInspPct').textContent = pct + '%';
+        document.getElementById('dashInspBar').style.width = pct + '%';
+        document.getElementById('dashInspDone').textContent = inspectedCount;
+        document.getElementById('dashInspTotal').textContent = totalUnits;
+
+        // Recent inspections
+        const recentEl = document.getElementById('dashRecentList');
+        if (state.recentInspections.length > 0) {
+            const recent = state.recentInspections.slice(0, 10);
+            recentEl.innerHTML = recent.map(insp => {
+                const unit = state.units.find(u => u.id === insp.unit_id);
+                const unitName = unit ? unit.unit_name : (insp.unit_name || 'Unit');
+                const dotClass = insp.status === 'complete' ? 'complete' : 'draft';
+                const timeStr = insp.created_at ? new Date(insp.created_at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+                return `<div class="recent-unit">
+                    <div class="recent-dot ${dotClass}"></div>
+                    <div class="recent-name">${unitName}</div>
+                    <div class="recent-time">${timeStr}</div>
+                </div>`;
+            }).join('');
+        } else {
+            recentEl.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:13px;padding:8px 0;">No inspections yet</div>';
+        }
+    }
+
+    // ── Start Inspection ──────────────────
+    async function startInspection() {
+        showLoading('Starting inspection...');
+        try {
+            try {
+                const stopsR = await api('/api/inspection-stops');
+                state.inspectionStops = stopsR.stops || DEFAULT_ROOM_STOPS;
+            } catch (e) {
+                state.inspectionStops = DEFAULT_ROOM_STOPS;
+            }
+            const r = await api(`/api/buildings/${state.currentBuilding}/walks`, { user_id: state.user.id, user_name: state.user.name });
+            state.walkSession = r.walk;
+            const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
+            state.captures = capsR.captures || [];
+            hideLoading();
+            renderUnits();
+            showScreen('screenUnits', { title: 'Inspection: ' + state.currentBuildingName });
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
+    }
+
+    async function endInspectionSession() {
+        if (!confirm('End this inspection session?')) return;
+        if (state.walkSession) await api(`/api/walks/${state.walkSession.id}`, { status: 'completed' }).catch(() => {});
+        state.walkSession = null;
+        // Refresh data
+        try {
+            const progressR = await api(`/api/buildings/${state.currentBuilding}/progress`);
+            state.progress = progressR;
+            const inspR = await api(`/api/buildings/${state.currentBuilding}/inspections`);
+            state.recentInspections = inspR.inspections || [];
+        } catch (e) {}
+        renderDashboard();
+        screenStack = ['screenBuildings', 'screenDashboard'];
+        showScreen('screenDashboard', { title: state.currentBuildingName, noStack: true });
+    }
+
+    // ── Unit List ──────────────────────────
+    function renderUnits() {
+        const search = (document.getElementById('unitSearch').value || '').toLowerCase();
+        const filtered = state.units.filter(u => u.unit_name.toLowerCase().includes(search));
+
+        const inspected = state.units.filter(u => state.inspectedUnits[u.id]).length;
+        document.getElementById('unitListSubtitle').textContent = inspected + ' of ' + state.units.length + ' units inspected';
+
+        document.getElementById('unitList').innerHTML = filtered.map(u => {
+            const prog = getUnitProgress(u.id);
+            const isInspected = state.inspectedUnits[u.id];
+            const cls = prog.pct === 100 ? 'status-complete' : (prog.pct > 0 ? 'status-in-progress' : 'status-pending');
+            const label = prog.pct === 100 ? '&#10003;' : (prog.pct > 0 ? '&#8226;' : '&#8212;');
+            const badgeHtml = prog.pct === 100
+                ? '<span class="inspection-badge inspection-badge-done">Done</span>'
+                : (prog.pct > 0 ? `<span class="inspection-badge" style="background:#dbeafe;color:#1e40af;">${prog.pct}%</span>` : '<span class="inspection-badge inspection-badge-pending">Pending</span>');
+            const skipHtml = prog.skippedCount > 0 ? `<span class="unit-skip-badge">${prog.skippedCount} skipped</span>` : '';
+            const progressBar = prog.pct > 0 && prog.pct < 100 ? `<div class="unit-progress"><div class="unit-progress-fill" style="width:${prog.pct}%"></div></div>` : '';
+            return `<div class="unit-card" onclick="openUnitForInspection('${u.id}')">
+                <div class="unit-status ${cls}">${label}</div>
+                <div class="unit-info"><div class="unit-name">${u.unit_name}</div>
+                <div class="unit-meta">${u.floor ? 'Floor '+u.floor+' &middot; ' : ''}${u.unit_type||''} ${badgeHtml}${skipHtml}</div>${progressBar}</div>
+                <div class="unit-arrow">&#8250;</div></div>`;
+        }).join('');
+    }
+
+    // ── Inspection: Open Unit (Wizard) ────
+    function openUnitForInspection(unitId) {
+        const unit = state.units.find(u => u.id === unitId);
+        if (!unit) return;
+        state.currentUnit = unit;
+
+        // Reset inspection form state
+        state.inspectionPhotos = {};
+        state.roomPhotos = {};
+        state.inspectionFlags = {};
+        state.inspectionNotes = {};
+        state.chipValues = {};
+        state.wizardStep = 0;
+
+        // Reset text fields
+        ['insp_safety_notes','insp_hvac_info','insp_wh_info','insp_elec_panel',
+         'insp_plumbing_leaks','insp_doors_drywall',
+         'insp_immediate_wos','insp_wo_notes'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+        // Build chip groups
+        buildChipGroup('chipSmokeCo', ['Pass', 'Fail'], 'passfail');
+        buildChipGroup('chipSafetyCheck', ['Pass', 'Fail'], 'passfail');
+        buildChipGroup('chipHvacCond', ['Good', 'Fair', 'Poor', 'Non-functional'], 'condition');
+        buildChipGroup('chipWhCond', ['Good', 'Fair', 'Poor', 'Non-functional'], 'condition');
+        buildChipGroup('chipWindows', ['Good', 'Fair', 'Poor'], 'condition');
+        buildChipGroup('chipAppliances', ['Good', 'Fair', 'Poor'], 'condition');
+        buildChipGroup('chipKbFloor', ['Good', 'Fair', 'Poor'], 'condition');
+        buildChipGroup('chipKbCond', ['Good', 'Fair', 'Poor'], 'condition');
+        buildChipGroup('chipEquipCondition', ['excellent', 'good', 'fair', 'poor', 'non_functional'], 'condition');
+
+        renderWizard();
+        renderRoomCards();
+        renderEquipInspList();
+
+        showScreen('screenInspection', { title: 'Inspect: ' + unit.unit_name });
+    }
+
+    // ── Chip Group Builder ─────────────────
+    function buildChipGroup(containerId, options, type) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const field = container.dataset.field;
+        container.innerHTML = options.map(opt => {
+            const displayLabel = opt === 'non_functional' ? 'Non-functional' : opt;
+            return `<div class="chip" onclick="selectChip(this, '${containerId}', '${opt}', '${type}')">${displayLabel}</div>`;
+        }).join('');
+    }
+
+    function selectChip(el, containerId, value, type) {
+        const container = document.getElementById(containerId);
+        container.querySelectorAll('.chip').forEach(c => {
+            c.classList.remove('selected', 'selected-pass', 'selected-fail');
+        });
+        if (type === 'passfail') {
+            el.classList.add(value === 'Pass' ? 'selected-pass' : 'selected-fail');
+        } else {
+            el.classList.add('selected');
+        }
+        const field = container.dataset.field;
+        state.chipValues[field || containerId] = value;
+    }
+
+    function getChipValue(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return '';
+        return state.chipValues[container.dataset.field || containerId] || '';
+    }
+
+    function buildCleanlinessRating() {
+        const container = document.getElementById('ratingCleanliness');
+        if (!container) return;
+        const labels = ['V.Poor', 'Poor', 'Avg', 'Good', 'Great'];
+        container.innerHTML = [1,2,3,4,5].map(n =>
+            `<div class="rating-btn" onclick="selectRating(this, ${n})">${n}<small>${labels[n-1]}</small></div>`
+        ).join('');
+    }
+
+    function selectRating(el, value) {
+        document.querySelectorAll('#ratingCleanliness .rating-btn').forEach(b => b.classList.remove('selected'));
+        el.classList.add('selected');
+        state.chipValues.cleanliness = String(value);
+    }
+
+    // ── Wizard ─────────────────────────────
+    function renderWizard() {
+        const progressEl = document.getElementById('wizardProgress');
+        progressEl.innerHTML = WIZARD_STEPS.map((step, i) => {
+            let dotClass = 'wizard-step-dot';
+            if (i === state.wizardStep) dotClass += ' active';
+            else if (i < state.wizardStep) dotClass += ' done';
+            const connClass = i < state.wizardStep ? 'wizard-step-connector done' : 'wizard-step-connector';
+            let html = `<div class="${dotClass}" onclick="wizardGoTo(${i})" title="${step.label}">${i < state.wizardStep ? '&#10003;' : (i+1)}</div>`;
+            if (i < WIZARD_STEPS.length - 1) html += `<div class="${connClass}"></div>`;
+            return html;
+        }).join('');
+
+        document.getElementById('wizardStepLabel').textContent =
+            'Step ' + (state.wizardStep + 1) + '/' + WIZARD_STEPS.length + ' \u2014 ' + WIZARD_STEPS[state.wizardStep].label;
+
+        // Show/hide sections
+        WIZARD_STEPS.forEach((_, i) => {
+            const sec = document.getElementById('wizStep' + i);
+            if (sec) sec.classList.toggle('active', i === state.wizardStep);
+        });
+
+        // Nav buttons
+        const backBtn = document.getElementById('wizBtnBack');
+        const nextBtn = document.getElementById('wizBtnNext');
+        backBtn.style.display = state.wizardStep === 0 ? 'none' : 'block';
+
+        if (state.wizardStep === WIZARD_STEPS.length - 1) {
+            nextBtn.innerHTML = '&#10003; Save Inspection';
+            nextBtn.className = 'btn btn-success';
+        } else {
+            nextBtn.innerHTML = 'Next &#8594;';
+            nextBtn.className = 'btn btn-primary';
+        }
+
+        // On last step, show flagged summary and AI summary
+        if (state.wizardStep === WIZARD_STEPS.length - 1) {
+            renderFlaggedSummary();
+            generateAISummary();
+        }
+    }
+
+    function wizardNext() {
+        if (state.wizardStep === WIZARD_STEPS.length - 1) {
+            saveInspection('complete');
+            return;
+        }
+        // Auto-save draft when moving to next step
+        autoSaveDraft();
+        state.wizardStep = Math.min(state.wizardStep + 1, WIZARD_STEPS.length - 1);
+        renderWizard();
+        window.scrollTo(0, 0);
+    }
+
+    function wizardBack() {
+        autoSaveDraft();
+        state.wizardStep = Math.max(state.wizardStep - 1, 0);
+        renderWizard();
+        window.scrollTo(0, 0);
+    }
+
+    function wizardGoTo(step) {
+        autoSaveDraft();
+        state.wizardStep = step;
+        renderWizard();
+        window.scrollTo(0, 0);
+    }
+
+    // ── Room Cards ─────────────────────────
+    function renderRoomCards() {
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        document.getElementById('roomCardsList').innerHTML = stops.map((stop, i) => {
+            const photos = state.roomPhotos[i] || [];
+            const hasLegacyPhoto = !!state.inspectionPhotos[i];
+            const allPhotos = hasLegacyPhoto && photos.length === 0 ? [{ file: state.inspectionPhotos[i], legacy: true }] : photos;
+            const flag = state.inspectionFlags[i] || { flagged: false, issue: '' };
+            const notes = state.inspectionNotes[i] || '';
+            const isDone = allPhotos.length > 0 || notes.trim().length > 0;
+            const tip = ROOM_AI_TIPS[stop.name] || '';
+
+            let cardClass = 'room-card';
+            if (flag.flagged) cardClass += ' flagged';
+            else if (isDone) cardClass += ' done';
+
+            let badges = '';
+            if (allPhotos.length > 0) badges += '<div class="room-mini-badge photo-done">&#10003; ' + allPhotos.length + '</div>';
+            if (flag.flagged) badges += '<div class="room-mini-badge flagged-badge">&#9888;</div>';
+
+            // Build photo gallery
+            let galleryHtml = '<div class="photo-gallery">';
+            allPhotos.forEach((p, pi) => {
+                galleryHtml += '<div class="photo-gallery-item">' +
+                    '<img id="roomGalleryThumb_' + i + '_' + pi + '" src="" onclick="viewRoomPhoto(' + i + ', ' + pi + ')">' +
+                    '<button class="photo-delete-btn" onclick="event.stopPropagation();deleteRoomPhoto(' + i + ', ' + pi + ')">&#10005;</button>' +
+                    '</div>';
+            });
+            // Add photo buttons — camera + gallery
+            galleryHtml += '<div class="photo-add-btn" onclick="triggerRoomPhoto(' + i + ')">&#128247;<span>Camera</span></div>';
+            galleryHtml += '<div class="photo-add-btn" onclick="triggerRoomGallery(' + i + ')">&#128444;<span>Upload</span></div>';
+            galleryHtml += '</div>';
+
+            return `<div class="${cardClass}" id="roomCard${i}">
+                <div class="room-card-header" onclick="toggleRoomCard(${i})">
+                    <span class="room-card-icon">${stop.icon}</span>
+                    <span class="room-card-name">${stop.name}</span>
+                    <div class="room-card-badges">${badges}</div>
+                    <span class="room-card-chevron" id="roomChevron${i}">&#9660;</span>
+                </div>
+                <div class="room-card-body" id="roomCardBody${i}">
+                    ${tip ? '<div class="room-ai-tip"><span class="room-ai-tip-icon">&#128161;</span> ' + tip + '</div>' : ''}
+                    ${galleryHtml}
+                    <div class="room-notes-area">
+                        <textarea placeholder="Notes..." rows="2"
+                            oninput="state.inspectionNotes[${i}]=this.value">${notes}</textarea>
+                    </div>
+                    <label class="room-flag-toggle" onclick="event.stopPropagation();">
+                        <input type="checkbox" ${flag.flagged ? 'checked' : ''} onchange="toggleRoomFlag(${i}, this.checked)">
+                        <div class="room-flag-toggle-track"></div>
+                        <span class="room-flag-toggle-label">Flag for maintenance</span>
+                    </label>
+                    ${flag.flagged ? '<input class="room-flag-issue-input" type="text" value="' + (flag.issue||'').replace(/"/g,'&quot;') + '"'
+                        + ' placeholder="What needs attention?"'
+                        + ' oninput="if(state.inspectionFlags[' + i + '])state.inspectionFlags[' + i + '].issue=this.value">' : ''}
+                </div>
+            </div>`;
+        }).join('');
+
+        // Load photo thumbnails for gallery
+        const stops2 = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        stops2.forEach((stop, i) => {
+            const photos = state.roomPhotos[i] || [];
+            const hasLegacyPhoto = !!state.inspectionPhotos[i];
+            const allPhotos = hasLegacyPhoto && photos.length === 0 ? [{ file: state.inspectionPhotos[i], legacy: true }] : photos;
+            allPhotos.forEach((p, pi) => {
+                const thumb = document.getElementById('roomGalleryThumb_' + i + '_' + pi);
+                if (thumb && p.file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => { thumb.src = e.target.result; };
+                    reader.readAsDataURL(p.file);
+                } else if (thumb && p.url) {
+                    thumb.src = p.url;
+                }
+            });
+        });
+    }
+
+    function toggleRoomCard(index) {
+        const body = document.getElementById('roomCardBody' + index);
+        const chevron = document.getElementById('roomChevron' + index);
+        const isOpen = body.classList.contains('open');
+        // Close all others
+        document.querySelectorAll('.room-card-body').forEach(b => b.classList.remove('open'));
+        document.querySelectorAll('.room-card-chevron').forEach(c => c.classList.remove('open'));
+        if (!isOpen) {
+            body.classList.add('open');
+            chevron.classList.add('open');
+        }
+    }
+
+    function triggerRoomPhoto(index) {
+        state.pendingRoomPhotoIndex = index;
+        document.getElementById('roomPhotoInput').value = '';
+        document.getElementById('roomPhotoInput').click();
+    }
+
+    function onRoomPhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file || state.pendingRoomPhotoIndex === null) return;
+        const idx = state.pendingRoomPhotoIndex;
+        if (!state.roomPhotos[idx]) state.roomPhotos[idx] = [];
+        state.roomPhotos[idx].push({ file: file });
+        state.pendingRoomPhotoIndex = null;
+        renderRoomCards();
+        const body = document.getElementById('roomCardBody' + idx);
+        const chevron = document.getElementById('roomChevron' + idx);
+        if (body) { body.classList.add('open'); chevron.classList.add('open'); }
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        toast('Photo added for ' + stops[idx].name);
+    }
+
+    // ── Room Photo Gallery Upload ──────────
+    function triggerRoomGallery(index) {
+        state.pendingRoomPhotoIndex = index;
+        document.getElementById('roomPhotoGalleryInput').value = '';
+        document.getElementById('roomPhotoGalleryInput').click();
+    }
+
+    function onRoomGalleryPhotoSelected(event) {
+        const files = event.target.files;
+        if (!files.length || state.pendingRoomPhotoIndex === null) return;
+        const idx = state.pendingRoomPhotoIndex;
+        if (!state.roomPhotos[idx]) state.roomPhotos[idx] = [];
+        // Also migrate legacy single photo if it exists
+        if (state.inspectionPhotos[idx] && state.roomPhotos[idx].length === 0) {
+            state.roomPhotos[idx].push({ file: state.inspectionPhotos[idx], legacy: true });
+            delete state.inspectionPhotos[idx];
+        }
+        for (const file of files) {
+            state.roomPhotos[idx].push({ file: file });
+        }
+        state.pendingRoomPhotoIndex = null;
+        renderRoomCards();
+        const body = document.getElementById('roomCardBody' + idx);
+        const chevron = document.getElementById('roomChevron' + idx);
+        if (body) { body.classList.add('open'); chevron.classList.add('open'); }
+        toast(files.length + ' photo(s) added');
+    }
+
+    function deleteRoomPhoto(roomIndex, photoIndex) {
+        if (!state.roomPhotos[roomIndex]) return;
+        state.roomPhotos[roomIndex].splice(photoIndex, 1);
+        if (state.roomPhotos[roomIndex].length === 0) delete state.roomPhotos[roomIndex];
+        renderRoomCards();
+        // Re-open this card
+        const body = document.getElementById('roomCardBody' + roomIndex);
+        const chevron = document.getElementById('roomChevron' + roomIndex);
+        if (body) { body.classList.add('open'); chevron.classList.add('open'); }
+    }
+
+    function viewRoomPhoto(roomIndex, photoIndex) {
+        const photos = state.roomPhotos[roomIndex] || [];
+        const hasLegacyPhoto = !!state.inspectionPhotos[roomIndex];
+        const allPhotos = hasLegacyPhoto && photos.length === 0 ? [{ file: state.inspectionPhotos[roomIndex], legacy: true }] : photos;
+        const photo = allPhotos[photoIndex];
+        if (!photo) return;
+        state.fullscreenContext = { type: 'room', index: roomIndex, photoIndex: photoIndex };
+        showPhotoFullscreen(photo);
+    }
+
+    // ── Fullscreen Photo Viewer ──────────
+    function showPhotoFullscreen(photo) {
+        if (photo.url) {
+            renderFullscreenOverlay(photo.url);
+        } else if (photo.file) {
+            const reader = new FileReader();
+            reader.onload = (e) => { renderFullscreenOverlay(e.target.result); };
+            reader.readAsDataURL(photo.file);
+        }
+    }
+
+    function renderFullscreenOverlay(imgSrc) {
+        const overlay = document.getElementById('photoFullscreenOverlay');
+        overlay.innerHTML = '<img src="' + imgSrc + '">' +
+            '<div class="photo-fullscreen-actions">' +
+            '<button class="photo-fullscreen-replace" onclick="replaceFullscreenPhoto()">Replace</button>' +
+            '<button class="photo-fullscreen-delete" onclick="deleteFullscreenPhoto()">Delete</button>' +
+            '<button class="photo-fullscreen-close" onclick="closePhotoFullscreen()">Close</button>' +
+            '</div>';
+        overlay.style.display = 'flex';
+    }
+
+    function closePhotoFullscreen() {
+        document.getElementById('photoFullscreenOverlay').style.display = 'none';
+        state.fullscreenContext = null;
+    }
+
+    function replaceFullscreenPhoto() {
+        document.getElementById('replacePhotoInput').value = '';
+        document.getElementById('replacePhotoInput').click();
+    }
+
+    function onReplacePhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file || !state.fullscreenContext) return;
+        const ctx = state.fullscreenContext;
+        if (ctx.type === 'room') {
+            if (!state.roomPhotos[ctx.index]) state.roomPhotos[ctx.index] = [];
+            // Migrate legacy photo
+            if (state.inspectionPhotos[ctx.index] && state.roomPhotos[ctx.index].length === 0) {
+                state.roomPhotos[ctx.index].push({ file: state.inspectionPhotos[ctx.index], legacy: true });
+                delete state.inspectionPhotos[ctx.index];
+            }
+            if (state.roomPhotos[ctx.index][ctx.photoIndex]) {
+                state.roomPhotos[ctx.index][ctx.photoIndex] = { file: file };
+            }
+            renderRoomCards();
+            const body = document.getElementById('roomCardBody' + ctx.index);
+            const chevron = document.getElementById('roomChevron' + ctx.index);
+            if (body) { body.classList.add('open'); chevron.classList.add('open'); }
+        }
+        closePhotoFullscreen();
+        toast('Photo replaced');
+    }
+
+    function deleteFullscreenPhoto() {
+        const ctx = state.fullscreenContext;
+        if (!ctx) return;
+        if (ctx.type === 'room') {
+            deleteRoomPhoto(ctx.index, ctx.photoIndex);
+        }
+        closePhotoFullscreen();
+    }
+
+    // ── Equipment Gallery Upload ──────────
+    function triggerEquipGallery(equipTypeId) {
+        state.pendingEquipGalleryTypeId = equipTypeId;
+        document.getElementById('equipPhotoGalleryInput').value = '';
+        document.getElementById('equipPhotoGalleryInput').click();
+    }
+
+    async function onEquipGalleryPhotoSelected(event) {
+        const files = event.target.files;
+        const equipTypeId = state.pendingEquipGalleryTypeId;
+        if (!files.length || !equipTypeId) return;
+        state.pendingEquipGalleryTypeId = null;
+
+        const unitId = state.currentUnit?.id;
+        const buildingId = state.currentBuilding;
+        if (!unitId || !buildingId) { toast('No unit selected'); return; }
+
+        showLoading('Uploading ' + files.length + ' photo(s)...');
+        let success = 0;
+        for (const file of files) {
+            try {
+                const formData = new FormData();
+                formData.append('equipment_type_id', equipTypeId);
+                formData.append('photo', file);
+                const resp = await fetch(API + '/api/buildings/' + buildingId + '/units/' + unitId + '/capture', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + state.sessionToken },
+                    body: formData,
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.capture) state.captures.push(data.capture);
+                    success++;
+                } else {
+                    const err = await resp.json().catch(() => ({}));
+                    console.warn('Upload failed:', err.detail || resp.status);
+                }
+            } catch (e) {
+                console.error('Upload error:', e);
+            }
+        }
+        hideLoading();
+        if (success > 0) {
+            toast(success + ' photo(s) uploaded successfully');
+            renderEquipInspList();
+        } else {
+            toast('Upload failed — please try again');
+        }
+    }
+
+    function toggleRoomFlag(index, checked) {
+        if (!state.inspectionFlags[index]) {
+            state.inspectionFlags[index] = { flagged: false, issue: '' };
+        }
+        state.inspectionFlags[index].flagged = checked;
+        renderRoomCards();
+        // Re-open this card
+        const body = document.getElementById('roomCardBody' + index);
+        const chevron = document.getElementById('roomChevron' + index);
+        if (body) { body.classList.add('open'); chevron.classList.add('open'); }
+    }
+
+    // ── Equipment Inspection List ──────────
+    function renderEquipInspList() {
+        const unitCaptures = state.captures.filter(c => c.unit_id === state.currentUnit.id);
+
+        // Deduplicate equipment types by name — keep first ID per name
+        const seen = {};
+        const uniqueTypes = [];
+        for (const et of state.equipTypes) {
+            if (!seen[et.name]) {
+                seen[et.name] = true;
+                uniqueTypes.push(et);
+            }
+        }
+
+        const skipped = state.skippedEquipment[state.currentUnit.id] || {};
+        document.getElementById('equipInspList').innerHTML = uniqueTypes.map(et => {
+            // Find ALL captures for this equipment type name (across duplicate type IDs)
+            const typeIds = state.equipTypes.filter(t => t.name === et.name).map(t => t.id);
+            const captures = unitCaptures.filter(c => typeIds.includes(c.equipment_type_id));
+            const isDone = captures.length > 0;
+            const isSkipped = typeIds.some(tid => skipped[tid]);
+            const capture = captures[0];
+            let statusText = 'Tap to capture photo + tag info';
+            if (isDone) {
+                const parts = [capture.make, capture.model_name].filter(Boolean);
+                statusText = parts.length ? parts.join(' ') : 'Captured';
+                if (captures.length > 1) statusText += ` (+${captures.length - 1} more)`;
+            } else if (isSkipped) {
+                statusText = 'Skipped — tap to capture later';
+            }
+            const photoCount = captures.reduce((sum, c) => sum + (c.photos?.length || 1), 0);
+            const capturedAt = capture ? new Date(capture.created_at).toLocaleDateString() : '';
+            const capturedBy = capture ? (capture.captured_by_name || '') : '';
+            const stampHtml = isDone && (capturedAt || capturedBy) ? `<div style="font-size:10px;color:#94a3b8;margin-top:1px;">${capturedBy ? capturedBy+' · ' : ''}${capturedAt}</div>` : '';
+            return `<div class="equip-insp-card ${isDone ? 'done' : ''}" onclick="${isDone ? `editCapture('${capture.id}')` : `startCapture('${et.id}')`}" style="${isSkipped && !isDone ? 'border-color:#d97706;background:#fffbeb;' : ''}">
+                <div class="equip-insp-icon">${et.icon || '\uD83D\uDD27'}</div>
+                <div class="equip-insp-info">
+                    <div class="equip-insp-name">${et.name}</div>
+                    <div class="equip-insp-status ${isDone ? 'captured' : ''}">${isDone ? '&#10003; ' : isSkipped ? '\u23ED ' : ''}${statusText}</div>
+                    ${isDone && photoCount > 0 ? `<div style="font-size:11px;color:#206A8A;margin-top:2px;">\uD83D\uDCF7 ${photoCount} photo${photoCount > 1 ? 's' : ''}</div>` : ''}
+                    ${stampHtml}
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+                    <div class="equip-insp-btn ${isDone ? 'done-badge' : 'capture'}">${isDone ? '&#10003; Done' : isSkipped ? '\u23ED Skipped' : 'Capture'}</div>
+                    ${isDone ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();startCapture('${et.id}')">&#128247; Camera</div>
+                        <div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();triggerEquipGallery('${et.id}')">&#128444; Upload</div>
+                    </div>` : `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();triggerEquipGallery('${et.id}')">&#128444; Upload existing</div>
+                    </div>`}
+                    ${!isDone && !isSkipped ? `<div style="font-size:11px;color:#d97706;cursor:pointer;" onclick="event.stopPropagation();skipEquipment('${et.id}')">Skip</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+
+        // Auto-populate Mechanicals fields (Step 4) from captures
+        autoPopulateMechanicals(unitCaptures);
+    }
+
+    function autoPopulateMechanicals(unitCaptures) {
+        // Find HVAC capture and pre-fill mechanicals step
+        const hvacIds = state.equipTypes.filter(t => t.name === 'HVAC System').map(t => t.id);
+        const hvacCapture = unitCaptures.find(c => hvacIds.includes(c.equipment_type_id));
+        if (hvacCapture) {
+            const hvacField = document.getElementById('insp_hvac_info');
+            if (hvacField && !hvacField.value) {
+                const parts = [hvacCapture.make, hvacCapture.model_name, hvacCapture.manufacture_year].filter(Boolean);
+                hvacField.value = parts.join(' ') || '';
+            }
+        }
+
+        // Water Heater
+        const whIds = state.equipTypes.filter(t => t.name === 'Water Heater').map(t => t.id);
+        const whCapture = unitCaptures.find(c => whIds.includes(c.equipment_type_id));
+        if (whCapture) {
+            const whField = document.getElementById('insp_wh_info');
+            if (whField && !whField.value) {
+                const parts = [whCapture.make, whCapture.model_name, whCapture.manufacture_year].filter(Boolean);
+                whField.value = parts.join(' ') || '';
+            }
+        }
+
+        // Electrical Panel
+        const epIds = state.equipTypes.filter(t => t.name === 'Electrical Panel').map(t => t.id);
+        const epCapture = unitCaptures.find(c => epIds.includes(c.equipment_type_id));
+        if (epCapture) {
+            const epField = document.getElementById('insp_elec_panel');
+            if (epField && !epField.value) {
+                const parts = [epCapture.make, epCapture.model_name].filter(Boolean);
+                epField.value = parts.join(' ') || '';
+            }
+        }
+    }
+
+    // ── Flagged Summary (Work Orders step) ──
+    function renderFlaggedSummary() {
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        const flagged = [];
+        Object.keys(state.inspectionFlags).forEach(idx => {
+            const f = state.inspectionFlags[idx];
+            if (f.flagged) {
+                flagged.push({ room: stops[idx].name, issue: f.issue || 'Flagged for review' });
+            }
+        });
+
+        const area = document.getElementById('flaggedSummaryArea');
+        const list = document.getElementById('flaggedSummaryList');
+        if (flagged.length > 0) {
+            area.style.display = 'block';
+            list.innerHTML = flagged.map(f =>
+                `<div class="summary-card flagged">
+                    <div class="summary-card-title">&#9888;&#65039; ${f.room}</div>
+                    <div class="summary-card-detail">${f.issue}</div>
+                </div>`
+            ).join('');
+
+            // Auto-fill WOs from flags if empty
+            const woField = document.getElementById('insp_immediate_wos');
+            if (!woField.value.trim()) {
+                woField.value = flagged.map(f => f.room + ': ' + f.issue).join('\n');
+            }
+        } else {
+            area.style.display = 'none';
+        }
+    }
+
+    // ── AI Summary ─────────────────────────
+    function generateAISummary() {
+        const area = document.getElementById('aiSummaryArea');
+        const content = document.getElementById('aiSummaryContent');
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+
+        const highlights = [];
+        const roomPhotoCount = Object.values(state.roomPhotos).reduce((sum, arr) => sum + arr.length, 0);
+        const legacyPhotoCount = Object.keys(state.inspectionPhotos).filter(k => !state.roomPhotos[k] || state.roomPhotos[k].length === 0).length;
+        const photoCount = roomPhotoCount + legacyPhotoCount;
+        const flagCount = Object.values(state.inspectionFlags).filter(f => f.flagged).length;
+        const noteCount = Object.values(state.inspectionNotes).filter(n => n && n.trim()).length;
+
+        highlights.push(`${photoCount} room photos taken, ${noteCount} rooms with notes`);
+        if (flagCount > 0) highlights.push(`${flagCount} room${flagCount > 1 ? 's' : ''} flagged for maintenance`);
+
+        // Check mechanicals
+        const hvacCond = getChipValue('chipHvacCond');
+        const whCond = getChipValue('chipWhCond');
+        if (hvacCond === 'Poor' || hvacCond === 'Non-functional') highlights.push('HVAC needs attention: ' + hvacCond);
+        if (whCond === 'Poor' || whCond === 'Non-functional') highlights.push('Water heater needs attention: ' + whCond);
+
+        // Safety
+        const smokeCo = getChipValue('chipSmokeCo');
+        const safetyCheck = getChipValue('chipSafetyCheck');
+        if (smokeCo === 'Fail') highlights.push('Smoke/CO detectors FAILED');
+        if (safetyCheck === 'Fail') highlights.push('Safety check FAILED');
+
+        if (highlights.length > 0) {
+            area.style.display = 'block';
+            content.innerHTML = '<div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#206A8A;">&#128161; Inspection Highlights</div>' +
+                highlights.map(h => `<div style="font-size:13px;color:#475569;margin-bottom:4px;">&#8226; ${h}</div>`).join('');
+        } else {
+            area.style.display = 'none';
+        }
+    }
+
+    // ── Save Inspection ───────────────────
+    function collectFlaggedWOs() {
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        const lines = [];
+        Object.keys(state.inspectionFlags).forEach(idx => {
+            const flag = state.inspectionFlags[idx];
+            if (flag.flagged && flag.issue) {
+                lines.push(stops[idx].name + ': ' + flag.issue);
+            }
+        });
+        return lines.join('\n');
+    }
+
+    async function saveInspection(status) {
+        const unit = state.currentUnit;
+        if (!unit) return;
+
+        const manualWOs = document.getElementById('insp_immediate_wos').value.trim();
+        const flaggedWOs = collectFlaggedWOs();
+        let combinedWOs = manualWOs;
+        if (flaggedWOs && !manualWOs.includes(flaggedWOs)) {
+            combinedWOs = combinedWOs ? combinedWOs + '\n' + flaggedWOs : flaggedWOs;
+        }
+
+        const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        const roomData = stops.map((stop, i) => ({
+            room: stop.name,
+            notes: state.inspectionNotes[i] || '',
+            flagged: !!(state.inspectionFlags[i] && state.inspectionFlags[i].flagged),
+            flag_issue: (state.inspectionFlags[i] && state.inspectionFlags[i].issue) || '',
+            has_photo: !!state.inspectionPhotos[i] || (state.roomPhotos[i] && state.roomPhotos[i].length > 0),
+            photo_count: (state.roomPhotos[i] ? state.roomPhotos[i].length : 0) || (state.inspectionPhotos[i] ? 1 : 0),
+        }));
+
+        const inspectionData = {
+            status: status === 'draft' ? 'draft' : 'complete',
+            user_id: state.user.id,
+            user_name: state.user.name,
+            walk_session_id: state.walkSession?.id,
+            rooms: roomData,
+            smoke_co_detectors: getChipValue('chipSmokeCo'),
+            safety_check: getChipValue('chipSafetyCheck'),
+            safety_notes: document.getElementById('insp_safety_notes').value,
+            hvac_info: document.getElementById('insp_hvac_info').value,
+            hvac_condition: getChipValue('chipHvacCond'),
+            water_heater_info: document.getElementById('insp_wh_info').value,
+            water_heater_condition: getChipValue('chipWhCond'),
+            elec_panel: document.getElementById('insp_elec_panel').value,
+            windows: getChipValue('chipWindows'),
+            plumbing_leaks: document.getElementById('insp_plumbing_leaks').value,
+            appliances_condition: getChipValue('chipAppliances'),
+            kb_flooring: getChipValue('chipKbFloor'),
+            kb_condition: getChipValue('chipKbCond'),
+            doors_drywall: document.getElementById('insp_doors_drywall').value,
+            immediate_wos: combinedWOs,
+            wo_notes: document.getElementById('insp_wo_notes').value,
+        };
+
+        showLoading(status === 'draft' ? 'Saving draft...' : 'Saving inspection...');
+        try {
+            const r = await api(`/api/buildings/${state.currentBuilding}/units/${unit.id}/inspection`, inspectionData);
+            const inspectionId = r.inspection?.id || r.id;
+
+            // Upload room photos (new multi-photo system)
+            if (inspectionId) {
+                // Upload from roomPhotos (new gallery system)
+                const roomPhotoKeys = Object.keys(state.roomPhotos);
+                for (const idx of roomPhotoKeys) {
+                    const photos = state.roomPhotos[idx] || [];
+                    for (const photo of photos) {
+                        if (photo.file) {
+                            const fd = new FormData();
+                            fd.append('photo', photo.file);
+                            fd.append('room_index', idx);
+                            fd.append('room_name', stops[idx].name);
+                            try {
+                                await fetchWithAuth(`${API}/api/inspections/${inspectionId}/photos`, { method: 'POST', body: fd });
+                            } catch (e) { /* continue */ }
+                        }
+                    }
+                }
+                // Upload legacy single photos (backward compat)
+                const legacyKeys = Object.keys(state.inspectionPhotos);
+                for (const idx of legacyKeys) {
+                    // Skip if already handled by roomPhotos
+                    if (state.roomPhotos[idx] && state.roomPhotos[idx].length > 0) continue;
+                    const file = state.inspectionPhotos[idx];
+                    if (file) {
+                        const fd = new FormData();
+                        fd.append('photo', file);
+                        fd.append('room_index', idx);
+                        fd.append('room_name', stops[idx].name);
+                        try {
+                            await fetchWithAuth(`${API}/api/inspections/${inspectionId}/photos`, { method: 'POST', body: fd });
+                        } catch (e) { /* continue */ }
+                    }
+                }
+            }
+
+            if (status !== 'draft') {
+                state.inspectedUnits[unit.id] = true;
+                state.recentInspections.unshift({
+                    unit_id: unit.id,
+                    unit_name: unit.unit_name,
+                    status: 'complete',
+                    created_at: new Date().toISOString(),
+                });
+            }
+
+            hideLoading();
+            toast(status === 'draft' ? 'Draft saved!' : unit.unit_name + ' inspection saved!');
+            goBack();
+            renderUnits();
+        } catch (e) {
+            hideLoading();
+            toast('Error: ' + e.message);
+        }
+    }
+
+    // ── Sub-Type Chips ─────────────────────
+    function renderSubTypeChips(equipTypeName) {
+        const section = document.getElementById('subTypeSection');
+        const chipsEl = document.getElementById('subTypeChips');
+        const customWrap = document.getElementById('subTypeCustomWrap');
+        let subTypes = [];
+        for (const [cat, types] of Object.entries(state.equipSubTypes)) {
+            if (equipTypeName.toLowerCase().includes(cat.toLowerCase())) { subTypes = types; break; }
+        }
+        if (subTypes.length === 0) { section.style.display = 'none'; return; }
+        section.style.display = 'block';
+        state.selectedSubType = '';
+        chipsEl.innerHTML = subTypes.map(st =>
+            `<div class="subtype-chip" onclick="selectSubType(this, '${st.replace(/'/g,"\\'")}')">${st}</div>`
+        ).join('') + `<div class="subtype-chip" onclick="selectSubTypeOther(this)">Other...</div>`;
+        customWrap.className = 'subtype-custom-input';
+        document.getElementById('subTypeCustomInput').value = '';
+    }
+
+    function selectSubType(el, value) {
+        document.querySelectorAll('#subTypeChips .subtype-chip').forEach(c => c.classList.remove('selected'));
+        el.classList.add('selected');
+        state.selectedSubType = value;
+        document.getElementById('subTypeCustomWrap').className = 'subtype-custom-input';
+    }
+
+    function selectSubTypeOther(el) {
+        document.querySelectorAll('#subTypeChips .subtype-chip').forEach(c => c.classList.remove('selected'));
+        el.classList.add('selected');
+        state.selectedSubType = '__custom__';
+        document.getElementById('subTypeCustomWrap').className = 'subtype-custom-input visible';
+        document.getElementById('subTypeCustomInput').focus();
+    }
+
+    function getSelectedSubType() {
+        if (state.selectedSubType === '__custom__') return document.getElementById('subTypeCustomInput').value.trim();
+        return state.selectedSubType;
+    }
+
+    // ── Capture Flow ───────────────────────
+    function startCapture(equipTypeId) {
+        const et = state.equipTypes.find(t => t.id === equipTypeId);
+        if (!et) return;
+        state.currentEquipType = et;
+        state.capturePhoto = null;
+        state.capturePhotos = [];
+        state.lastCaptureId = null;
+        state.lastCaptureData = null;
+        state.noTagIdentification = null;
+        state.chipValues.equip_condition = '';
+
+        document.getElementById('captureEquipName').textContent = (et.icon||'\uD83D\uDD27') + ' ' + et.name;
+        document.getElementById('captureUnitName').textContent = 'Unit: ' + state.currentUnit.unit_name;
+
+        renderSubTypeChips(et.name);
+        buildChipGroup('chipEquipCondition', ['excellent', 'good', 'fair', 'poor', 'non_functional'], 'condition');
+
+        document.getElementById('captureStep1').style.display = 'block';
+        document.getElementById('captureStep2').style.display = 'none';
+        document.getElementById('captureStep2b').style.display = 'none';
+        document.getElementById('captureStep3').style.display = 'none';
+        document.getElementById('photoPreview').style.display = 'none';
+        document.getElementById('cameraPlaceholder').style.display = 'block';
+        document.getElementById('photoInput').value = '';
+        document.getElementById('photoThumbsArea').style.display = 'none';
+        document.getElementById('specsArea').style.display = 'none';
+
+        showScreen('screenCapture', { title: 'Capture: ' + et.name });
+    }
+
+    function onPhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        state.capturePhoto = file;
+        state.capturePhotos = [{ file, type: 'tag' }];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            document.getElementById('photoPreview').src = e.target.result;
+            document.getElementById('photoPreview').style.display = 'block';
+            document.getElementById('cameraPlaceholder').style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+        processPhoto(file);
+    }
+
+    function onNoTagPhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        state.capturePhoto = file;
+        state.capturePhotos = [{ file, type: 'unit' }];
+        const reader = new FileReader();
+        reader.onload = (e) => { document.getElementById('noTagPhotoPreview').src = e.target.result; };
+        reader.readAsDataURL(file);
+
+        document.getElementById('captureStep1').style.display = 'none';
+        document.getElementById('aiProcessingText').textContent = 'Identifying equipment...';
+        document.getElementById('aiProcessingSub').textContent = 'AI is analyzing what this equipment is';
+        document.getElementById('captureStep2').style.display = 'block';
+
+        const fd = new FormData();
+        fd.append('photo', file);
+        fetchWithAuth(`${API}/api/identify-equipment`, { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('captureStep2').style.display = 'none';
+            if (data.success && data.identification) {
+                state.noTagIdentification = data.identification;
+                document.getElementById('aiIdentifyType').textContent = data.identification.identified_type || 'Unknown equipment';
+                document.getElementById('aiIdentifyDesc').textContent = data.identification.description || '';
+                const conf = data.identification.confidence || 'low';
+                const badge = document.getElementById('aiIdentifyConf');
+                badge.textContent = conf; badge.className = 'confidence-badge conf-' + conf;
+                document.getElementById('captureStep2b').style.display = 'block';
+            } else {
+                toast('Could not identify. Enter data manually.');
+                goToManualEntry();
+            }
+        })
+        .catch(() => {
+            document.getElementById('captureStep2').style.display = 'none';
+            toast('Identification failed. Enter manually.');
+            goToManualEntry();
+        });
+    }
+
+    function confirmIdentification() {
+        const id = state.noTagIdentification;
+        document.getElementById('captureStep2b').style.display = 'none';
+        document.getElementById('captureStep3').style.display = 'block';
+        document.getElementById('aiResultBox').style.display = 'none';
+
+        document.getElementById('fieldBrand').value = id.brand || id.make || '';
+        document.getElementById('fieldMake').value = '';
+        document.getElementById('fieldModelName').value = '';
+        document.getElementById('fieldModelNumber').value = '';
+        document.getElementById('fieldSerial').value = '';
+        document.getElementById('fieldYear').value = id.estimated_age || '';
+
+        // Set condition via chip
+        if (id.condition_visual) {
+            state.chipValues.equip_condition = id.condition_visual;
+            const chips = document.querySelectorAll('#chipEquipCondition .chip');
+            chips.forEach(c => {
+                if (c.textContent.toLowerCase() === id.condition_visual.toLowerCase() ||
+                    (id.condition_visual === 'non_functional' && c.textContent === 'Non-functional')) {
+                    c.classList.add('selected');
+                }
+            });
+        }
+
+        document.getElementById('fieldNotes').value = id.description || '';
+
+        if (id.suggested_sub_type) {
+            state.selectedSubType = id.suggested_sub_type;
+            document.querySelectorAll('#subTypeChips .subtype-chip').forEach(c => {
+                if (c.textContent.includes(id.suggested_sub_type)) { c.classList.add('selected'); }
+            });
+        }
+
+        renderPhotoThumbs();
+        if (state.capturePhotos.length > 0) document.getElementById('photoThumbsArea').style.display = 'block';
+    }
+
+    function rejectIdentification() {
+        document.getElementById('captureStep2b').style.display = 'none';
+        goToManualEntry();
+    }
+
+    function goToManualEntry() {
+        document.getElementById('captureStep3').style.display = 'block';
+        document.getElementById('aiResultBox').style.display = 'none';
+        document.getElementById('specsArea').style.display = 'none';
+        ['fieldBrand','fieldModelName','fieldModelNumber','fieldSerial','fieldYear','fieldNotes'].forEach(id => document.getElementById(id).value = '');
+        state.chipValues.equip_condition = '';
+        buildChipGroup('chipEquipCondition', ['excellent', 'good', 'fair', 'poor', 'non_functional'], 'condition');
+        renderPhotoThumbs();
+        if (state.capturePhotos.length > 0) document.getElementById('photoThumbsArea').style.display = 'block';
+    }
+
+    function onAdditionalPhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        state.capturePhotos.push({ file, type: 'detail' });
+        renderPhotoThumbs();
+        document.getElementById('photoThumbsArea').style.display = 'block';
+        toast('Photo added');
+    }
+
+    function renderPhotoThumbs() {
+        const container = document.getElementById('photoThumbs');
+        container.innerHTML = '';
+        state.capturePhotos.forEach((p, i) => {
+            const img = document.createElement('img');
+            img.className = 'photo-thumb' + (i === 0 ? ' active' : '');
+            const reader = new FileReader();
+            reader.onload = (e) => { img.src = e.target.result; };
+            reader.readAsDataURL(p.file);
+            container.appendChild(img);
+        });
+        const addBtn = document.createElement('div');
+        addBtn.className = 'add-photo-btn'; addBtn.textContent = '+';
+        addBtn.onclick = () => document.getElementById('addPhotoInput').click();
+        container.appendChild(addBtn);
+    }
+
+    function renderSpecsGrid(specs, gridId, areaId) {
+        if (!specs || typeof specs !== 'object') { document.getElementById(areaId).style.display = 'none'; return; }
+        const entries = Object.entries(specs).filter(([k,v]) => v && v !== 'null');
+        if (entries.length === 0) { document.getElementById(areaId).style.display = 'none'; return; }
+        document.getElementById(areaId).style.display = 'block';
+        document.getElementById(gridId).innerHTML = entries.map(([k,v]) =>
+            `<div class="spec-item"><div class="spec-label">${k.replace(/_/g,' ')}</div><div class="spec-value">${v}</div></div>`
+        ).join('');
+    }
+
+    async function processPhoto(file) {
+        document.getElementById('captureStep1').style.display = 'none';
+        document.getElementById('aiProcessingText').textContent = 'Analyzing equipment tag...';
+        document.getElementById('aiProcessingSub').textContent = 'AI is reading brand, model, serial number & specs';
+        document.getElementById('captureStep2').style.display = 'block';
+
+        const formData = new FormData();
+        formData.append('photo', file);
+        formData.append('equipment_type_id', state.currentEquipType.id);
+        formData.append('user_id', state.user.id);
+        formData.append('user_name', state.user.name);
+        const subType = getSelectedSubType();
+        if (subType) formData.append('sub_type', subType);
+        if (state.walkSession) formData.append('walk_session_id', state.walkSession.id);
+        if (state.currentVisit) formData.append('unit_visit_id', state.currentVisit.id);
+
+        try {
+            const r = await fetchWithAuth(`${API}/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/capture`, { method: 'POST', body: formData });
+            if (!r.ok) throw new Error('Capture failed');
+            const data = await r.json();
+            state.lastCaptureId = data.capture?.id;
+            state.lastCaptureData = data.capture;
+
+            const c = data.capture || {};
+            document.getElementById('fieldBrand').value = c.make || c.brand || '';
+            // make merged into brand field
+            document.getElementById('fieldModelName').value = c.model_name || '';
+            document.getElementById('fieldModelNumber').value = c.model_number || '';
+            document.getElementById('fieldSerial').value = c.serial_number || '';
+            document.getElementById('fieldYear').value = c.manufacture_year || '';
+
+            // Set condition chip
+            if (c.condition_rating) {
+                state.chipValues.equip_condition = c.condition_rating;
+                buildChipGroup('chipEquipCondition', ['excellent', 'good', 'fair', 'poor', 'non_functional'], 'condition');
+                const chips = document.querySelectorAll('#chipEquipCondition .chip');
+                chips.forEach(chip => {
+                    const val = chip.textContent.toLowerCase().replace('-', '_').replace(' ', '_');
+                    if (val === c.condition_rating || chip.textContent === c.condition_rating) {
+                        chip.classList.add('selected');
+                    }
+                });
+            }
+
+            document.getElementById('fieldNotes').value = c.condition_notes || '';
+
+            const conf = c.ai_confidence || 'low';
+            const badge = document.getElementById('aiConfBadge');
+            badge.textContent = conf; badge.className = 'confidence-badge conf-' + conf;
+            document.getElementById('aiResultBox').style.display = data.ai_extracted ? 'block' : 'none';
+
+            renderSpecsGrid(c.additional_specs, 'specsGrid', 'specsArea');
+            renderPhotoThumbs();
+            if (state.capturePhotos.length > 0) document.getElementById('photoThumbsArea').style.display = 'block';
+
+            document.getElementById('captureStep2').style.display = 'none';
+            document.getElementById('captureStep3').style.display = 'block';
+        } catch (e) {
+            toast('AI extraction failed. Enter data manually.');
+            document.getElementById('captureStep2').style.display = 'none';
+            document.getElementById('captureStep3').style.display = 'block';
+            document.getElementById('aiResultBox').style.display = 'none';
+            document.getElementById('specsArea').style.display = 'none';
+        }
+    }
+
+    function tagNotReadable() {
+        state.capturePhoto = null; state.capturePhotos = [];
+        state.lastCaptureId = null;
+        goToManualEntry();
+        document.getElementById('captureStep1').style.display = 'none';
+    }
+
+    function retakePhoto() {
+        document.getElementById('captureStep3').style.display = 'none';
+        document.getElementById('captureStep1').style.display = 'block';
+        document.getElementById('photoPreview').style.display = 'none';
+        document.getElementById('cameraPlaceholder').style.display = 'block';
+        document.getElementById('photoInput').value = '';
+    }
+
+    async function saveCapture() {
+        showLoading('Saving...');
+        const subType = getSelectedSubType();
+        const conditionRating = state.chipValues.equip_condition || '';
+        const captureData = {
+            make: document.getElementById('fieldBrand').value,
+            model_name: document.getElementById('fieldModelName').value,
+            model_number: document.getElementById('fieldModelNumber').value,
+            serial_number: document.getElementById('fieldSerial').value,
+            manufacture_year: document.getElementById('fieldYear').value,
+            condition_rating: conditionRating,
+            condition_notes: document.getElementById('fieldNotes').value,
+            manually_verified: true,
+            verified_by: state.user.id,
+        };
+        if (subType) captureData.sub_type = subType;
+
+        try {
+            if (state.lastCaptureId) {
+                await api(`/api/captures/${state.lastCaptureId}`, captureData);
+                for (let i = 1; i < state.capturePhotos.length; i++) {
+                    const p = state.capturePhotos[i];
+                    const fd = new FormData();
+                    fd.append('photo', p.file); fd.append('photo_type', p.type);
+                    await fetchWithAuth(`${API}/api/captures/${state.lastCaptureId}/photos`, { method: 'POST', body: fd });
+                }
+            } else {
+                const manualData = {
+                    ...captureData,
+                    equipment_type_id: state.currentEquipType.id,
+                    user_id: state.user.id,
+                    user_name: state.user.name,
+                    walk_session_id: state.walkSession?.id,
+                    unit_visit_id: state.currentVisit?.id,
+                    sub_type: subType || null,
+                };
+                const r = await api(`/api/buildings/${state.currentBuilding}/units/${state.currentUnit.id}/manual-capture`, manualData);
+                const newId = r.capture?.id;
+                if (newId && state.capturePhotos.length > 0) {
+                    for (const p of state.capturePhotos) {
+                        const fd = new FormData();
+                        fd.append('photo', p.file); fd.append('photo_type', p.type);
+                        await fetchWithAuth(`${API}/api/captures/${newId}/photos`, { method: 'POST', body: fd });
+                    }
+                }
+            }
+
+            const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
+            state.captures = capsR.captures || [];
+            hideLoading(); toast('Saved!');
+
+            // Go back to inspection wizard (equipment step)
+            goBack();
+            renderEquipInspList();
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
+    }
+
+    // ── Edit Capture ───────────────────────
+    async function editCapture(captureId) {
+        const capture = state.captures.find(c => c.id === captureId);
+        if (!capture) { toast('Capture not found'); return; }
+        state.editingCapture = capture;
+
+        const et = state.equipTypes.find(t => t.id === capture.equipment_type_id);
+        const etName = et ? (et.icon||'\uD83D\uDD27')+' '+et.name : 'Equipment';
+        document.getElementById('editCaptureTitle').textContent = etName;
+        document.getElementById('editCaptureMeta').textContent = 'Unit: ' + (state.currentUnit?.unit_name || '');
+
+        document.getElementById('editSubType').value = capture.sub_type || '';
+        document.getElementById('editBrand').value = capture.make || '';
+        // editMake removed — merged with Brand
+        document.getElementById('editModelName').value = capture.model_name || '';
+        document.getElementById('editModelNumber').value = capture.model_number || '';
+        document.getElementById('editSerial').value = capture.serial_number || '';
+        document.getElementById('editYear').value = capture.manufacture_year || '';
+        document.getElementById('editCondition').value = capture.condition_rating || '';
+        document.getElementById('editNotes').value = capture.condition_notes || '';
+
+        renderSpecsGrid(capture.additional_specs, 'editSpecsGrid', 'editSpecsArea');
+
+        const thumbsEl = document.getElementById('editPhotoThumbs');
+        thumbsEl.innerHTML = '';
+        if (capture.photo_url) {
+            const img = document.createElement('img');
+            img.className = 'photo-thumb active'; img.src = capture.photo_url;
+            thumbsEl.appendChild(img);
+        }
+        try {
+            const photosR = await api(`/api/captures/${captureId}/photos`);
+            (photosR.photos || []).forEach(p => {
+                if (p.photo_url !== capture.photo_url) {
+                    const img = document.createElement('img');
+                    img.className = 'photo-thumb'; img.src = p.photo_url;
+                    thumbsEl.appendChild(img);
+                }
+            });
+        } catch (e) {}
+        const addBtn = document.createElement('div');
+        addBtn.className = 'add-photo-btn'; addBtn.textContent = '+';
+        addBtn.onclick = () => document.getElementById('editAddPhotoInput').click();
+        thumbsEl.appendChild(addBtn);
+
+        showScreen('screenEditCapture', { title: 'Edit Capture' });
+    }
+
+    async function onEditAddPhoto(event) {
+        const file = event.target.files[0];
+        if (!file || !state.editingCapture) return;
+        showLoading('Uploading...');
+        const fd = new FormData();
+        fd.append('photo', file); fd.append('photo_type', 'detail');
+        try {
+            await fetchWithAuth(`${API}/api/captures/${state.editingCapture.id}/photos`, { method: 'POST', body: fd });
+            hideLoading(); toast('Photo added!');
+            editCapture(state.editingCapture.id);
+        } catch (e) { hideLoading(); toast('Upload failed'); }
+    }
+
+    async function saveEditCapture() {
+        if (!state.editingCapture) return;
+        showLoading('Saving...');
+        try {
+            await api(`/api/captures/${state.editingCapture.id}`, {
+                sub_type: document.getElementById('editSubType').value,
+                make: document.getElementById('editBrand').value,
+                model_name: document.getElementById('editModelName').value,
+                model_number: document.getElementById('editModelNumber').value,
+                serial_number: document.getElementById('editSerial').value,
+                manufacture_year: document.getElementById('editYear').value,
+                condition_rating: document.getElementById('editCondition').value,
+                condition_notes: document.getElementById('editNotes').value,
+                manually_verified: true,
+                verified_by: state.user.id,
+            });
+            const capsR = await api(`/api/buildings/${state.currentBuilding}/captures`);
+            state.captures = capsR.captures || [];
+            hideLoading(); toast('Changes saved!');
+            goBack();
+            renderEquipInspList();
+        } catch (e) { hideLoading(); toast('Error: ' + e.message); }
+    }
+
+    // ── Export ──────────────────────────────
+    function exportCSV() {
+        fetchWithAuth(`${API}/api/buildings/${state.currentBuilding}/export/csv`)
+        .then(r => r.blob())
+        .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `field_capture_${state.currentBuilding}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        })
+        .catch(e => toast('Export failed: ' + e.message));
+    }
+
+    // ── API helpers ───────────────────────
+    function fetchWithAuth(url, opts = {}) {
+        if (!opts.headers) opts.headers = {};
+        if (state.sessionToken) {
+            opts.headers['Authorization'] = 'Bearer ' + state.sessionToken;
+        }
+        return fetch(url, opts);
+    }
+
+    async function api(path, body = null) {
+        const opts = { headers: { 'Content-Type': 'application/json' } };
+        if (state.sessionToken) {
+            opts.headers['Authorization'] = 'Bearer ' + state.sessionToken;
+        }
+        if (body) { opts.method = 'POST'; opts.body = JSON.stringify(body); }
+        const r = await fetch(API + path, opts);
+        if (r.status === 401) {
+            state.user = null;
+            state.sessionToken = null;
+            localStorage.removeItem('fc_session_token');
+            localStorage.removeItem('fc_user_id');
+            screenStack = ['screenLogin'];
+            showScreen('screenLogin');
+            throw new Error('Session expired. Please sign in again.');
+        }
+        if (!r.ok) { const err = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(err.detail || 'Request failed'); }
+        return r.json();
+    }
+
+    async function apiNoAuth(path, body) {
+        const opts = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        };
+        const r = await fetch(API + path, opts);
+        if (!r.ok) { const err = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(err.detail || 'Request failed'); }
+        return r.json();
+    }
+
+    // ── UI Helpers ─────────────────────────
+    function showLoading(text) { document.getElementById('loadingText').textContent = text || 'Loading...'; document.getElementById('loadingOverlay').style.display = 'flex'; }
+    function hideLoading() { document.getElementById('loadingOverlay').style.display = 'none'; }
+    function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
+
+    // ── Unknown button handler ────────────
+    function setUnknown(fieldId) {
+        const el = document.getElementById(fieldId);
+        if (el) { el.value = 'Unknown'; el.style.color = '#94a3b8'; el.onfocus = () => { if (el.value === 'Unknown') { el.value = ''; el.style.color = ''; } }; }
+    }
+
+    // ── Skip equipment handler ────────────
+    function skipEquipment(equipTypeId) {
+        if (!state.currentUnit) return;
+        const uid = state.currentUnit.id;
+        if (!state.skippedEquipment[uid]) state.skippedEquipment[uid] = {};
+        state.skippedEquipment[uid][equipTypeId] = true;
+        renderEquipInspList();
+        toast('Skipped — marked for follow-up');
+    }
+
+    // ── Auto-save indicator flash ─────────
+    function flashAutosave() {
+        const el = document.getElementById('autosaveIndicator');
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 2000);
+    }
+
+    // ── Auto-save inspection draft on step change ──
+    async function autoSaveDraft() {
+        if (!state.currentUnit) return;
+        try {
+            await saveInspection('draft');
+            flashAutosave();
+        } catch (e) { /* silent fail */ }
+    }
+
+    // ── Unit completion percentage ────────
+    function getUnitProgress(unitId) {
+        const uniqueTypes = [];
+        const seen = {};
+        for (const et of state.equipTypes) {
+            if (!seen[et.name]) { seen[et.name] = true; uniqueTypes.push(et); }
+        }
+        const unitCaptures = state.captures.filter(c => c.unit_id === unitId);
+        const skipped = state.skippedEquipment[unitId] || {};
+        let done = 0;
+        let skippedCount = 0;
+        for (const et of uniqueTypes) {
+            const typeIds = state.equipTypes.filter(t => t.name === et.name).map(t => t.id);
+            const hasCap = unitCaptures.some(c => typeIds.includes(c.equipment_type_id));
+            const isSkipped = typeIds.some(tid => skipped[tid]);
+            if (hasCap || isSkipped) done++;
+            if (isSkipped && !hasCap) skippedCount++;
+        }
+        const isInspected = state.inspectedUnits[unitId];
+        // Total steps = equipment types + inspection (1 for full wizard)
+        const equipTotal = uniqueTypes.length;
+        const equipDone = done;
+        const inspDone = isInspected ? 1 : 0;
+        const total = equipTotal + 1;
+        const completed = equipDone + inspDone;
+        return { pct: Math.round((completed / total) * 100), skippedCount, equipDone, equipTotal, isInspected };
+    }
+
+    // ── Init ───────────────────────────────
+    (async function init() {
+        const valid = await verifyExistingSession();
+        if (valid && state.user) {
+            document.getElementById('loginName').value = state.user.name || '';
+            document.getElementById('loginEmail').value = state.user.email || '';
+        }
+    })();
+</script>
+</body>
+</html>
