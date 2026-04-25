@@ -809,20 +809,49 @@ async def cleanup_building_units(building_id: str, request: Request, session: di
             else:
                 seen[name] = u["id"]
 
-    # First delete related records (captures, inspections) for the units we're about to delete
-    # This avoids FK constraint failures
+    # Cascade delete: photos → captures → inspections → units
+    # Must follow FK dependency order to avoid constraint failures
     for i in range(0, len(to_delete), 30):
         batch = to_delete[i:i+30]
         id_list = ','.join(str(uid) for uid in batch)
-        for ref_table in ["fc_captures", "fc_inspections"]:
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # 1. Get capture IDs for these units
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/fc_captures?unit_id=in.({id_list})&select=id",
+                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                )
+                capture_ids = [c["id"] for c in (r.json() if r.status_code < 300 and r.text else [])]
+                # 2. Delete capture_photos referencing those captures
+                if capture_ids:
+                    cap_id_list = ','.join(str(cid) for cid in capture_ids)
                     await client.delete(
-                        f"{SUPABASE_URL}/rest/v1/{ref_table}?unit_id=in.({id_list})",
+                        f"{SUPABASE_URL}/rest/v1/fc_capture_photos?capture_id=in.({cap_id_list})",
                         headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
                     )
-            except Exception:
-                pass
+                # 3. Delete captures
+                await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/fc_captures?unit_id=in.({id_list})",
+                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                )
+                # 4. Delete inspections (and inspection photos first)
+                r2 = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/fc_inspections?unit_id=in.({id_list})&select=id",
+                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                )
+                insp_ids = [ins["id"] for ins in (r2.json() if r2.status_code < 300 and r2.text else [])]
+                if insp_ids:
+                    insp_id_list = ','.join(str(iid) for iid in insp_ids)
+                    await client.delete(
+                        f"{SUPABASE_URL}/rest/v1/fc_inspection_photos?inspection_id=in.({insp_id_list})",
+                        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                    )
+                await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/fc_inspections?unit_id=in.({id_list})",
+                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                )
+        except Exception as e:
+            logger.error(f"Cascade delete error: {e}")
 
     deleted = 0
     for i in range(0, len(to_delete), 30):
