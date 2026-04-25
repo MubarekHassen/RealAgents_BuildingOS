@@ -85,7 +85,17 @@ def _is_private_url(url: str) -> bool:
         # Block obvious localhost
         if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
             return True
-        # Resolve and check IP
+        # If hostname is already an IP, check it directly first
+        try:
+            direct_ip = ipaddress.ip_address(hostname)
+            if direct_ip.is_private or direct_ip.is_loopback or direct_ip.is_link_local or direct_ip.is_reserved:
+                return True
+        except ValueError:
+            pass  # Not a raw IP, continue to DNS resolution
+        # Block common cloud metadata IPs explicitly
+        if hostname in ("169.254.169.254", "metadata.google.internal", "100.100.100.200"):
+            return True
+        # Resolve and check all DNS results
         for info in socket.getaddrinfo(hostname, None):
             ip = ipaddress.ip_address(info[4][0])
             if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
@@ -182,7 +192,10 @@ def verify_oauth_state(state: str) -> str:
 def _validate_base_url():
     parsed = urlparse(BASE_URL)
     if parsed.hostname not in ALLOWED_REDIRECT_DOMAINS:
-        logger.warning("BASE_URL hostname '%s' not in allowed domains -- OAuth redirects may be unsafe", parsed.hostname)
+        raise RuntimeError(
+            f"BASE_URL hostname '{parsed.hostname}' not in ALLOWED_REDIRECT_DOMAINS "
+            f"({ALLOWED_REDIRECT_DOMAINS}). Fix BASE_URL or add the domain to the allowlist."
+        )
 
 _validate_base_url()
 
@@ -2649,7 +2662,7 @@ def microsoft_auth_callback(code: str, state: str):
         _tokens.clear()
     _tokens["microsoft"] = result
     logger.info("Microsoft OneDrive connected successfully")
-    return RedirectResponse("http://localhost:8000/?integration=microsoft_connected")
+    return RedirectResponse(f"{BASE_URL}/?integration=microsoft_connected")
 
 
 @app.get("/auth/microsoft/disconnect")
