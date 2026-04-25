@@ -2464,6 +2464,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;
 // Auto-detect: if served from localhost, talk to localhost backend; otherwise use production
 const PRODUCTION_BACKEND_URL = 'https://realagentsbuildingos-production-a9cb.up.railway.app';
 const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const _DEBUG = IS_LOCAL;
+const _log = _DEBUG ? console.log.bind(console) : () => {};
 const CONFIG = {
   BACKEND_URL: `${window.location.protocol}//${window.location.host}`
 };
@@ -2657,7 +2659,7 @@ function loadDocsForBuilding(bid) {
     // Auto-clear stale error entries from localStorage on load
     const cleaned = docs.filter(d => d.status !== 'error');
     if (cleaned.length !== docs.length) {
-      console.log(`Cleared ${docs.length - cleaned.length} stale error entries from local cache`);
+      _log(`Cleared ${docs.length - cleaned.length} stale error entries from local cache`);
       try { localStorage.setItem('bos_docs_' + bid, JSON.stringify(cleaned)); } catch(e) {}
     }
     return cleaned;
@@ -2772,7 +2774,7 @@ function migrateLegacyData() {
     if (legacyPrefs) {
       localStorage.setItem(userKey('preferences'), legacyPrefs);
     }
-    console.log('BuildingOS: Migrated legacy data to user-scoped storage for', _activeUserId);
+    _log('BuildingOS: Migrated legacy data to user-scoped storage for', _activeUserId);
   }
 }
 
@@ -3001,7 +3003,7 @@ async function checkBackend() {
           if (!window._errorsCleaned && ragReady) {
             window._errorsCleaned = true;
             fetch(CONFIG.BACKEND_URL + '/documents/clear-errors', { method: 'DELETE' })
-              .then(r => r.json()).then(d => { if (d.deleted > 0) { console.log('Cleared', d.deleted, 'old error documents'); loadDocuments(); } })
+              .then(r => r.json()).then(d => { if (d.deleted > 0) { _log('Cleared', d.deleted, 'old error documents'); loadDocuments(); } })
               .catch(() => {});
           }
           return true;
@@ -7700,7 +7702,7 @@ async function fcPushSetupToServer(invite, config) {
       })
     });
     if (!resp.ok) console.error('Field Capture setup push failed:', await resp.text());
-    else console.log('Field Capture setup pushed successfully');
+    else _log('Field Capture setup pushed successfully');
   } catch(e) {
     console.error('Field Capture API error:', e);
   }
@@ -11905,7 +11907,7 @@ function initApp() {
       saveActiveSession(userId);
       saveUser(currentUser);
       migrateLegacyData();
-      console.log('BuildingOS: Auto-migrated legacy user to per-user system:', userId);
+      _log('BuildingOS: Auto-migrated legacy user to per-user system:', userId);
     } else {
       currentUser = null;
     }
