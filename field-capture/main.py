@@ -809,47 +809,35 @@ async def cleanup_building_units(building_id: str, request: Request, session: di
             else:
                 seen[name] = u["id"]
 
-    # Cascade delete: photos → captures → inspections → units
-    # Must follow FK dependency order to avoid constraint failures
+    # Cascade delete: all FK-referencing tables → then units
+    # Tables that reference fc_units.id via unit_id:
+    #   fc_capture_photos → fc_captures → fc_units
+    #   fc_inspection_photos → fc_inspections → fc_units
+    #   fc_unit_visits → fc_units
+    hdrs = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     for i in range(0, len(to_delete), 30):
         batch = to_delete[i:i+30]
         id_list = ','.join(str(uid) for uid in batch)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # 1. Get capture IDs for these units
-                r = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/fc_captures?unit_id=in.({id_list})&select=id",
-                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-                )
+                # 1. Get capture IDs → delete their photos → delete captures
+                r = await client.get(f"{SUPABASE_URL}/rest/v1/fc_captures?unit_id=in.({id_list})&select=id", headers=hdrs)
                 capture_ids = [c["id"] for c in (r.json() if r.status_code < 300 and r.text else [])]
-                # 2. Delete capture_photos referencing those captures
                 if capture_ids:
                     cap_id_list = ','.join(str(cid) for cid in capture_ids)
-                    await client.delete(
-                        f"{SUPABASE_URL}/rest/v1/fc_capture_photos?capture_id=in.({cap_id_list})",
-                        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-                    )
-                # 3. Delete captures
-                await client.delete(
-                    f"{SUPABASE_URL}/rest/v1/fc_captures?unit_id=in.({id_list})",
-                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-                )
-                # 4. Delete inspections (and inspection photos first)
-                r2 = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/fc_inspections?unit_id=in.({id_list})&select=id",
-                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-                )
+                    await client.delete(f"{SUPABASE_URL}/rest/v1/fc_capture_photos?capture_id=in.({cap_id_list})", headers=hdrs)
+                await client.delete(f"{SUPABASE_URL}/rest/v1/fc_captures?unit_id=in.({id_list})", headers=hdrs)
+
+                # 2. Get inspection IDs → delete their photos → delete inspections
+                r2 = await client.get(f"{SUPABASE_URL}/rest/v1/fc_inspections?unit_id=in.({id_list})&select=id", headers=hdrs)
                 insp_ids = [ins["id"] for ins in (r2.json() if r2.status_code < 300 and r2.text else [])]
                 if insp_ids:
                     insp_id_list = ','.join(str(iid) for iid in insp_ids)
-                    await client.delete(
-                        f"{SUPABASE_URL}/rest/v1/fc_inspection_photos?inspection_id=in.({insp_id_list})",
-                        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-                    )
-                await client.delete(
-                    f"{SUPABASE_URL}/rest/v1/fc_inspections?unit_id=in.({id_list})",
-                    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-                )
+                    await client.delete(f"{SUPABASE_URL}/rest/v1/fc_inspection_photos?inspection_id=in.({insp_id_list})", headers=hdrs)
+                await client.delete(f"{SUPABASE_URL}/rest/v1/fc_inspections?unit_id=in.({id_list})", headers=hdrs)
+
+                # 3. Delete unit visits
+                await client.delete(f"{SUPABASE_URL}/rest/v1/fc_unit_visits?unit_id=in.({id_list})", headers=hdrs)
         except Exception as e:
             logger.error(f"Cascade delete error: {e}")
 
