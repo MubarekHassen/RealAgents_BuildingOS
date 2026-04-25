@@ -436,8 +436,16 @@ def chunk_text(text: str, max_chars: int = 1800, overlap: int = 250) -> list[dic
     if buffer.strip():
         flush()
 
+    MAX_CHUNK_CHARS = 4000  # Safety cap
+
     for idx, chunk in enumerate(chunks):
         chunk["chunk_index"] = idx
+        # Cap oversized chunks
+        if len(chunk.get("content", "")) > MAX_CHUNK_CHARS:
+            original_len = len(chunk["content"])
+            chunk["content"] = chunk["content"][:MAX_CHUNK_CHARS]
+            chunk["token_count"] = max(1, MAX_CHUNK_CHARS // 4)
+            logger.warning("Chunk %d truncated from %d to %d chars", idx, original_len, MAX_CHUNK_CHARS)
     return chunks
 
 
@@ -529,4 +537,8 @@ def generate_embeddings_batch(texts: list[str], config: Optional[RAGConfig] = No
 
     # Sort by index to maintain order
     data.sort(key=lambda x: x.get("index", 0))
-    return [item["embedding"] for item in data if "embedding" in item]
+    embeddings = [item["embedding"] for item in data if "embedding" in item]
+    dropped = len(texts) - len(embeddings)
+    if dropped > 0:
+        logger.warning("Embedding batch: %d of %d items dropped (missing 'embedding' key)", dropped, len(texts))
+    return embeddings
