@@ -50,10 +50,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import anthropic
+import bcrypt
 import httpx
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fieldcapture")
@@ -74,6 +78,20 @@ HEADERS = {
 SESSION_EXPIRY_DAYS = 7
 
 
+def _validate_config():
+    missing = []
+    if not SUPABASE_URL:
+        missing.append("SUPABASE_URL")
+    if not SUPABASE_KEY:
+        missing.append("SUPABASE_SERVICE_ROLE_KEY")
+    if not ANTHROPIC_KEY:
+        missing.append("ANTHROPIC_API_KEY")
+    if missing:
+        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+
+_validate_config()
+
+
 def _safe_id(val: str) -> str:
     """Sanitize a value for use in Supabase PostgREST filters. Only allow alphanumeric, hyphens, underscores, dots, @."""
     val = str(val).strip()
@@ -84,15 +102,25 @@ def _safe_id(val: str) -> str:
     return val
 
 
+ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "https://buildingos-fieldcapture-production.up.railway.app,https://buildos.it,https://www.buildos.it,http://localhost:8000,http://localhost:3000").split(",")
+
 app = FastAPI(title="BuildingOS Field Capture", version="1.4.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"detail": "Too many requests. Please wait before trying again."})
 
 
 # ── v1.4: 13-stop room walkthrough ────────────────────────────────────────
@@ -138,7 +166,7 @@ async def sb_post(table: str, data: dict | list) -> list:
         )
         if r.status_code >= 400:
             logger.error(f"sb_post {table}: {r.status_code} {r.text}")
-            raise HTTPException(500, f"Database error: {r.text}")
+            raise HTTPException(500, "A database error occurred. Please try again.")
         return r.json() if r.text else []
 
 
@@ -171,7 +199,7 @@ async def sb_patch(table: str, filters: str, data: dict) -> list:
         )
         if r.status_code >= 400:
             logger.error(f"sb_patch {table}: {r.status_code} {r.text}")
-            raise HTTPException(500, f"Database error: {r.text}")
+            raise HTTPException(500, "A database error occurred. Please try again.")
         return r.json() if r.text else []
 
 
@@ -214,7 +242,7 @@ async def sb_upload(bucket: str, path: str, data: bytes, content_type: str = "im
             )
         if r.status_code >= 400:
             logger.error(f"Storage upload failed: {r.status_code} {r.text}")
-            raise HTTPException(500, f"Photo upload failed: {r.text}")
+            raise HTTPException(500, "A database error occurred. Please try again.")
 
     return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}"
 
@@ -222,14 +250,22 @@ async def sb_upload(bucket: str, path: str, data: bytes, content_type: str = "im
 # ── PIN hashing ─────────────────────────────────────────────────────────────
 
 def hash_pin(pin: str, email: str) -> str:
-    """SHA-256 hash a PIN with the user's email as salt."""
+    """Hash a PIN with bcrypt using email as additional context."""
     salted = f"{email.lower().strip()}:{pin}"
-    return hashlib.sha256(salted.encode("utf-8")).hexdigest()
+    return bcrypt.hashpw(salted.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_pin(pin: str, email: str, stored_hash: str) -> bool:
-    """Verify a PIN against a stored hash."""
-    return hash_pin(pin, email) == stored_hash
+    """Verify a PIN against a stored bcrypt hash."""
+    salted = f"{email.lower().strip()}:{pin}"
+    try:
+        return bcrypt.checkpw(salted.encode("utf-8"), stored_hash.encode("utf-8"))
+    except Exception:
+        # Fallback: check if it's an old SHA-256 hash for migration
+        old_hash = hashlib.sha256(salted.encode("utf-8")).hexdigest()
+        if old_hash == stored_hash:
+            return True
+        return False
 
 
 # ── Session management ──────────────────────────────────────────────────────
@@ -282,7 +318,7 @@ async def verify_session(request: Request) -> dict:
             if exp < datetime.utcnow():
                 raise HTTPException(401, "Session expired")
         except ValueError:
-            pass
+            raise HTTPException(401, "Session expired — invalid expiry date")
 
     # Load building memberships for tenant scoping
     memberships = await sb_get("fc_building_members", f"?user_id=eq.{_safe_id(session['user_id'])}&select=building_id")
@@ -333,14 +369,24 @@ def serve_app():
 
 
 @app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "app": "BuildingOS Field Capture",
-        "version": "1.4.0",
-        "supabase": bool(SUPABASE_URL),
-        "anthropic": bool(ANTHROPIC_KEY),
-    }
+async def health():
+    db_ok = False
+    try:
+        result = await sb_get("fc_users", "?select=id&limit=1")
+        db_ok = True
+    except Exception:
+        pass
+    status_code = 200 if db_ok else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ok" if db_ok else "degraded",
+            "app": "BuildingOS Field Capture",
+            "version": "1.4.0",
+            "supabase": db_ok,
+            "anthropic": bool(ANTHROPIC_KEY),
+        }
+    )
 
 
 # ── Database Migration (self-bootstrapping) ────────────────────────────────
@@ -548,6 +594,7 @@ CREATE INDEX IF NOT EXISTS idx_fc_capture_photos_capture ON fc_capture_photos(ca
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.post("/api/auth/login")
+@limiter.limit("5/minute")
 async def login_field_user(request: Request):
     """Login/register with name + email + invite code. The invite code IS the auth.
     - If user exists and has access to a building matching the invite code → session created.
