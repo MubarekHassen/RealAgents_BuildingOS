@@ -672,38 +672,45 @@ async def setup_building_for_field_capture(building_id: str, request: Request):
     created_by = body.get("created_by", "")
 
     if units:
-        # Clear existing units for this building to avoid duplicates on re-sync
-        try:
-            await sb_delete("fc_units", f"?building_id=eq.{_safe_id(building_id)}")
-        except Exception:
-            pass
-        unit_rows = [{
-            "building_id": building_id,
-            "unit_name": u.get("name", u.get("unit_name", "")),
-            "floor": u.get("floor", ""),
-            "unit_type": u.get("unit_type", "residential"),
-            "sqft": u.get("sqft"),
-            "bedrooms": u.get("bedrooms"),
-            "bathrooms": u.get("bathrooms"),
-            "notes": u.get("notes", ""),
-            "sort_order": i,
-        } for i, u in enumerate(units)]
-        await sb_post("fc_units", unit_rows)
+        # Smart upsert: only insert units that don't already exist (by unit_name)
+        # This avoids FK constraint failures when deleting units that have captures
+        existing_units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_name")
+        existing_names = {u.get("unit_name", "") for u in existing_units}
+        new_units = [u for u in units if u.get("name", u.get("unit_name", "")) not in existing_names]
+        if new_units:
+            unit_rows = [{
+                "building_id": building_id,
+                "unit_name": u.get("name", u.get("unit_name", "")),
+                "floor": u.get("floor", ""),
+                "unit_type": u.get("unit_type", "residential"),
+                "sqft": u.get("sqft"),
+                "bedrooms": u.get("bedrooms"),
+                "bathrooms": u.get("bathrooms"),
+                "notes": u.get("notes", ""),
+                "sort_order": len(existing_units) + i,
+            } for i, u in enumerate(new_units)]
+            await sb_post("fc_units", unit_rows)
+            logger.info(f"Setup: inserted {len(new_units)} new units, skipped {len(existing_names)} existing")
+        else:
+            logger.info(f"Setup: all {len(units)} units already exist, skipping insert")
 
     if equipment_types:
-        # Clear existing equipment types for this building to avoid duplicates
-        try:
-            await sb_delete("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}")
-        except Exception:
-            pass
-        type_rows = [{
-            "building_id": building_id,
-            "name": et.get("name", ""),
-            "icon": et.get("icon", "\U0001f527"),
-            "description": et.get("description", ""),
-            "sort_order": i,
-        } for i, et in enumerate(equipment_types)]
-        await sb_post("fc_equipment_types", type_rows)
+        # Smart upsert: only insert equipment types that don't already exist (by name)
+        existing_et = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&select=id,name")
+        existing_et_names = {et.get("name", "") for et in existing_et}
+        new_ets = [et for et in equipment_types if et.get("name", "") not in existing_et_names]
+        if new_ets:
+            type_rows = [{
+                "building_id": building_id,
+                "name": et.get("name", ""),
+                "icon": et.get("icon", "\U0001f527"),
+                "description": et.get("description", ""),
+                "sort_order": len(existing_et) + i,
+            } for i, et in enumerate(new_ets)]
+            await sb_post("fc_equipment_types", type_rows)
+            logger.info(f"Setup: inserted {len(new_ets)} new equipment types, skipped {len(existing_et_names)} existing")
+        else:
+            logger.info(f"Setup: all {len(equipment_types)} equipment types already exist, skipping insert")
 
     # Use invite code from the main platform if provided, otherwise generate one
     code = body.get("invite_code", "").strip().upper()
@@ -801,6 +808,21 @@ async def cleanup_building_units(building_id: str, request: Request, session: di
                 to_delete.append(u["id"])
             else:
                 seen[name] = u["id"]
+
+    # First delete related records (captures, inspections) for the units we're about to delete
+    # This avoids FK constraint failures
+    for i in range(0, len(to_delete), 30):
+        batch = to_delete[i:i+30]
+        id_list = ','.join(str(uid) for uid in batch)
+        for ref_table in ["fc_captures", "fc_inspections"]:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    await client.delete(
+                        f"{SUPABASE_URL}/rest/v1/{ref_table}?unit_id=in.({id_list})",
+                        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                    )
+            except Exception:
+                pass
 
     deleted = 0
     for i in range(0, len(to_delete), 30):
