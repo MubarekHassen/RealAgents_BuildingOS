@@ -311,6 +311,19 @@
         .chip.selected-fail { background: #ef4444; color: white; border-color: #ef4444; }
         .chip-label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px; color: #475569; }
 
+        /* ── Unknown button ── */
+        .unk-btn { display:inline-block; font-size:11px; padding:2px 8px; margin-left:8px; border:1px solid #94a3b8; border-radius:12px; background:#f1f5f9; color:#475569; cursor:pointer; vertical-align:middle; }
+        .unk-btn:active { background:#e2e8f0; }
+
+        /* ── Unit progress bar ── */
+        .unit-progress { height:4px; background:#e2e8f0; border-radius:2px; margin-top:4px; overflow:hidden; }
+        .unit-progress-fill { height:100%; background:#059669; border-radius:2px; transition:width 0.3s; }
+        .unit-pct { font-size:11px; color:#059669; font-weight:600; }
+        .unit-skip-badge { font-size:10px; color:#d97706; background:#fef3c7; padding:1px 6px; border-radius:8px; margin-left:4px; }
+
+        /* ── Auto-save indicator ── */
+        .autosave-indicator { position:fixed; top:60px; right:12px; font-size:11px; color:#059669; background:rgba(255,255,255,0.95); padding:4px 10px; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,0.15); z-index:100; display:none; }
+
         /* ── Cleanliness rating ── */
         .rating-group { display: flex; gap: 6px; margin-bottom: 16px; }
         .rating-btn {
@@ -686,27 +699,23 @@
 
             <div class="card">
                 <div class="input-group">
-                    <label>Brand</label>
+                    <label>Brand / Manufacturer <button class="unk-btn" onclick="setUnknown('fieldBrand')">Unknown</button></label>
                     <input type="text" id="fieldBrand" placeholder="e.g. Goodman, Carrier, Rheem">
                 </div>
                 <div class="input-group">
-                    <label>Manufacturer</label>
-                    <input type="text" id="fieldMake" placeholder="e.g. Daikin (if different from brand)">
-                </div>
-                <div class="input-group">
-                    <label>Model Name</label>
+                    <label>Model Name <button class="unk-btn" onclick="setUnknown('fieldModelName')">Unknown</button></label>
                     <input type="text" id="fieldModelName">
                 </div>
                 <div class="input-group">
-                    <label>Model Number</label>
+                    <label>Model Number <button class="unk-btn" onclick="setUnknown('fieldModelNumber')">Unknown</button></label>
                     <input type="text" id="fieldModelNumber">
                 </div>
                 <div class="input-group">
-                    <label>Serial Number</label>
+                    <label>Serial Number <button class="unk-btn" onclick="setUnknown('fieldSerial')">Unknown</button></label>
                     <input type="text" id="fieldSerial">
                 </div>
                 <div class="input-group">
-                    <label>Year</label>
+                    <label>Year <button class="unk-btn" onclick="setUnknown('fieldYear')">Unknown</button></label>
                     <input type="text" id="fieldYear" inputmode="numeric">
                 </div>
                 <span class="chip-label">Condition</span>
@@ -747,12 +756,8 @@
                 <input type="text" id="editSubType" placeholder="e.g. Condenser, Tankless, Main Panel">
             </div>
             <div class="input-group">
-                <label>Brand</label>
+                <label>Brand / Manufacturer <button class="unk-btn" onclick="setUnknown('editBrand')">Unknown</button></label>
                 <input type="text" id="editBrand">
-            </div>
-            <div class="input-group">
-                <label>Manufacturer</label>
-                <input type="text" id="editMake">
             </div>
             <div class="input-group">
                 <label>Model Name</label>
@@ -796,6 +801,7 @@
     <div class="spinner"></div>
     <p id="loadingText">Loading...</p>
 </div>
+<div class="autosave-indicator" id="autosaveIndicator">&#10003; Auto-saved</div>
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
@@ -842,6 +848,8 @@
         // Chip selections for inspection
         chipValues: {},
         currentVisit: null,
+        // Skip tracking per unit — { unitId: { equipTypeId: true } }
+        skippedEquipment: {},
     };
 
     // 13-stop room guide
@@ -1136,16 +1144,19 @@
         document.getElementById('unitListSubtitle').textContent = inspected + ' of ' + state.units.length + ' units inspected';
 
         document.getElementById('unitList').innerHTML = filtered.map(u => {
+            const prog = getUnitProgress(u.id);
             const isInspected = state.inspectedUnits[u.id];
-            const cls = isInspected ? 'status-complete' : 'status-pending';
-            const label = isInspected ? '&#10003;' : '&#8212;';
-            const badgeHtml = isInspected
+            const cls = prog.pct === 100 ? 'status-complete' : (prog.pct > 0 ? 'status-in-progress' : 'status-pending');
+            const label = prog.pct === 100 ? '&#10003;' : (prog.pct > 0 ? '&#8226;' : '&#8212;');
+            const badgeHtml = prog.pct === 100
                 ? '<span class="inspection-badge inspection-badge-done">Done</span>'
-                : '<span class="inspection-badge inspection-badge-pending">Pending</span>';
+                : (prog.pct > 0 ? `<span class="inspection-badge" style="background:#dbeafe;color:#1e40af;">${prog.pct}%</span>` : '<span class="inspection-badge inspection-badge-pending">Pending</span>');
+            const skipHtml = prog.skippedCount > 0 ? `<span class="unit-skip-badge">${prog.skippedCount} skipped</span>` : '';
+            const progressBar = prog.pct > 0 && prog.pct < 100 ? `<div class="unit-progress"><div class="unit-progress-fill" style="width:${prog.pct}%"></div></div>` : '';
             return `<div class="unit-card" onclick="openUnitForInspection('${u.id}')">
                 <div class="unit-status ${cls}">${label}</div>
                 <div class="unit-info"><div class="unit-name">${u.unit_name}</div>
-                <div class="unit-meta">${u.floor ? 'Floor '+u.floor+' &middot; ' : ''}${u.unit_type||''} ${badgeHtml}</div></div>
+                <div class="unit-meta">${u.floor ? 'Floor '+u.floor+' &middot; ' : ''}${u.unit_type||''} ${badgeHtml}${skipHtml}</div>${progressBar}</div>
                 <div class="unit-arrow">&#8250;</div></div>`;
         }).join('');
     }
@@ -1282,18 +1293,22 @@
             saveInspection('complete');
             return;
         }
+        // Auto-save draft when moving to next step
+        autoSaveDraft();
         state.wizardStep = Math.min(state.wizardStep + 1, WIZARD_STEPS.length - 1);
         renderWizard();
         window.scrollTo(0, 0);
     }
 
     function wizardBack() {
+        autoSaveDraft();
         state.wizardStep = Math.max(state.wizardStep - 1, 0);
         renderWizard();
         window.scrollTo(0, 0);
     }
 
     function wizardGoTo(step) {
+        autoSaveDraft();
         state.wizardStep = step;
         renderWizard();
         window.scrollTo(0, 0);
@@ -1419,29 +1434,38 @@
             }
         }
 
+        const skipped = state.skippedEquipment[state.currentUnit.id] || {};
         document.getElementById('equipInspList').innerHTML = uniqueTypes.map(et => {
             // Find ALL captures for this equipment type name (across duplicate type IDs)
             const typeIds = state.equipTypes.filter(t => t.name === et.name).map(t => t.id);
             const captures = unitCaptures.filter(c => typeIds.includes(c.equipment_type_id));
             const isDone = captures.length > 0;
+            const isSkipped = typeIds.some(tid => skipped[tid]);
             const capture = captures[0];
             let statusText = 'Tap to capture photo + tag info';
             if (isDone) {
-                const parts = [capture.brand, capture.model_name].filter(Boolean);
+                const parts = [capture.make, capture.model_name].filter(Boolean);
                 statusText = parts.length ? parts.join(' ') : 'Captured';
                 if (captures.length > 1) statusText += ` (+${captures.length - 1} more)`;
+            } else if (isSkipped) {
+                statusText = 'Skipped — tap to capture later';
             }
             const photoCount = captures.reduce((sum, c) => sum + (c.photos?.length || 1), 0);
-            return `<div class="equip-insp-card ${isDone ? 'done' : ''}" onclick="${isDone ? `editCapture('${capture.id}')` : `startCapture('${et.id}')`}">
+            const capturedAt = capture ? new Date(capture.created_at).toLocaleDateString() : '';
+            const capturedBy = capture ? (capture.captured_by_name || '') : '';
+            const stampHtml = isDone && (capturedAt || capturedBy) ? `<div style="font-size:10px;color:#94a3b8;margin-top:1px;">${capturedBy ? capturedBy+' · ' : ''}${capturedAt}</div>` : '';
+            return `<div class="equip-insp-card ${isDone ? 'done' : ''}" onclick="${isDone ? `editCapture('${capture.id}')` : `startCapture('${et.id}')`}" style="${isSkipped && !isDone ? 'border-color:#d97706;background:#fffbeb;' : ''}">
                 <div class="equip-insp-icon">${et.icon || '\uD83D\uDD27'}</div>
                 <div class="equip-insp-info">
                     <div class="equip-insp-name">${et.name}</div>
-                    <div class="equip-insp-status ${isDone ? 'captured' : ''}">${isDone ? '&#10003; ' : ''}${statusText}</div>
+                    <div class="equip-insp-status ${isDone ? 'captured' : ''}">${isDone ? '&#10003; ' : isSkipped ? '\u23ED ' : ''}${statusText}</div>
                     ${isDone && photoCount > 0 ? `<div style="font-size:11px;color:#206A8A;margin-top:2px;">\uD83D\uDCF7 ${photoCount} photo${photoCount > 1 ? 's' : ''}</div>` : ''}
+                    ${stampHtml}
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
-                    <div class="equip-insp-btn ${isDone ? 'done-badge' : 'capture'}">${isDone ? '&#10003; Done' : 'Capture'}</div>
+                    <div class="equip-insp-btn ${isDone ? 'done-badge' : 'capture'}">${isDone ? '&#10003; Done' : isSkipped ? '\u23ED Skipped' : 'Capture'}</div>
                     ${isDone ? `<div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();startCapture('${et.id}')">+ Add photo</div>` : ''}
+                    ${!isDone && !isSkipped ? `<div style="font-size:11px;color:#d97706;cursor:pointer;" onclick="event.stopPropagation();skipEquipment('${et.id}')">Skip</div>` : ''}
                 </div>
             </div>`;
         }).join('');
@@ -1457,7 +1481,7 @@
         if (hvacCapture) {
             const hvacField = document.getElementById('insp_hvac_info');
             if (hvacField && !hvacField.value) {
-                const parts = [hvacCapture.brand, hvacCapture.model_name, hvacCapture.year_manufactured].filter(Boolean);
+                const parts = [hvacCapture.make, hvacCapture.model_name, hvacCapture.manufacture_year].filter(Boolean);
                 hvacField.value = parts.join(' ') || '';
             }
         }
@@ -1468,7 +1492,7 @@
         if (whCapture) {
             const whField = document.getElementById('insp_wh_info');
             if (whField && !whField.value) {
-                const parts = [whCapture.brand, whCapture.model_name, whCapture.year_manufactured].filter(Boolean);
+                const parts = [whCapture.make, whCapture.model_name, whCapture.manufacture_year].filter(Boolean);
                 whField.value = parts.join(' ') || '';
             }
         }
@@ -1479,7 +1503,7 @@
         if (epCapture) {
             const epField = document.getElementById('insp_elec_panel');
             if (epField && !epField.value) {
-                const parts = [epCapture.brand, epCapture.model_name].filter(Boolean);
+                const parts = [epCapture.make, epCapture.model_name].filter(Boolean);
                 epField.value = parts.join(' ') || '';
             }
         }
@@ -1782,7 +1806,7 @@
         document.getElementById('captureStep3').style.display = 'block';
         document.getElementById('aiResultBox').style.display = 'none';
 
-        document.getElementById('fieldBrand').value = id.brand || '';
+        document.getElementById('fieldBrand').value = id.brand || id.make || '';
         document.getElementById('fieldMake').value = '';
         document.getElementById('fieldModelName').value = '';
         document.getElementById('fieldModelNumber').value = '';
@@ -1823,7 +1847,7 @@
         document.getElementById('captureStep3').style.display = 'block';
         document.getElementById('aiResultBox').style.display = 'none';
         document.getElementById('specsArea').style.display = 'none';
-        ['fieldBrand','fieldMake','fieldModelName','fieldModelNumber','fieldSerial','fieldYear','fieldNotes'].forEach(id => document.getElementById(id).value = '');
+        ['fieldBrand','fieldModelName','fieldModelNumber','fieldSerial','fieldYear','fieldNotes'].forEach(id => document.getElementById(id).value = '');
         state.chipValues.equip_condition = '';
         buildChipGroup('chipEquipCondition', ['excellent', 'good', 'fair', 'poor', 'non_functional'], 'condition');
         renderPhotoThumbs();
@@ -1890,8 +1914,8 @@
             state.lastCaptureData = data.capture;
 
             const c = data.capture || {};
-            document.getElementById('fieldBrand').value = c.brand || '';
-            document.getElementById('fieldMake').value = c.make || '';
+            document.getElementById('fieldBrand').value = c.make || c.brand || '';
+            // make merged into brand field
             document.getElementById('fieldModelName').value = c.model_name || '';
             document.getElementById('fieldModelNumber').value = c.model_number || '';
             document.getElementById('fieldSerial').value = c.serial_number || '';
@@ -1952,8 +1976,7 @@
         const subType = getSelectedSubType();
         const conditionRating = state.chipValues.equip_condition || '';
         const captureData = {
-            brand: document.getElementById('fieldBrand').value,
-            make: document.getElementById('fieldMake').value,
+            make: document.getElementById('fieldBrand').value,
             model_name: document.getElementById('fieldModelName').value,
             model_number: document.getElementById('fieldModelNumber').value,
             serial_number: document.getElementById('fieldSerial').value,
@@ -2017,8 +2040,8 @@
         document.getElementById('editCaptureMeta').textContent = 'Unit: ' + (state.currentUnit?.unit_name || '');
 
         document.getElementById('editSubType').value = capture.sub_type || '';
-        document.getElementById('editBrand').value = capture.brand || '';
-        document.getElementById('editMake').value = capture.make || '';
+        document.getElementById('editBrand').value = capture.make || '';
+        // editMake removed — merged with Brand
         document.getElementById('editModelName').value = capture.model_name || '';
         document.getElementById('editModelNumber').value = capture.model_number || '';
         document.getElementById('editSerial').value = capture.serial_number || '';
@@ -2072,8 +2095,7 @@
         try {
             await api(`/api/captures/${state.editingCapture.id}`, {
                 sub_type: document.getElementById('editSubType').value,
-                brand: document.getElementById('editBrand').value,
-                make: document.getElementById('editMake').value,
+                make: document.getElementById('editBrand').value,
                 model_name: document.getElementById('editModelName').value,
                 model_number: document.getElementById('editModelNumber').value,
                 serial_number: document.getElementById('editSerial').value,
@@ -2150,6 +2172,66 @@
     function showLoading(text) { document.getElementById('loadingText').textContent = text || 'Loading...'; document.getElementById('loadingOverlay').style.display = 'flex'; }
     function hideLoading() { document.getElementById('loadingOverlay').style.display = 'none'; }
     function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
+
+    // ── Unknown button handler ────────────
+    function setUnknown(fieldId) {
+        const el = document.getElementById(fieldId);
+        if (el) { el.value = 'Unknown'; el.style.color = '#94a3b8'; el.onfocus = () => { if (el.value === 'Unknown') { el.value = ''; el.style.color = ''; } }; }
+    }
+
+    // ── Skip equipment handler ────────────
+    function skipEquipment(equipTypeId) {
+        if (!state.currentUnit) return;
+        const uid = state.currentUnit.id;
+        if (!state.skippedEquipment[uid]) state.skippedEquipment[uid] = {};
+        state.skippedEquipment[uid][equipTypeId] = true;
+        renderEquipInspList();
+        toast('Skipped — marked for follow-up');
+    }
+
+    // ── Auto-save indicator flash ─────────
+    function flashAutosave() {
+        const el = document.getElementById('autosaveIndicator');
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 2000);
+    }
+
+    // ── Auto-save inspection draft on step change ──
+    async function autoSaveDraft() {
+        if (!state.currentUnit) return;
+        try {
+            await saveInspection('draft');
+            flashAutosave();
+        } catch (e) { /* silent fail */ }
+    }
+
+    // ── Unit completion percentage ────────
+    function getUnitProgress(unitId) {
+        const uniqueTypes = [];
+        const seen = {};
+        for (const et of state.equipTypes) {
+            if (!seen[et.name]) { seen[et.name] = true; uniqueTypes.push(et); }
+        }
+        const unitCaptures = state.captures.filter(c => c.unit_id === unitId);
+        const skipped = state.skippedEquipment[unitId] || {};
+        let done = 0;
+        let skippedCount = 0;
+        for (const et of uniqueTypes) {
+            const typeIds = state.equipTypes.filter(t => t.name === et.name).map(t => t.id);
+            const hasCap = unitCaptures.some(c => typeIds.includes(c.equipment_type_id));
+            const isSkipped = typeIds.some(tid => skipped[tid]);
+            if (hasCap || isSkipped) done++;
+            if (isSkipped && !hasCap) skippedCount++;
+        }
+        const isInspected = state.inspectedUnits[unitId];
+        // Total steps = equipment types + inspection (1 for full wizard)
+        const equipTotal = uniqueTypes.length;
+        const equipDone = done;
+        const inspDone = isInspected ? 1 : 0;
+        const total = equipTotal + 1;
+        const completed = equipDone + inspDone;
+        return { pct: Math.round((completed / total) * 100), skippedCount, equipDone, equipTotal, isInspected };
+    }
 
     // ── Init ───────────────────────────────
     (async function init() {
