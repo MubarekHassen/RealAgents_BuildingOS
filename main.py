@@ -72,7 +72,7 @@ MAX_ANALYTICS_EVENTS = 10000
 OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", secrets.token_hex(32))
 OAUTH_STATE_TTL = 600  # 10 minutes
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
-ALLOWED_REDIRECT_DOMAINS = {"buildos.it", "www.buildos.it", "localhost", "127.0.0.1", "real-agents-building-os.vercel.app", "mvp-mvp1.vercel.app"}
+ALLOWED_REDIRECT_DOMAINS = {"buildos.it", "www.buildos.it", "localhost", "127.0.0.1", "real-agents-building-os.vercel.app", "mvp-mvp1.vercel.app", "buildingos-production.up.railway.app"}
 
 
 # ── SSRF Protection (Item 9) ──
