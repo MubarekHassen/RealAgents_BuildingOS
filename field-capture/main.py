@@ -1418,6 +1418,12 @@ async def capture_equipment(
             ai_confidence = "failed"
 
     # 3. Store capture record
+    # Note: fc_captures table does NOT have 'brand' or 'sub_type' columns
+    # Map brand → make (same concept), sub_type → additional_specs
+    ai_make = ai_data.get("brand") or ai_data.get("make") or ""
+    ai_specs = ai_data.get("additional_specs", {})
+    if sub_type:
+        ai_specs["sub_type"] = sub_type
     capture_record = {
         "building_id": building_id,
         "unit_id": unit_id,
@@ -1426,18 +1432,16 @@ async def capture_equipment(
         "walk_session_id": walk_session_id,
         "captured_by": user_id or session.get("user_id"),
         "captured_by_name": user_name,
-        "sub_type": sub_type,                 # v1.3
         "photo_url": photo_url,
         "photo_storage_path": storage_path,
         "photo_filename": filename,
-        "brand": ai_data.get("brand"),        # v1.3
-        "make": ai_data.get("make"),
+        "make": ai_make,
         "model_name": ai_data.get("model_name"),
         "model_number": ai_data.get("model_number"),
         "serial_number": ai_data.get("serial_number"),
         "manufacture_year": ai_data.get("manufacture_year"),
         "description": ai_data.get("description"),
-        "additional_specs": ai_data.get("additional_specs", {}),
+        "additional_specs": ai_specs,
         "ai_confidence": ai_confidence,
         "ai_raw_response": ai_raw,
         "condition_rating": condition_rating,
@@ -1528,13 +1532,22 @@ async def list_capture_photos(capture_id: str, session: dict = Depends(verify_se
 
 @app.patch("/api/captures/{capture_id}")
 async def update_capture(capture_id: str, request: Request, session: dict = Depends(verify_session)):
-    """Update/correct a capture — v1.3: supports edit-after-save, brand field."""
+    """Update/correct a capture — v1.3: supports edit-after-save."""
     body = await request.json()
+    # Note: fc_captures has no 'brand' or 'sub_type' columns — map them
+    if "brand" in body and "make" not in body:
+        body["make"] = body.pop("brand")
+    elif "brand" in body:
+        body.pop("brand")
+    if "sub_type" in body:
+        specs = body.get("additional_specs", {})
+        specs["sub_type"] = body.pop("sub_type")
+        body["additional_specs"] = specs
     allowed = [
-        "brand", "make", "model_name", "model_number", "serial_number",
+        "make", "model_name", "model_number", "serial_number",
         "manufacture_year", "description", "condition_rating", "condition_notes",
         "verification_notes", "manually_verified", "tag_readable",
-        "sub_type", "additional_specs",  # v1.3: expanded
+        "additional_specs",
     ]
     update = {k: v for k, v in body.items() if k in allowed}
     if body.get("manually_verified"):
@@ -1551,6 +1564,11 @@ async def manual_capture(building_id: str, unit_id: str, request: Request, sessi
     """Manual capture when tag is unreadable."""
     _check_building_access(session, building_id)
     body = await request.json()
+    # Note: fc_captures table does NOT have 'brand' or 'sub_type' columns
+    manual_make = body.get("brand") or body.get("make") or ""
+    manual_specs = {}
+    if body.get("sub_type"):
+        manual_specs["sub_type"] = body.get("sub_type")
     capture_record = {
         "building_id": building_id,
         "unit_id": unit_id,
@@ -1559,14 +1577,13 @@ async def manual_capture(building_id: str, unit_id: str, request: Request, sessi
         "unit_visit_id": body.get("unit_visit_id"),
         "captured_by": body.get("user_id") or session.get("user_id"),
         "captured_by_name": body.get("user_name", ""),
-        "sub_type": body.get("sub_type"),     # v1.3
-        "brand": body.get("brand"),           # v1.3
-        "make": body.get("make"),
+        "make": manual_make,
         "model_name": body.get("model_name"),
         "model_number": body.get("model_number"),
         "serial_number": body.get("serial_number"),
         "manufacture_year": body.get("manufacture_year"),
         "description": body.get("description"),
+        "additional_specs": manual_specs if manual_specs else {},
         "condition_rating": body.get("condition_rating"),
         "condition_notes": body.get("condition_notes"),
         "tag_readable": False,
@@ -1961,7 +1978,7 @@ async def building_progress(building_id: str, session: dict = Depends(verify_ses
     _check_building_access(session, building_id)
     units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_name")
     types = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&select=id,name,icon")
-    captures = await sb_get("fc_captures", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_id,equipment_type_id,captured_by_name,created_at,make,brand,model_name,ai_confidence,manually_verified")
+    captures = await sb_get("fc_captures", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_id,equipment_type_id,captured_by_name,created_at,make,model_name,ai_confidence,manually_verified")
 
     total_units = len(units)
     total_types = len(types)
@@ -2020,7 +2037,7 @@ async def list_captures(building_id: str, unit_id: str = None, session: dict = D
 
 @app.get("/api/buildings/{building_id}/export/csv")
 async def export_csv(building_id: str, session: dict = Depends(verify_session)):
-    """Export all captures as CSV — v1.3: includes brand, sub_type, timestamp."""
+    """Export all captures as CSV — includes sub_type, timestamp."""
     _check_building_access(session, building_id)
     captures = await sb_get("fc_captures", f"?building_id=eq.{_safe_id(building_id)}&order=created_at")
     units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}")
@@ -2029,16 +2046,15 @@ async def export_csv(building_id: str, session: dict = Depends(verify_session)):
     unit_map = {u["id"]: u for u in units}
     type_map = {t["id"]: t for t in types}
 
-    # v1.3: added Brand, Sub-Type, Captured At columns
-    lines = ["Unit,Equipment Type,Sub-Type,Brand,Manufacturer,Model,Model Number,Serial Number,Year,Condition,Description,Captured By,Captured At,Verified"]
+    lines = ["Unit,Equipment Type,Sub-Type,Brand/Make,Model,Model Number,Serial Number,Year,Condition,Description,Captured By,Captured At,Verified"]
     for c in captures:
         unit = unit_map.get(c.get("unit_id"), {})
         etype = type_map.get(c.get("equipment_type_id"), {})
+        specs = c.get("additional_specs") or {}
         line = ",".join([
             _csv_escape(unit.get("unit_name", "")),
             _csv_escape(etype.get("name", "")),
-            _csv_escape(c.get("sub_type", "")),
-            _csv_escape(c.get("brand", "")),
+            _csv_escape(specs.get("sub_type", "")),
             _csv_escape(c.get("make", "")),
             _csv_escape(c.get("model_name", "")),
             _csv_escape(c.get("model_number", "")),
