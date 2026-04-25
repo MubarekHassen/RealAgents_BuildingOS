@@ -842,20 +842,33 @@ async def cleanup_building_units(building_id: str, request: Request, session: di
             logger.error(f"Cascade delete error: {e}")
 
     deleted = 0
+    delete_errors = []
     for i in range(0, len(to_delete), 30):
         batch = to_delete[i:i+30]
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
+                # Try deleting one at a time if batch fails
+                id_list = ','.join(str(uid) for uid in batch)
                 r = await client.delete(
-                    f"{SUPABASE_URL}/rest/v1/fc_units?id=in.({','.join(str(uid) for uid in batch)})",
+                    f"{SUPABASE_URL}/rest/v1/fc_units?id=in.({id_list})",
                     headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
                 )
                 if r.status_code < 300:
                     deleted += len(batch)
                 else:
-                    logger.error(f"Batch delete {r.status_code}: {r.text[:200]}")
+                    delete_errors.append(f"batch({len(batch)}): {r.status_code} {r.text[:300]}")
+                    # Fall back to individual deletes
+                    for uid in batch:
+                        r2 = await client.delete(
+                            f"{SUPABASE_URL}/rest/v1/fc_units?id=eq.{uid}",
+                            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                        )
+                        if r2.status_code < 300:
+                            deleted += 1
+                        else:
+                            delete_errors.append(f"single({uid[:8]}): {r2.status_code} {r2.text[:200]}")
         except Exception as e:
-            logger.error(f"Batch delete error: {e}")
+            delete_errors.append(f"exception: {str(e)[:200]}")
 
     remaining = len(all_units) - deleted
 
@@ -884,7 +897,8 @@ async def cleanup_building_units(building_id: str, request: Request, session: di
             pass
 
     return {"deleted": deleted, "remaining": remaining, "building_id": building_id,
-            "equipment_types_deduped": et_deleted, "equipment_types_remaining": len(et_seen)}
+            "equipment_types_deduped": et_deleted, "equipment_types_remaining": len(et_seen),
+            "to_delete_count": len(to_delete), "errors": delete_errors[:10]}
 
 
 @app.delete("/api/buildings/{building_id}/invite-codes")
