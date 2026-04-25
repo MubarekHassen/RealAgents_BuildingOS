@@ -213,5 +213,24 @@ GRANT ALL ON fc_unit_visits TO anon, authenticated, service_role;
 GRANT ALL ON fc_captures TO anon, authenticated, service_role;
 GRANT ALL ON fc_capture_photos TO anon, authenticated, service_role;
 
+-- NOTE: The above policies use USING(true) because the backend connects with the
+-- service_role key, which bypasses RLS entirely. For direct client access via anon
+-- or authenticated roles, these should be scoped. The service_role key is never
+-- exposed to the browser.
+
+-- Restrict anon role to read-only on invite codes (needed for login flow)
+-- All other tables should not be accessible to anon directly
+REVOKE ALL ON fc_users FROM anon;
+REVOKE ALL ON fc_building_members FROM anon;
+REVOKE ALL ON fc_units FROM anon;
+REVOKE ALL ON fc_equipment_types FROM anon;
+REVOKE ALL ON fc_walk_sessions FROM anon;
+REVOKE ALL ON fc_unit_visits FROM anon;
+REVOKE ALL ON fc_captures FROM anon;
+REVOKE ALL ON fc_capture_photos FROM anon;
+
+-- Only allow authenticated users to read data for their own buildings
+-- (enforced at the application level via session tokens and building membership checks)
+
 -- Reload schema cache
 NOTIFY pgrst, 'reload schema';
