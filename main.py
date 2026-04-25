@@ -1,6 +1,6 @@
 """
 BuildingOS Backend — Real AI Document Analysis
-Uses Claude claude-sonnet-4-6 to extract 10 categories of building intelligence
+Uses Claude AI to extract 10 categories of building intelligence
 from uploaded PDFs, floor plans, specs, and drawings.
 
 Run with:
@@ -10,15 +10,21 @@ Run with:
 """
 
 import asyncio
+import hashlib
+import hmac
+import ipaddress
 import os
 import base64
 import json
+import json as json_mod
 import re
 import logging
 import io
 import html
 import secrets
+import socket
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List, Any
@@ -31,8 +37,165 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 load_dotenv(override=True)
+
+# ── Structured JSON Logging (Item 36) ──
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_data = {
+            "timestamp": self.formatTime(record),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info and record.exc_info[0]:
+            log_data["exception"] = self.formatException(record.exc_info)
+        return json_mod.dumps(log_data)
+
+handler = logging.StreamHandler()
+handler.setFormatter(JSONFormatter())
+logging.root.handlers = [handler]
+logging.root.setLevel(logging.INFO)
+
+# ── Centralized Configuration (Item 35) ──
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL_PRIMARY = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+ANTHROPIC_MODEL_ADVANCED = os.getenv("ANTHROPIC_MODEL_ADVANCED", "claude-sonnet-4-6")
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "500")) * 1024 * 1024
+MAX_TOKEN_STORE = 1000
+MAX_OAUTH_STATES = 500
+MAX_ANALYTICS_EVENTS = 10000
+OAUTH_STATE_SECRET = os.getenv("OAUTH_STATE_SECRET", secrets.token_hex(32))
+OAUTH_STATE_TTL = 600  # 10 minutes
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
+ALLOWED_REDIRECT_DOMAINS = {"buildos.it", "www.buildos.it", "localhost", "127.0.0.1", "real-agents-building-os.vercel.app", "mvp-mvp1.vercel.app"}
+
+
+# ── SSRF Protection (Item 9) ──
+def _is_private_url(url: str) -> bool:
+    """Block requests to private/localhost IPs to prevent SSRF."""
+    try:
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return True
+        # Block obvious localhost
+        if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+            return True
+        # Resolve and check IP
+        for info in socket.getaddrinfo(hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return True
+    except Exception:
+        return True  # Block if we can't resolve
+    return False
+
+
+# ── Upload Size Enforcement (Item 14) ──
+async def read_upload_with_limit(file: UploadFile, max_bytes: int = MAX_UPLOAD_BYTES) -> bytes:
+    """Read an upload file in chunks, enforcing a size limit before loading fully into memory."""
+    chunks = []
+    total = 0
+    while True:
+        chunk = await file.read(64 * 1024)  # 64KB chunks
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(400, f"File too large. Maximum size is {max_bytes // (1024*1024)}MB.")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+# ── Magic Byte Validation (Item 27) ──
+MAGIC_BYTES = {
+    b"%PDF": "application/pdf",
+    b"\x89PNG": "image/png",
+    b"\xff\xd8\xff": "image/jpeg",
+    b"RIFF": "image/webp",  # WebP starts with RIFF
+    b"PK\x03\x04": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+def validate_file_magic(file_bytes: bytes, claimed_type: str) -> None:
+    """Verify file content matches claimed Content-Type using magic bytes."""
+    if len(file_bytes) < 4:
+        raise HTTPException(400, "File too small to validate")
+    header = file_bytes[:8]
+    for magic, expected_type in MAGIC_BYTES.items():
+        if header.startswith(magic):
+            return  # Found a valid file type
+    # For CSV/text files, check if it's valid text
+    if claimed_type in ("text/csv", "application/csv", "text/plain"):
+        try:
+            file_bytes[:1000].decode("utf-8")
+            return
+        except UnicodeDecodeError:
+            pass
+    logger.warning("File magic bytes don't match any known type. Claimed: %s, Header: %s", claimed_type, header[:8].hex())
+
+
+# ── Password Strength Validation (Item 28) ──
+def validate_password_strength(password: str) -> None:
+    """Enforce minimum password strength."""
+    if len(password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    if not any(c.isupper() for c in password):
+        raise HTTPException(400, "Password must contain at least one uppercase letter")
+    if not any(c.isdigit() for c in password):
+        raise HTTPException(400, "Password must contain at least one number")
+
+
+# ── OAuth State Signing (Item 15) ──
+def create_oauth_state(provider: str) -> str:
+    """Create a signed, time-limited OAuth state token."""
+    ts = str(int(time.time()))
+    nonce = secrets.token_hex(16)
+    payload = f"{provider}:{ts}:{nonce}"
+    sig = hmac.new(OAUTH_STATE_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    state = f"{payload}:{sig}"
+    _oauth_states[state] = provider
+    # Trim old states (Item 13)
+    if len(_oauth_states) > MAX_OAUTH_STATES:
+        _oauth_states.clear()
+    return state
+
+def verify_oauth_state(state: str) -> str:
+    """Verify OAuth state and return provider. Raises on invalid/expired."""
+    parts = state.split(":")
+    if len(parts) != 4:
+        raise HTTPException(400, "Invalid OAuth state")
+    provider, ts, nonce, sig = parts
+    expected = hmac.new(OAUTH_STATE_SECRET.encode(), f"{provider}:{ts}:{nonce}".encode(), hashlib.sha256).hexdigest()[:16]
+    if not hmac.compare_digest(sig, expected):
+        raise HTTPException(400, "Invalid OAuth state signature")
+    if int(time.time()) - int(ts) > OAUTH_STATE_TTL:
+        raise HTTPException(400, "OAuth state expired")
+    _oauth_states.pop(state, None)
+    return provider
+
+
+# ── BASE_URL Validation (Item 24) ──
+def _validate_base_url():
+    parsed = urlparse(BASE_URL)
+    if parsed.hostname not in ALLOWED_REDIRECT_DOMAINS:
+        logger.warning("BASE_URL hostname '%s' not in allowed domains -- OAuth redirects may be unsafe", parsed.hostname)
+
+_validate_base_url()
+
+
+# ── Config Validation (Item 29) ──
+def _validate_config():
+    """Fail fast if critical config is missing."""
+    required = {"ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", "")}
+    missing = [k for k, v in required.items() if not v.strip()]
+    if missing:
+        raise RuntimeError(f"Missing required config: {', '.join(missing)}")
+
+_validate_config()
 
 
 # ── Helper: safely extract text from Anthropic content blocks ──
@@ -82,7 +245,6 @@ from document_qa import (
     upload_file_to_storage,
 )
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("buildingos")
 
 # ── Optional OAuth libraries (graceful fallback if not installed) ──
@@ -103,10 +265,28 @@ except ImportError:
     logger.warning("msal not installed — Microsoft/OneDrive integration disabled")
 
 # ── In-memory token store (replace with DB for production) ──
+# Size caps applied in Item 13 — MAX_TOKEN_STORE / MAX_OAUTH_STATES
 _tokens: dict = {}
 _oauth_states: dict = {}  # state -> provider mapping for CSRF protection
 
 app = FastAPI(title="BuildingOS API", version="1.0.0")
+
+# ── Rate Limiting (Item 26) ──
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"detail": "Too many requests. Please wait before trying again."})
+
+# ── Request ID Middleware (Item 36) ──
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4())[:8])
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 # ── CORS — restrict to known origins in production ──
 ALLOWED_ORIGINS = os.getenv(
@@ -460,7 +640,7 @@ def analyze_spreadsheet_bytes(file_bytes: bytes, filename: str, content_type: st
     client = anthropic.Anthropic(api_key=api_key)
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=ANTHROPIC_MODEL_PRIMARY,
             max_tokens=16384,
             messages=[{
                 "role": "user",
@@ -475,7 +655,8 @@ def analyze_spreadsheet_bytes(file_bytes: bytes, filename: str, content_type: st
     except anthropic.RateLimitError:
         raise HTTPException(status_code=429, detail="Rate limit reached. Please wait and retry.")
     except anthropic.APIError as exc:
-        raise HTTPException(status_code=502, detail=f"AI analysis failed: {str(exc)}")
+        logger.error("Anthropic API error in spreadsheet analysis: %s", exc)
+        raise HTTPException(status_code=502, detail="AI analysis failed. Please try again.")
 
     raw_text = _get_text(response.content[0])
     try:
@@ -487,7 +668,7 @@ def analyze_spreadsheet_bytes(file_bytes: bytes, filename: str, content_type: st
         "filename": filename,
         "file_size_kb": round(len(file_bytes) / 1024, 1),
         "content_type": content_type,
-        "model": "claude-haiku-4-5-20251001",
+        "model": ANTHROPIC_MODEL_PRIMARY,
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
         "source_type": "spreadsheet",
@@ -504,7 +685,7 @@ def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_
     try:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=ANTHROPIC_MODEL_PRIMARY,
             max_tokens=16384,
             messages=[
                 {
@@ -523,13 +704,13 @@ def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_
         raise HTTPException(status_code=429, detail="Anthropic rate limit reached. Please wait a moment and retry.")
     except anthropic.BadRequestError as exc:
         logger.error("Anthropic bad request: %s", exc)
-        raise HTTPException(status_code=400, detail=f"Document could not be processed: {str(exc)}")
+        raise HTTPException(status_code=400, detail="Document could not be processed. Please check the file format.")
     except anthropic.APIError as exc:
         logger.error("Anthropic API error: %s", exc)
-        raise HTTPException(status_code=502, detail=f"AI analysis failed: {str(exc)}")
+        raise HTTPException(status_code=502, detail="AI analysis failed. Please try again.")
     except Exception as exc:
         logger.error("Unexpected error calling Claude: %s: %s", type(exc).__name__, exc)
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {type(exc).__name__}: {str(exc)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred. Please try again.")
 
     raw_text = _get_text(response.content[0])
     logger.info("Claude response length: %s chars", len(raw_text))
@@ -547,7 +728,7 @@ def analyze_file_bytes(file_bytes: bytes, filename: str, content_type: str, api_
         "filename": filename,
         "file_size_kb": round(len(file_bytes) / 1024, 1),
         "content_type": normalized_type,
-        "model": "claude-haiku-4-5-20251001",
+        "model": ANTHROPIC_MODEL_PRIMARY,
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
     }
@@ -1131,7 +1312,7 @@ def index_document_bytes(
     except Exception as exc:
         logger.exception("Document upload/indexing failed for %s", filename)
         update_document_record(client, document_id, {"status": "error", "error_message": str(exc)})
-        raise HTTPException(status_code=500, detail=f"Document indexing failed: {str(exc)}")
+        raise HTTPException(status_code=500, detail="Document indexing failed. Please try again.")
 
 
 def _index_existing_document(
@@ -1363,7 +1544,7 @@ def answer_question_from_matches(
     )
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=ANTHROPIC_MODEL_ADVANCED,
         max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1377,7 +1558,7 @@ def answer_question_from_matches(
             "confidence": "low",
         }
     parsed["_meta"] = {
-        "model": "claude-sonnet-4-6",
+        "model": ANTHROPIC_MODEL_ADVANCED,
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
     }
@@ -1418,7 +1599,7 @@ def answer_building_question(
     )
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=ANTHROPIC_MODEL_ADVANCED,
         max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1428,7 +1609,7 @@ def answer_building_question(
     except ValueError:
         parsed = {"answer": raw_text.strip(), "citations": [], "confidence": "low"}
     parsed["_meta"] = {
-        "model": "claude-sonnet-4-6",
+        "model": ANTHROPIC_MODEL_ADVANCED,
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
     }
@@ -1468,7 +1649,7 @@ def answer_documents_question(
     )
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=ANTHROPIC_MODEL_ADVANCED,
         max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1478,7 +1659,7 @@ def answer_documents_question(
     except ValueError:
         parsed = {"answer": raw_text.strip(), "citations": [], "confidence": "low"}
     parsed["_meta"] = {
-        "model": "claude-sonnet-4-6",
+        "model": ANTHROPIC_MODEL_ADVANCED,
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
     }
@@ -1504,7 +1685,7 @@ def stream_question_answer(
     client = anthropic.Anthropic(api_key=api_key)
     accumulated = ""
     with client.messages.stream(
-        model="claude-sonnet-4-6",
+        model=ANTHROPIC_MODEL_ADVANCED,
         max_tokens=1400,
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
@@ -1528,6 +1709,29 @@ def require_rag_configuration() -> None:
             detail="Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, then apply supabase/schema.sql.",
         )
     # Embeddings are optional — text search is used as fallback
+
+
+# ── Stuck Document Sweeper (Item 16) ──
+async def sweep_stuck_documents():
+    """Mark documents stuck in 'processing' for >30 min as failed."""
+    try:
+        cfg = load_rag_config()
+        if not is_supabase_configured(cfg):
+            return
+        client = get_supabase_client(cfg)
+        # Find docs stuck in processing for >30 minutes
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+        stuck = client.table("documents").select("id").eq("status", "processing").lt("created_at", cutoff).execute()
+        for doc in (stuck.data or []):
+            client.table("documents").update({"status": "failed", "error_message": "Processing timed out — please re-upload"}).eq("id", doc["id"]).execute()
+            logger.warning("Marked stuck document %s as failed", doc["id"])
+    except Exception as e:
+        logger.error("Stuck document sweeper error: %s", e)
+
+@app.on_event("startup")
+async def startup_event():
+    """Run startup tasks."""
+    await sweep_stuck_documents()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1639,8 +1843,7 @@ async def admin_create_user(body: CreateUserRequest):
         raise HTTPException(status_code=400, detail="role must be one of: admin, editor, viewer")
     if not body.email or not body.password:
         raise HTTPException(status_code=400, detail="email and password are required")
-    if len(body.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    validate_password_strength(body.password)
 
     rag_config = load_rag_config()
     headers = _supabase_admin_headers()
@@ -1772,8 +1975,8 @@ async def track_analytics_event(body: AnalyticsEventRequest):
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     _analytics_events.append(event_record)
-    # Cap in-memory store at 10,000 events
-    if len(_analytics_events) > 10000:
+    # Cap in-memory store (Item 17)
+    if len(_analytics_events) > MAX_ANALYTICS_EVENTS:
         _analytics_events[:] = _analytics_events[-5000:]
     return {"status": "ok"}
 
@@ -1828,7 +2031,7 @@ def test_api_key():
     try:
         client = anthropic.Anthropic(api_key=key)
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=ANTHROPIC_MODEL_PRIMARY,
             max_tokens=10,
             messages=[{"role": "user", "content": "Say OK"}],
         )
@@ -1938,9 +2141,8 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/drive.metadata.readonly",
     "https://www.googleapis.com/auth/spreadsheets.readonly",
 ]
-_base_url = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
-GOOGLE_REDIRECT_URI = f"{_base_url}/auth/google/callback"
-MICROSOFT_REDIRECT_URI = f"{_base_url}/auth/microsoft/callback"
+GOOGLE_REDIRECT_URI = f"{BASE_URL}/auth/google/callback"
+MICROSOFT_REDIRECT_URI = f"{BASE_URL}/auth/microsoft/callback"
 MICROSOFT_SCOPES = ["Files.Read", "Files.Read.All", "offline_access"]
 
 # File types to look for in connected drives
@@ -1989,7 +2191,7 @@ def google_auth_start():
     if not client_id or not client_secret:
         raise HTTPException(400, "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not set in .env")
 
-    state = secrets.token_urlsafe(16)
+    state = create_oauth_state("google")
     client_config = {
         "web": {
             "client_id": client_id,
@@ -2013,12 +2215,16 @@ def google_auth_callback(code: Optional[str] = None, state: Optional[str] = None
     # Handle error responses from Google (e.g. user denied access)
     if error:
         logger.warning(f"Google OAuth error: {error}")
-        return RedirectResponse(f"{_base_url}/?integration=google_error&reason={error}")
+        return RedirectResponse(f"{BASE_URL}/?integration=google_error&reason={error}")
     if not code or not state:
         raise HTTPException(400, "Missing code or state parameter")
+    # Verify HMAC signature and TTL (Item 15)
+    # verify_oauth_state checks signature, expiry, and pops from _oauth_states
+    # But we need the oauth_data first for Google's code_verifier
     if state not in _oauth_states:
         raise HTTPException(400, "Invalid OAuth state — possible CSRF attempt")
-    oauth_data = _oauth_states.pop(state)
+    oauth_data = _oauth_states.get(state)
+    verify_oauth_state(state)  # validates signature + TTL, pops from dict
     code_verifier = oauth_data.get("code_verifier") if isinstance(oauth_data, dict) else None
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
@@ -2035,9 +2241,11 @@ def google_auth_callback(code: Optional[str] = None, state: Optional[str] = None
     # Restore the PKCE code_verifier from the original auth request
     flow.code_verifier = code_verifier
     flow.fetch_token(code=code)
+    if len(_tokens) > MAX_TOKEN_STORE:
+        _tokens.clear()
     _tokens["google"] = flow.credentials
     logger.info("Google Drive connected successfully")
-    return RedirectResponse(f"{_base_url}/?integration=google_connected")
+    return RedirectResponse(f"{BASE_URL}/?integration=google_connected")
 
 
 @app.get("/auth/google/disconnect")
@@ -2135,7 +2343,7 @@ def list_google_drive_files(query: str = "", folder_id: Optional[str] = None):
         }
     except Exception as e:
         logger.error(f"Google Drive list error: {e}")
-        raise HTTPException(500, f"Could not list Google Drive files: {str(e)}")
+        raise HTTPException(500, "Could not list Google Drive files. Please try again.")
 
 
 @app.post("/integrations/google-drive/analyze")
@@ -2272,7 +2480,7 @@ def list_google_sheets_files(query: str = ""):
         }
     except Exception as e:
         logger.error(f"Google Sheets list error: {e}")
-        raise HTTPException(500, f"Could not list Google Sheets: {str(e)}")
+        raise HTTPException(500, "Could not list Google Sheets. Please try again.")
 
 
 @app.get("/integrations/google-sheets/read/{file_id}")
@@ -2312,7 +2520,7 @@ def read_google_sheet(file_id: str, sheet_name: Optional[str] = None):
         }
     except Exception as e:
         logger.error(f"Google Sheets read error: {e}")
-        raise HTTPException(500, f"Could not read Google Sheet: {str(e)}")
+        raise HTTPException(500, "Could not read Google Sheet. Please try again.")
 
 
 @app.post("/integrations/google-sheets/analyze")
@@ -2375,7 +2583,7 @@ async def analyze_google_sheets(file_ids: List[str]):
                 # Direct Claude analysis
                 client = anthropic.Anthropic(api_key=api_key)
                 msg = client.messages.create(
-                    model="claude-sonnet-4-6",
+                    model=ANTHROPIC_MODEL_ADVANCED,
                     max_tokens=4096,
                     messages=[{"role": "user", "content": f"Analyze this spreadsheet data for building intelligence. Extract any relevant information about building systems, equipment, maintenance, costs, leases, energy, or space data.\n\n{sheet_text[:30000]}"}],
                 )
@@ -2405,8 +2613,7 @@ def microsoft_auth_start():
     if not client_id:
         raise HTTPException(400, "MICROSOFT_CLIENT_ID not set in .env")
 
-    state = secrets.token_urlsafe(16)
-    _oauth_states[state] = "microsoft"
+    state = create_oauth_state("microsoft")
     app_msal = msal.PublicClientApplication(client_id, authority=f"https://login.microsoftonline.com/{tenant_id}")
     auth_url = app_msal.get_authorization_request_url(
         scopes=MICROSOFT_SCOPES,
@@ -2419,9 +2626,8 @@ def microsoft_auth_start():
 @app.get("/auth/microsoft/callback")
 def microsoft_auth_callback(code: str, state: str):
     """Handle Microsoft OAuth callback."""
-    if state not in _oauth_states:
-        raise HTTPException(400, "Invalid OAuth state")
-    del _oauth_states[state]
+    # Verify signed state (Item 15)
+    verify_oauth_state(state)
     client_id = os.getenv("MICROSOFT_CLIENT_ID")
     client_secret = os.getenv("MICROSOFT_CLIENT_SECRET", "")
     tenant_id = os.getenv("MICROSOFT_TENANT_ID", "common")
@@ -2439,6 +2645,8 @@ def microsoft_auth_callback(code: str, state: str):
     )
     if "error" in result:
         raise HTTPException(400, f"Microsoft auth error: {result.get('error_description', result['error'])}")
+    if len(_tokens) > MAX_TOKEN_STORE:
+        _tokens.clear()
     _tokens["microsoft"] = result
     logger.info("Microsoft OneDrive connected successfully")
     return RedirectResponse("http://localhost:8000/?integration=microsoft_connected")
@@ -2494,7 +2702,7 @@ async def list_onedrive_files(query: str = ""):
         }
     except Exception as e:
         logger.error(f"OneDrive list error: {e}")
-        raise HTTPException(500, f"Could not list OneDrive files: {str(e)}")
+        raise HTTPException(500, "Could not list OneDrive files. Please try again.")
 
 
 @app.post("/integrations/onedrive/analyze")
@@ -2532,13 +2740,13 @@ async def analyze_onedrive_files(file_ids: List[str]):
 
                 client = anthropic.Anthropic(api_key=api_key)
                 response = client.messages.create(
-                    model="claude-haiku-4-5-20251001", max_tokens=8192,
+                    model=ANTHROPIC_MODEL_PRIMARY, max_tokens=8192,
                     messages=[{"role": "user", "content": [doc_content, {"type": "text", "text": ANALYSIS_PROMPT}]}],
                 )
                 intelligence = extract_json_from_response(_get_text(response.content[0]))
                 intelligence["_meta"] = {
                     "filename": filename, "file_size_kb": round(len(file_bytes) / 1024, 1),
-                    "content_type": mime_type, "model": "claude-haiku-4-5-20251001",
+                    "content_type": mime_type, "model": ANTHROPIC_MODEL_PRIMARY,
                     "source": "onedrive", "onedrive_file_id": file_id,
                 }
                 results.append({"file_id": file_id, "name": filename, "status": "analyzed", "data": intelligence})
@@ -2581,7 +2789,7 @@ async def appfolio_connect(body: AppFolioConnectRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(400, f"Connection test failed: {str(e)}")
+        raise HTTPException(400, "Connection test failed. Please check your credentials.")
 
     _appfolio_config.update({
         "database": body.database,
@@ -2626,7 +2834,7 @@ async def appfolio_properties():
     except httpx.HTTPStatusError as e:
         raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
     except Exception as e:
-        raise HTTPException(500, f"Failed to fetch properties: {str(e)}")
+        raise HTTPException(500, "Failed to fetch properties. Please try again.")
 
 
 @app.get("/integrations/appfolio/work-orders")
@@ -2649,7 +2857,7 @@ async def appfolio_work_orders(
     except httpx.HTTPStatusError as e:
         raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
     except Exception as e:
-        raise HTTPException(500, f"Failed to fetch work orders: {str(e)}")
+        raise HTTPException(500, "Failed to fetch work orders. Please try again.")
 
 
 @app.get("/integrations/appfolio/tenants")
@@ -2668,7 +2876,7 @@ async def appfolio_tenants(property_id: Optional[str] = Query(default=None)):
     except httpx.HTTPStatusError as e:
         raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
     except Exception as e:
-        raise HTTPException(500, f"Failed to fetch tenants: {str(e)}")
+        raise HTTPException(500, "Failed to fetch tenants. Please try again.")
 
 
 @app.get("/integrations/appfolio/financials")
@@ -2702,7 +2910,7 @@ async def appfolio_financials(
     except httpx.HTTPStatusError as e:
         raise HTTPException(e.response.status_code, f"AppFolio API error: {e.response.text[:200]}")
     except Exception as e:
-        raise HTTPException(500, f"Failed to fetch report: {str(e)}")
+        raise HTTPException(500, "Failed to fetch report. Please try again.")
 
 
 @app.post("/integrations/appfolio/sync-to-building")
@@ -2820,7 +3028,7 @@ def get_document_preview_url(document_id: str):
         return {"url": url, "filename": row.get("filename"), "mime_type": row.get("mime_type")}
     except Exception as exc:
         logger.error("Failed to create signed URL: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Preview not available: {str(exc)}")
+        raise HTTPException(status_code=500, detail="Preview not available. Please try again.")
 
 
 @app.delete("/documents/{document_id}", dependencies=[Depends(verify_api_key)])
@@ -2837,7 +3045,9 @@ def delete_document(document_id: str):
 
 
 @app.post("/documents/upload", dependencies=[Depends(verify_api_key)])
+@limiter.limit("10/minute")
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     building_id: Optional[str] = Form(default=None),
 ):
@@ -2852,27 +3062,34 @@ async def upload_document(
     rag_config = load_rag_config()
     client = get_supabase_client(rag_config)
 
-    file_bytes = await file.read()
+    file_bytes = await read_upload_with_limit(file)
     filename = file.filename or "document"
+    content_type = file.content_type or guess_content_type_from_filename(filename)
+    validate_file_magic(file_bytes, content_type)
     return index_document_bytes(
         client=client,
         rag_config=rag_config,
         api_key=api_key,
         file_bytes=file_bytes,
         filename=filename,
-        content_type=file.content_type or guess_content_type_from_filename(filename),
+        content_type=content_type,
         building_id=building_id,
     )
 
 
 @app.post("/documents/import-shared-link", dependencies=[Depends(verify_api_key)])
-async def import_shared_link(body: SharedLinkImportRequest):
+@limiter.limit("10/minute")
+async def import_shared_link(request: Request, body: SharedLinkImportRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=500,
             detail="ANTHROPIC_API_KEY not configured. Add it to your .env file.",
         )
+
+    # SSRF protection (Item 9)
+    if _is_private_url(body.url.strip()):
+        raise HTTPException(400, "URLs pointing to private networks are not allowed")
 
     require_rag_configuration()
     rag_config = load_rag_config()
@@ -2986,7 +3203,8 @@ async def import_shared_link(body: SharedLinkImportRequest):
 
 
 @app.post("/documents/{document_id}/ask", dependencies=[Depends(verify_api_key)])
-def ask_document_question(document_id: str, body: DocumentQuestionRequest):
+@limiter.limit("30/minute")
+def ask_document_question(request: Request, document_id: str, body: DocumentQuestionRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(
@@ -3036,7 +3254,8 @@ def ask_document_question(document_id: str, body: DocumentQuestionRequest):
 
 
 @app.post("/documents/{document_id}/ask-stream", dependencies=[Depends(verify_api_key)])
-def ask_document_question_stream(document_id: str, body: DocumentQuestionRequest):
+@limiter.limit("30/minute")
+def ask_document_question_stream(request: Request, document_id: str, body: DocumentQuestionRequest):
     """Streaming variant — returns Server-Sent Events with incremental answer tokens."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -3065,7 +3284,8 @@ def ask_document_question_stream(document_id: str, body: DocumentQuestionRequest
 
 
 @app.post("/buildings/{building_id}/ask-documents-stream")
-def ask_building_documents_stream(building_id: str, body: BuildingQuestionRequest):
+@limiter.limit("30/minute")
+def ask_building_documents_stream(request: Request, building_id: str, body: BuildingQuestionRequest):
     """Streaming variant of ask-documents — returns SSE with incremental answer."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -3116,7 +3336,8 @@ def ask_building_documents_stream(building_id: str, body: BuildingQuestionReques
 
 
 @app.post("/buildings/{building_id}/ask-deferred")
-def ask_building_deferred_question(building_id: str, body: BuildingQuestionRequest):
+@limiter.limit("30/minute")
+def ask_building_deferred_question(request: Request, building_id: str, body: BuildingQuestionRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(
@@ -3184,7 +3405,8 @@ def ask_building_deferred_question(building_id: str, body: BuildingQuestionReque
 
 
 @app.post("/buildings/{building_id}/ask-documents")
-def ask_building_documents_question(building_id: str, body: BuildingQuestionRequest):
+@limiter.limit("30/minute")
+def ask_building_documents_question(request: Request, building_id: str, body: BuildingQuestionRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(
@@ -3244,7 +3466,8 @@ def ask_building_documents_question(building_id: str, body: BuildingQuestionRequ
 
 
 @app.post("/analyze")
-async def analyze_document(file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+async def analyze_document(request: Request, file: UploadFile = File(...)):
     """
     Upload a building document (PDF, image, or Excel/CSV) and receive
     AI-extracted intelligence across 10 categories.
@@ -3256,9 +3479,10 @@ async def analyze_document(file: UploadFile = File(...)):
             detail="ANTHROPIC_API_KEY not configured. Add it to your .env file.",
         )
 
-    file_bytes = await file.read()
+    file_bytes = await read_upload_with_limit(file)
     filename = file.filename or "document"
     content_type = file.content_type or ""
+    validate_file_magic(file_bytes, content_type)
 
     # Detect spreadsheet files by content type or extension
     is_spreadsheet = (
