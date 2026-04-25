@@ -270,6 +270,20 @@
         }
         .room-photo-capture-btn:active { background: #e2e8f0; }
         .room-photo-capture-btn span { font-size: 9px; margin-top: 2px; font-weight: 600; }
+        .photo-gallery { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+        .photo-gallery-item { position: relative; width: 72px; height: 72px; border-radius: 8px; overflow: hidden; border: 2px solid #e2e8f0; flex-shrink: 0; }
+        .photo-gallery-item img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+        .photo-gallery-item .photo-delete-btn { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; background: rgba(239,68,68,0.85); color: white; border: none; border-radius: 50%; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+        .photo-add-btn { width: 72px; height: 72px; border-radius: 8px; border: 2px dashed #cbd5e1; background: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 22px; color: #94a3b8; cursor: pointer; flex-shrink: 0; }
+        .photo-add-btn:active { background: #e2e8f0; }
+        .photo-add-btn span { font-size: 9px; margin-top: 2px; font-weight: 600; color: #64748b; }
+        .photo-fullscreen-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.92); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .photo-fullscreen-overlay img { max-width: 95vw; max-height: 75vh; object-fit: contain; border-radius: 8px; }
+        .photo-fullscreen-actions { display: flex; gap: 12px; margin-top: 16px; }
+        .photo-fullscreen-actions button { padding: 10px 20px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+        .photo-fullscreen-close { background: rgba(255,255,255,0.15); color: white; }
+        .photo-fullscreen-replace { background: #206A8A; color: white; }
+        .photo-fullscreen-delete { background: #ef4444; color: white; }
         .room-notes-area { flex: 1; }
         .room-notes-area textarea {
             width: 100%; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 8px;
@@ -808,6 +822,10 @@
 
 <!-- Hidden file inputs -->
 <input type="file" accept="image/*" capture="environment" id="roomPhotoInput" class="hidden-input" onchange="onRoomPhotoSelected(event)">
+<input type="file" accept="image/*" id="roomPhotoGalleryInput" class="hidden-input" onchange="onRoomGalleryPhotoSelected(event)" multiple>
+<input type="file" accept="image/*" id="equipPhotoGalleryInput" class="hidden-input" onchange="onEquipGalleryPhotoSelected(event)" multiple>
+<input type="file" accept="image/*" id="replacePhotoInput" class="hidden-input" onchange="onReplacePhotoSelected(event)">
+<div id="photoFullscreenOverlay" class="photo-fullscreen-overlay" style="display:none;"></div>
 
 <script>
     const API = window.location.origin;
@@ -843,6 +861,9 @@
         inspectedUnits: {},
         recentInspections: [],
         pendingRoomPhotoIndex: null,
+        roomPhotos: {},  // { roomIndex: [{ file: File, url: string, id: string? }] } — multiple photos per room
+        fullscreenContext: null,  // { type: 'room'|'equip', index/captureId, photoIndex }
+        pendingEquipGalleryTypeId: null,
         // Wizard state
         wizardStep: 0,
         // Chip selections for inspection
@@ -1169,6 +1190,7 @@
 
         // Reset inspection form state
         state.inspectionPhotos = {};
+        state.roomPhotos = {};
         state.inspectionFlags = {};
         state.inspectionNotes = {};
         state.chipValues = {};
@@ -1318,10 +1340,12 @@
     function renderRoomCards() {
         const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
         document.getElementById('roomCardsList').innerHTML = stops.map((stop, i) => {
-            const hasPhoto = !!state.inspectionPhotos[i];
+            const photos = state.roomPhotos[i] || [];
+            const hasLegacyPhoto = !!state.inspectionPhotos[i];
+            const allPhotos = hasLegacyPhoto && photos.length === 0 ? [{ file: state.inspectionPhotos[i], legacy: true }] : photos;
             const flag = state.inspectionFlags[i] || { flagged: false, issue: '' };
             const notes = state.inspectionNotes[i] || '';
-            const isDone = hasPhoto || notes.trim().length > 0;
+            const isDone = allPhotos.length > 0 || notes.trim().length > 0;
             const tip = ROOM_AI_TIPS[stop.name] || '';
 
             let cardClass = 'room-card';
@@ -1329,8 +1353,21 @@
             else if (isDone) cardClass += ' done';
 
             let badges = '';
-            if (hasPhoto) badges += '<div class="room-mini-badge photo-done">&#10003;</div>';
+            if (allPhotos.length > 0) badges += '<div class="room-mini-badge photo-done">&#10003; ' + allPhotos.length + '</div>';
             if (flag.flagged) badges += '<div class="room-mini-badge flagged-badge">&#9888;</div>';
+
+            // Build photo gallery
+            let galleryHtml = '<div class="photo-gallery">';
+            allPhotos.forEach((p, pi) => {
+                galleryHtml += '<div class="photo-gallery-item">' +
+                    '<img id="roomGalleryThumb_' + i + '_' + pi + '" src="" onclick="viewRoomPhoto(' + i + ', ' + pi + ')">' +
+                    '<button class="photo-delete-btn" onclick="event.stopPropagation();deleteRoomPhoto(' + i + ', ' + pi + ')">&#10005;</button>' +
+                    '</div>';
+            });
+            // Add photo buttons — camera + gallery
+            galleryHtml += '<div class="photo-add-btn" onclick="triggerRoomPhoto(' + i + ')">&#128247;<span>Camera</span></div>';
+            galleryHtml += '<div class="photo-add-btn" onclick="triggerRoomGallery(' + i + ')">&#128444;<span>Upload</span></div>';
+            galleryHtml += '</div>';
 
             return `<div class="${cardClass}" id="roomCard${i}">
                 <div class="room-card-header" onclick="toggleRoomCard(${i})">
@@ -1340,37 +1377,40 @@
                     <span class="room-card-chevron" id="roomChevron${i}">&#9660;</span>
                 </div>
                 <div class="room-card-body" id="roomCardBody${i}">
-                    ${tip ? `<div class="room-ai-tip"><span class="room-ai-tip-icon">&#128161;</span> ${tip}</div>` : ''}
-                    <div class="room-photo-area">
-                        ${hasPhoto
-                            ? `<img class="room-photo-thumb-img" id="roomThumb${i}" src="" onclick="triggerRoomPhoto(${i})">`
-                            : `<div class="room-photo-capture-btn" onclick="triggerRoomPhoto(${i})">&#128247;<span>Photo</span></div>`
-                        }
-                        <div class="room-notes-area">
-                            <textarea placeholder="Notes..." rows="2"
-                                oninput="state.inspectionNotes[${i}]=this.value">${notes}</textarea>
-                        </div>
+                    ${tip ? '<div class="room-ai-tip"><span class="room-ai-tip-icon">&#128161;</span> ' + tip + '</div>' : ''}
+                    ${galleryHtml}
+                    <div class="room-notes-area">
+                        <textarea placeholder="Notes..." rows="2"
+                            oninput="state.inspectionNotes[${i}]=this.value">${notes}</textarea>
                     </div>
                     <label class="room-flag-toggle" onclick="event.stopPropagation();">
                         <input type="checkbox" ${flag.flagged ? 'checked' : ''} onchange="toggleRoomFlag(${i}, this.checked)">
                         <div class="room-flag-toggle-track"></div>
                         <span class="room-flag-toggle-label">Flag for maintenance</span>
                     </label>
-                    ${flag.flagged ? `<input class="room-flag-issue-input" type="text" value="${(flag.issue||'').replace(/"/g,'&quot;')}"
-                        placeholder="What needs attention?"
-                        oninput="if(state.inspectionFlags[${i}])state.inspectionFlags[${i}].issue=this.value">` : ''}
+                    ${flag.flagged ? '<input class="room-flag-issue-input" type="text" value="' + (flag.issue||'').replace(/"/g,'&quot;') + '"'
+                        + ' placeholder="What needs attention?"'
+                        + ' oninput="if(state.inspectionFlags[' + i + '])state.inspectionFlags[' + i + '].issue=this.value">' : ''}
                 </div>
             </div>`;
         }).join('');
 
-        // Load photo thumbnails
-        Object.keys(state.inspectionPhotos).forEach(idx => {
-            const thumb = document.getElementById('roomThumb' + idx);
-            if (thumb && state.inspectionPhotos[idx]) {
-                const reader = new FileReader();
-                reader.onload = (e) => { thumb.src = e.target.result; };
-                reader.readAsDataURL(state.inspectionPhotos[idx]);
-            }
+        // Load photo thumbnails for gallery
+        const stops2 = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
+        stops2.forEach((stop, i) => {
+            const photos = state.roomPhotos[i] || [];
+            const hasLegacyPhoto = !!state.inspectionPhotos[i];
+            const allPhotos = hasLegacyPhoto && photos.length === 0 ? [{ file: state.inspectionPhotos[i], legacy: true }] : photos;
+            allPhotos.forEach((p, pi) => {
+                const thumb = document.getElementById('roomGalleryThumb_' + i + '_' + pi);
+                if (thumb && p.file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => { thumb.src = e.target.result; };
+                    reader.readAsDataURL(p.file);
+                } else if (thumb && p.url) {
+                    thumb.src = p.url;
+                }
+            });
         });
     }
 
@@ -1397,15 +1437,178 @@
         const file = event.target.files[0];
         if (!file || state.pendingRoomPhotoIndex === null) return;
         const idx = state.pendingRoomPhotoIndex;
-        state.inspectionPhotos[idx] = file;
+        if (!state.roomPhotos[idx]) state.roomPhotos[idx] = [];
+        state.roomPhotos[idx].push({ file: file });
         state.pendingRoomPhotoIndex = null;
         renderRoomCards();
-        // Auto-expand this card
         const body = document.getElementById('roomCardBody' + idx);
         const chevron = document.getElementById('roomChevron' + idx);
         if (body) { body.classList.add('open'); chevron.classList.add('open'); }
         const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
         toast('Photo added for ' + stops[idx].name);
+    }
+
+    // ── Room Photo Gallery Upload ──────────
+    function triggerRoomGallery(index) {
+        state.pendingRoomPhotoIndex = index;
+        document.getElementById('roomPhotoGalleryInput').value = '';
+        document.getElementById('roomPhotoGalleryInput').click();
+    }
+
+    function onRoomGalleryPhotoSelected(event) {
+        const files = event.target.files;
+        if (!files.length || state.pendingRoomPhotoIndex === null) return;
+        const idx = state.pendingRoomPhotoIndex;
+        if (!state.roomPhotos[idx]) state.roomPhotos[idx] = [];
+        // Also migrate legacy single photo if it exists
+        if (state.inspectionPhotos[idx] && state.roomPhotos[idx].length === 0) {
+            state.roomPhotos[idx].push({ file: state.inspectionPhotos[idx], legacy: true });
+            delete state.inspectionPhotos[idx];
+        }
+        for (const file of files) {
+            state.roomPhotos[idx].push({ file: file });
+        }
+        state.pendingRoomPhotoIndex = null;
+        renderRoomCards();
+        const body = document.getElementById('roomCardBody' + idx);
+        const chevron = document.getElementById('roomChevron' + idx);
+        if (body) { body.classList.add('open'); chevron.classList.add('open'); }
+        toast(files.length + ' photo(s) added');
+    }
+
+    function deleteRoomPhoto(roomIndex, photoIndex) {
+        if (!state.roomPhotos[roomIndex]) return;
+        state.roomPhotos[roomIndex].splice(photoIndex, 1);
+        if (state.roomPhotos[roomIndex].length === 0) delete state.roomPhotos[roomIndex];
+        renderRoomCards();
+        // Re-open this card
+        const body = document.getElementById('roomCardBody' + roomIndex);
+        const chevron = document.getElementById('roomChevron' + roomIndex);
+        if (body) { body.classList.add('open'); chevron.classList.add('open'); }
+    }
+
+    function viewRoomPhoto(roomIndex, photoIndex) {
+        const photos = state.roomPhotos[roomIndex] || [];
+        const hasLegacyPhoto = !!state.inspectionPhotos[roomIndex];
+        const allPhotos = hasLegacyPhoto && photos.length === 0 ? [{ file: state.inspectionPhotos[roomIndex], legacy: true }] : photos;
+        const photo = allPhotos[photoIndex];
+        if (!photo) return;
+        state.fullscreenContext = { type: 'room', index: roomIndex, photoIndex: photoIndex };
+        showPhotoFullscreen(photo);
+    }
+
+    // ── Fullscreen Photo Viewer ──────────
+    function showPhotoFullscreen(photo) {
+        if (photo.url) {
+            renderFullscreenOverlay(photo.url);
+        } else if (photo.file) {
+            const reader = new FileReader();
+            reader.onload = (e) => { renderFullscreenOverlay(e.target.result); };
+            reader.readAsDataURL(photo.file);
+        }
+    }
+
+    function renderFullscreenOverlay(imgSrc) {
+        const overlay = document.getElementById('photoFullscreenOverlay');
+        overlay.innerHTML = '<img src="' + imgSrc + '">' +
+            '<div class="photo-fullscreen-actions">' +
+            '<button class="photo-fullscreen-replace" onclick="replaceFullscreenPhoto()">Replace</button>' +
+            '<button class="photo-fullscreen-delete" onclick="deleteFullscreenPhoto()">Delete</button>' +
+            '<button class="photo-fullscreen-close" onclick="closePhotoFullscreen()">Close</button>' +
+            '</div>';
+        overlay.style.display = 'flex';
+    }
+
+    function closePhotoFullscreen() {
+        document.getElementById('photoFullscreenOverlay').style.display = 'none';
+        state.fullscreenContext = null;
+    }
+
+    function replaceFullscreenPhoto() {
+        document.getElementById('replacePhotoInput').value = '';
+        document.getElementById('replacePhotoInput').click();
+    }
+
+    function onReplacePhotoSelected(event) {
+        const file = event.target.files[0];
+        if (!file || !state.fullscreenContext) return;
+        const ctx = state.fullscreenContext;
+        if (ctx.type === 'room') {
+            if (!state.roomPhotos[ctx.index]) state.roomPhotos[ctx.index] = [];
+            // Migrate legacy photo
+            if (state.inspectionPhotos[ctx.index] && state.roomPhotos[ctx.index].length === 0) {
+                state.roomPhotos[ctx.index].push({ file: state.inspectionPhotos[ctx.index], legacy: true });
+                delete state.inspectionPhotos[ctx.index];
+            }
+            if (state.roomPhotos[ctx.index][ctx.photoIndex]) {
+                state.roomPhotos[ctx.index][ctx.photoIndex] = { file: file };
+            }
+            renderRoomCards();
+            const body = document.getElementById('roomCardBody' + ctx.index);
+            const chevron = document.getElementById('roomChevron' + ctx.index);
+            if (body) { body.classList.add('open'); chevron.classList.add('open'); }
+        }
+        closePhotoFullscreen();
+        toast('Photo replaced');
+    }
+
+    function deleteFullscreenPhoto() {
+        const ctx = state.fullscreenContext;
+        if (!ctx) return;
+        if (ctx.type === 'room') {
+            deleteRoomPhoto(ctx.index, ctx.photoIndex);
+        }
+        closePhotoFullscreen();
+    }
+
+    // ── Equipment Gallery Upload ──────────
+    function triggerEquipGallery(equipTypeId) {
+        state.pendingEquipGalleryTypeId = equipTypeId;
+        document.getElementById('equipPhotoGalleryInput').value = '';
+        document.getElementById('equipPhotoGalleryInput').click();
+    }
+
+    async function onEquipGalleryPhotoSelected(event) {
+        const files = event.target.files;
+        const equipTypeId = state.pendingEquipGalleryTypeId;
+        if (!files.length || !equipTypeId) return;
+        state.pendingEquipGalleryTypeId = null;
+
+        const unitId = state.currentUnit?.id;
+        const buildingId = state.currentBuilding;
+        if (!unitId || !buildingId) { toast('No unit selected'); return; }
+
+        showLoading('Uploading ' + files.length + ' photo(s)...');
+        let success = 0;
+        for (const file of files) {
+            try {
+                const formData = new FormData();
+                formData.append('equipment_type_id', equipTypeId);
+                formData.append('photo', file);
+                const resp = await fetch(API + '/api/buildings/' + buildingId + '/units/' + unitId + '/capture', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + state.sessionToken },
+                    body: formData,
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.capture) state.captures.push(data.capture);
+                    success++;
+                } else {
+                    const err = await resp.json().catch(() => ({}));
+                    console.warn('Upload failed:', err.detail || resp.status);
+                }
+            } catch (e) {
+                console.error('Upload error:', e);
+            }
+        }
+        hideLoading();
+        if (success > 0) {
+            toast(success + ' photo(s) uploaded successfully');
+            renderEquipInspList();
+        } else {
+            toast('Upload failed — please try again');
+        }
     }
 
     function toggleRoomFlag(index, checked) {
@@ -1464,7 +1667,12 @@
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
                     <div class="equip-insp-btn ${isDone ? 'done-badge' : 'capture'}">${isDone ? '&#10003; Done' : isSkipped ? '\u23ED Skipped' : 'Capture'}</div>
-                    ${isDone ? `<div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();startCapture('${et.id}')">+ Add photo</div>` : ''}
+                    ${isDone ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();startCapture('${et.id}')">&#128247; Camera</div>
+                        <div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();triggerEquipGallery('${et.id}')">&#128444; Upload</div>
+                    </div>` : `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <div style="font-size:11px;color:#206A8A;cursor:pointer;" onclick="event.stopPropagation();triggerEquipGallery('${et.id}')">&#128444; Upload existing</div>
+                    </div>`}
                     ${!isDone && !isSkipped ? `<div style="font-size:11px;color:#d97706;cursor:pointer;" onclick="event.stopPropagation();skipEquipment('${et.id}')">Skip</div>` : ''}
                 </div>
             </div>`;
@@ -1548,7 +1756,9 @@
         const stops = state.inspectionStops.length ? state.inspectionStops : DEFAULT_ROOM_STOPS;
 
         const highlights = [];
-        const photoCount = Object.keys(state.inspectionPhotos).length;
+        const roomPhotoCount = Object.values(state.roomPhotos).reduce((sum, arr) => sum + arr.length, 0);
+        const legacyPhotoCount = Object.keys(state.inspectionPhotos).filter(k => !state.roomPhotos[k] || state.roomPhotos[k].length === 0).length;
+        const photoCount = roomPhotoCount + legacyPhotoCount;
         const flagCount = Object.values(state.inspectionFlags).filter(f => f.flagged).length;
         const noteCount = Object.values(state.inspectionNotes).filter(n => n && n.trim()).length;
 
@@ -1606,7 +1816,8 @@
             notes: state.inspectionNotes[i] || '',
             flagged: !!(state.inspectionFlags[i] && state.inspectionFlags[i].flagged),
             flag_issue: (state.inspectionFlags[i] && state.inspectionFlags[i].issue) || '',
-            has_photo: !!state.inspectionPhotos[i],
+            has_photo: !!state.inspectionPhotos[i] || (state.roomPhotos[i] && state.roomPhotos[i].length > 0),
+            photo_count: (state.roomPhotos[i] ? state.roomPhotos[i].length : 0) || (state.inspectionPhotos[i] ? 1 : 0),
         }));
 
         const inspectionData = {
@@ -1638,10 +1849,29 @@
             const r = await api(`/api/buildings/${state.currentBuilding}/units/${unit.id}/inspection`, inspectionData);
             const inspectionId = r.inspection?.id || r.id;
 
-            // Upload room photos
+            // Upload room photos (new multi-photo system)
             if (inspectionId) {
-                const photoKeys = Object.keys(state.inspectionPhotos);
-                for (const idx of photoKeys) {
+                // Upload from roomPhotos (new gallery system)
+                const roomPhotoKeys = Object.keys(state.roomPhotos);
+                for (const idx of roomPhotoKeys) {
+                    const photos = state.roomPhotos[idx] || [];
+                    for (const photo of photos) {
+                        if (photo.file) {
+                            const fd = new FormData();
+                            fd.append('photo', photo.file);
+                            fd.append('room_index', idx);
+                            fd.append('room_name', stops[idx].name);
+                            try {
+                                await fetchWithAuth(`${API}/api/inspections/${inspectionId}/photos`, { method: 'POST', body: fd });
+                            } catch (e) { /* continue */ }
+                        }
+                    }
+                }
+                // Upload legacy single photos (backward compat)
+                const legacyKeys = Object.keys(state.inspectionPhotos);
+                for (const idx of legacyKeys) {
+                    // Skip if already handled by roomPhotos
+                    if (state.roomPhotos[idx] && state.roomPhotos[idx].length > 0) continue;
                     const file = state.inspectionPhotos[idx];
                     if (file) {
                         const fd = new FormData();
