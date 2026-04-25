@@ -1002,9 +1002,12 @@ async def add_units(building_id: str, request: Request, session: dict = Depends(
 
 
 @app.get("/api/buildings/{building_id}/units")
-async def list_units(building_id: str, session: dict = Depends(verify_session)):
+async def list_units(building_id: str, per_page: int = 100, page: int = 1, session: dict = Depends(verify_session)):
     _check_building_access(session, building_id)
-    units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}&order=sort_order,unit_name")
+    per_page = min(max(per_page, 1), 200)  # Cap at 200 (Item 30)
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+    units = await sb_get("fc_units", f"?building_id=eq.{_safe_id(building_id)}&order=sort_order,unit_name&limit={per_page}&offset={offset}")
     equip_types = await sb_get("fc_equipment_types", f"?building_id=eq.{_safe_id(building_id)}&order=sort_order")
     captures = await sb_get("fc_captures", f"?building_id=eq.{_safe_id(building_id)}&select=id,unit_id,equipment_type_id")
 
@@ -1408,6 +1411,20 @@ async def capture_equipment(
     photo_bytes = await photo.read()
     if not photo_bytes:
         raise HTTPException(400, "Empty photo")
+
+    # Magic byte validation (Item 27) — reject non-image uploads
+    IMAGE_MAGIC = {
+        b'\xff\xd8\xff': 'image/jpeg',      # JPEG
+        b'\x89PNG': 'image/png',             # PNG
+        b'RIFF': 'image/webp',               # WebP (RIFF container)
+        b'GIF8': 'image/gif',                # GIF
+        b'\x00\x00\x01\x00': 'image/x-icon', # ICO
+        b'BM': 'image/bmp',                  # BMP
+    }
+    header = photo_bytes[:8]
+    is_valid_image = any(header.startswith(magic) for magic in IMAGE_MAGIC)
+    if not is_valid_image:
+        raise HTTPException(400, "Invalid image file. Only JPEG, PNG, WebP, GIF, and BMP are accepted.")
 
     eq_types = await sb_get("fc_equipment_types", f"?id=eq.{_safe_id(equipment_type_id)}")
     eq_type_name = eq_types[0]["name"] if eq_types else "unknown"
@@ -2071,9 +2088,12 @@ async def building_progress(building_id: str, session: dict = Depends(verify_ses
 
 
 @app.get("/api/buildings/{building_id}/captures")
-async def list_captures(building_id: str, unit_id: str = None, session: dict = Depends(verify_session)):
+async def list_captures(building_id: str, unit_id: str = None, per_page: int = 100, page: int = 1, session: dict = Depends(verify_session)):
     _check_building_access(session, building_id)
-    filters = f"?building_id=eq.{_safe_id(building_id)}&order=created_at.desc"
+    per_page = min(max(per_page, 1), 200)  # Cap at 200 (Item 30)
+    page = max(page, 1)
+    offset = (page - 1) * per_page
+    filters = f"?building_id=eq.{_safe_id(building_id)}&order=created_at.desc&limit={per_page}&offset={offset}"
     if unit_id:
         filters += f"&unit_id=eq.{_safe_id(unit_id)}"
     captures = await sb_get("fc_captures", filters)
