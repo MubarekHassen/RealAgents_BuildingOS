@@ -203,15 +203,15 @@ CREATE POLICY "Service role full access" ON fc_captures FOR ALL USING (true) WIT
 CREATE POLICY "Service role full access" ON fc_capture_photos FOR ALL USING (true) WITH CHECK (true);
 
 -- Grant access to roles
-GRANT ALL ON fc_users TO anon, authenticated, service_role;
-GRANT ALL ON fc_invite_codes TO anon, authenticated, service_role;
-GRANT ALL ON fc_building_members TO anon, authenticated, service_role;
-GRANT ALL ON fc_units TO anon, authenticated, service_role;
-GRANT ALL ON fc_equipment_types TO anon, authenticated, service_role;
-GRANT ALL ON fc_walk_sessions TO anon, authenticated, service_role;
-GRANT ALL ON fc_unit_visits TO anon, authenticated, service_role;
-GRANT ALL ON fc_captures TO anon, authenticated, service_role;
-GRANT ALL ON fc_capture_photos TO anon, authenticated, service_role;
+GRANT ALL ON fc_users TO service_role;
+GRANT ALL ON fc_invite_codes TO service_role;
+GRANT ALL ON fc_building_members TO service_role;
+GRANT ALL ON fc_units TO service_role;
+GRANT ALL ON fc_equipment_types TO service_role;
+GRANT ALL ON fc_walk_sessions TO service_role;
+GRANT ALL ON fc_unit_visits TO service_role;
+GRANT ALL ON fc_captures TO service_role;
+GRANT ALL ON fc_capture_photos TO service_role;
 
 -- NOTE: The above policies use USING(true) because the backend connects with the
 -- service_role key, which bypasses RLS entirely. For direct client access via anon
