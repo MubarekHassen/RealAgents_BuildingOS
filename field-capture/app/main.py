@@ -104,7 +104,13 @@ def _safe_id(val: str) -> str:
 
 ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "https://buildingos-fieldcapture-production.up.railway.app,https://buildos.it,https://www.buildos.it,http://localhost:8000,http://localhost:3000").split(",")
 
-app = FastAPI(title="BuildingOS Field Capture", version="1.4.0")
+_is_prod = os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_NAME")
+app = FastAPI(
+    title="BuildingOS Field Capture",
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
+)
 
 app.add_middleware(
     CORSMiddleware,
