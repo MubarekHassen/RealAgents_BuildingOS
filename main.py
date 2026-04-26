@@ -277,12 +277,23 @@ except ImportError:
     MICROSOFT_AVAILABLE = False
     logger.warning("msal not installed — Microsoft/OneDrive integration disabled")
 
-# ── In-memory token store (replace with DB for production) ──
-# Size caps applied in Item 13 — MAX_TOKEN_STORE / MAX_OAUTH_STATES
+# ── In-memory token store ──
+# TODO(security): Migrate _tokens to DB-backed storage (Supabase or Redis).
+#   Currently in-memory only — tokens are lost on restart and not shared across
+#   replicas.  Size is capped at MAX_TOKEN_STORE and cleared when exceeded
+#   (see Item 13).  Acceptable for single-instance pilot but must be persisted
+#   before multi-instance deployment.
 _tokens: dict = {}
 _oauth_states: dict = {}  # state -> provider mapping for CSRF protection
 
-app = FastAPI(title="BuildingOS API", version="1.0.0")
+_is_prod = os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_NAME")
+app = FastAPI(
+    title="BuildingOS API",
+    version="1.0.0",
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
+)
 
 # ── Rate Limiting (Item 26) ──
 limiter = Limiter(key_func=get_remote_address)
@@ -1978,7 +1989,7 @@ class AnalyticsEventRequest(BaseModel):
     metadata: Optional[dict] = None
 
 
-@app.post("/api/analytics/event")
+@app.post("/api/analytics/event", dependencies=[Depends(verify_api_key)])
 async def track_analytics_event(body: AnalyticsEventRequest):
     """Log a platform analytics event."""
     event_record = {
@@ -2029,37 +2040,8 @@ async def analytics_dashboard():
     }
 
 
-_api_key_cache: dict[str, Any] = {"result": None, "tested_key": None, "ts": 0}
 
-@app.get("/test-api-key")
-def test_api_key():
-    """Test the Anthropic API key (cached for 5 min to avoid repeated Claude calls)."""
-    key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not key:
-        return {"valid": False, "error": "ANTHROPIC_API_KEY not set in .env"}
-    # Return cached result if same key tested within 5 minutes
-    import time as _time
-    if _api_key_cache["tested_key"] == key and (_time.time() - _api_key_cache["ts"]) < 300:
-        return _api_key_cache["result"]
-    try:
-        client = anthropic.Anthropic(api_key=key)
-        response = client.messages.create(
-            model=ANTHROPIC_MODEL_PRIMARY,
-            max_tokens=10,
-            messages=[{"role": "user", "content": "Say OK"}],
-        )
-        result = {"valid": True, "response": _get_text(response.content[0]), "key_prefix": key[:20] + "..."}
-    except anthropic.AuthenticationError as e:
-        result = {"valid": False, "error": f"AuthenticationError: {str(e)}", "key_prefix": key[:20] + "..."}
-    except anthropic.PermissionDeniedError as e:
-        result = {"valid": False, "error": f"PermissionDenied: {str(e)}", "key_prefix": key[:20] + "..."}
-    except Exception as e:
-        result = {"valid": False, "error": f"{type(e).__name__}: {str(e)}", "key_prefix": key[:20] + "..."}
-    _api_key_cache.update({"result": result, "tested_key": key, "ts": _time.time()})
-    return result
-
-
-@app.delete("/documents/clear-errors")
+@app.delete("/documents/clear-errors", dependencies=[Depends(verify_api_key)])
 def clear_errored_documents():
     """Delete all documents with status='error' from Supabase."""
     require_rag_configuration()
@@ -2078,7 +2060,7 @@ def clear_errored_documents():
     return {"deleted": deleted, "total_errors_found": len(error_docs)}
 
 
-@app.post("/documents/retry-errors")
+@app.post("/documents/retry-errors", dependencies=[Depends(verify_api_key)])
 async def retry_errored_documents(background_tasks: BackgroundTasks):
     """Re-index all documents with status='error' or stuck 'processing' — processes sequentially to avoid rate limits.
     Documents with no storage file (size_bytes=0, no storage_path) are deleted as orphans."""
@@ -2175,7 +2157,7 @@ BUILDING_DOC_KEYWORDS = [
 ]
 
 
-@app.get("/integrations/status")
+@app.get("/integrations/status", dependencies=[Depends(verify_api_key)])
 def integration_status():
     """Check which integrations are connected."""
     return {
@@ -2318,7 +2300,7 @@ def _gdrive_list_files_recursive(service, folder_id: Optional[str] = None, query
     return files
 
 
-@app.get("/integrations/google-drive/files")
+@app.get("/integrations/google-drive/files", dependencies=[Depends(verify_api_key)])
 def list_google_drive_files(query: str = "", folder_id: Optional[str] = None):
     """List building-relevant PDF files from Google Drive, including all subfolders."""
     if "google" not in _tokens:
@@ -2359,7 +2341,7 @@ def list_google_drive_files(query: str = "", folder_id: Optional[str] = None):
         raise HTTPException(500, "Could not list Google Drive files. Please try again.")
 
 
-@app.post("/integrations/google-drive/analyze")
+@app.post("/integrations/google-drive/analyze", dependencies=[Depends(verify_api_key)])
 async def analyze_google_drive_files(file_ids: List[str], building_id: Optional[str] = None):
     """Download files from Google Drive, analyze with Claude, and store in Supabase."""
     if "google" not in _tokens:
@@ -2448,7 +2430,7 @@ async def analyze_google_drive_files(file_ids: List[str], building_id: Optional[
 
 # ── Google Sheets ─────────────────────────────────────────────
 
-@app.get("/integrations/google-sheets/files")
+@app.get("/integrations/google-sheets/files", dependencies=[Depends(verify_api_key)])
 def list_google_sheets_files(query: str = ""):
     """List Google Sheets from the connected Google account."""
     if "google" not in _tokens:
@@ -2496,7 +2478,7 @@ def list_google_sheets_files(query: str = ""):
         raise HTTPException(500, "Could not list Google Sheets. Please try again.")
 
 
-@app.get("/integrations/google-sheets/read/{file_id}")
+@app.get("/integrations/google-sheets/read/{file_id}", dependencies=[Depends(verify_api_key)])
 def read_google_sheet(file_id: str, sheet_name: Optional[str] = None):
     """Read the contents of a Google Sheet and return as structured data."""
     if "google" not in _tokens:
@@ -2536,7 +2518,7 @@ def read_google_sheet(file_id: str, sheet_name: Optional[str] = None):
         raise HTTPException(500, "Could not read Google Sheet. Please try again.")
 
 
-@app.post("/integrations/google-sheets/analyze")
+@app.post("/integrations/google-sheets/analyze", dependencies=[Depends(verify_api_key)])
 async def analyze_google_sheets(file_ids: List[str]):
     """Read Google Sheets and analyze with Claude for building intelligence."""
     if "google" not in _tokens:
@@ -2671,7 +2653,7 @@ def microsoft_disconnect():
     return {"status": "disconnected"}
 
 
-@app.get("/integrations/onedrive/files")
+@app.get("/integrations/onedrive/files", dependencies=[Depends(verify_api_key)])
 async def list_onedrive_files(query: str = ""):
     """List building-relevant files from OneDrive."""
     if "microsoft" not in _tokens:
@@ -2718,7 +2700,7 @@ async def list_onedrive_files(query: str = ""):
         raise HTTPException(500, "Could not list OneDrive files. Please try again.")
 
 
-@app.post("/integrations/onedrive/analyze")
+@app.post("/integrations/onedrive/analyze", dependencies=[Depends(verify_api_key)])
 async def analyze_onedrive_files(file_ids: List[str]):
     """Download files from OneDrive and analyze them."""
     if "microsoft" not in _tokens:
@@ -2779,7 +2761,7 @@ class AppFolioConnectRequest(BaseModel):
 
 _appfolio_config: dict[str, Any] = {}
 
-@app.post("/integrations/appfolio/connect")
+@app.post("/integrations/appfolio/connect", dependencies=[Depends(verify_api_key)])
 async def appfolio_connect(body: AppFolioConnectRequest):
     """Store AppFolio credentials and test the connection."""
     base_url = f"https://{body.database}.appfolio.com"
@@ -2815,7 +2797,7 @@ async def appfolio_connect(body: AppFolioConnectRequest):
     return {"connected": True, "database": body.database, "message": f"Connected to {body.database}.appfolio.com"}
 
 
-@app.get("/integrations/appfolio/status")
+@app.get("/integrations/appfolio/status", dependencies=[Depends(verify_api_key)])
 def appfolio_status():
     """Check AppFolio connection status."""
     if _appfolio_config.get("connected"):
@@ -2833,7 +2815,7 @@ def _appfolio_url(endpoint: str) -> str:
     return f"{_appfolio_config['base_url']}/api/v1/reports/{endpoint}.json"
 
 
-@app.get("/integrations/appfolio/properties")
+@app.get("/integrations/appfolio/properties", dependencies=[Depends(verify_api_key)])
 async def appfolio_properties():
     """Fetch all properties from AppFolio."""
     auth = _appfolio_auth()
@@ -2850,7 +2832,7 @@ async def appfolio_properties():
         raise HTTPException(500, "Failed to fetch properties. Please try again.")
 
 
-@app.get("/integrations/appfolio/work-orders")
+@app.get("/integrations/appfolio/work-orders", dependencies=[Depends(verify_api_key)])
 async def appfolio_work_orders(
     status: Optional[str] = Query(default=None, description="Filter: open, completed, cancelled"),
     property_id: Optional[str] = Query(default=None),
@@ -2873,7 +2855,7 @@ async def appfolio_work_orders(
         raise HTTPException(500, "Failed to fetch work orders. Please try again.")
 
 
-@app.get("/integrations/appfolio/tenants")
+@app.get("/integrations/appfolio/tenants", dependencies=[Depends(verify_api_key)])
 async def appfolio_tenants(property_id: Optional[str] = Query(default=None)):
     """Fetch tenant/occupancy data from AppFolio."""
     auth = _appfolio_auth()
@@ -2892,7 +2874,7 @@ async def appfolio_tenants(property_id: Optional[str] = Query(default=None)):
         raise HTTPException(500, "Failed to fetch tenants. Please try again.")
 
 
-@app.get("/integrations/appfolio/financials")
+@app.get("/integrations/appfolio/financials", dependencies=[Depends(verify_api_key)])
 async def appfolio_financials(
     report: str = Query(default="income_statement", description="Report type: income_statement, balance_sheet, cash_flow, general_ledger"),
     from_date: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD"),
@@ -2926,7 +2908,7 @@ async def appfolio_financials(
         raise HTTPException(500, "Failed to fetch report. Please try again.")
 
 
-@app.post("/integrations/appfolio/sync-to-building")
+@app.post("/integrations/appfolio/sync-to-building", dependencies=[Depends(verify_api_key)])
 async def appfolio_sync_to_building(building_id: Optional[str] = None):
     """Pull AppFolio property data and sync into BuildingOS as analyzed documents."""
     auth = _appfolio_auth()
@@ -2990,7 +2972,7 @@ async def appfolio_sync_to_building(building_id: Optional[str] = None):
 # DOCUMENT ANALYSIS
 # ─────────────────────────────────────────────────────────────
 
-@app.get("/documents")
+@app.get("/documents", dependencies=[Depends(verify_api_key)])
 def get_documents(building_id: Optional[str] = Query(default=None)):
     require_rag_configuration()
     client = get_supabase_client(load_rag_config())
@@ -2998,7 +2980,7 @@ def get_documents(building_id: Optional[str] = Query(default=None)):
     return {"documents": [serialize_document_record(row) for row in rows]}
 
 
-@app.get("/documents/{document_id}/status")
+@app.get("/documents/{document_id}/status", dependencies=[Depends(verify_api_key)])
 def get_document_status(document_id: str):
     require_rag_configuration()
     client = get_supabase_client(load_rag_config())
